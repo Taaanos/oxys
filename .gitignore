@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# Xcode
+xcuserdata/
+DerivedData/
+build/
+*.xcuserstate
+
+# SwiftPM
+.build/
+.swiftpm/
+
+# Camera files and generated benchmark folders (F-02)
+TestData/

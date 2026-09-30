@@ -1,0 +1,1293 @@
+# Oxys: implementation stories
+
+Derived from [PRD.md](PRD.md) (Sep 30, 2026). "Oxys" is a working name taken from the repo folder (see G-1).
+
+## How to use this document
+
+- Stories are listed in the suggested build order. Each one is a thin increment you can run and check before moving on.
+- IDs: `F-` foundation and spikes, `M-` MVP, `V-` v1.0, `B-` / `L-` backlog (v1.x / Later).
+- Open questions are numbered per story, so we can refer to them as `M-08/Q1`. Every question has a *Proposed* default, so an unanswered question never blocks work: we build the default and revisit later. When one is settled, change *Proposed* to **Decided** where it stands.
+- Questions that touch many stories live in [Cross-cutting open questions](#cross-cutting-open-questions); stories link to them as `G-n`.
+- Status lives in the [Story index](#story-index): `todo`, `in progress`, `done`, `parked`.
+
+### How we work through a story
+
+1. Pick the next story in index order (or agree to jump).
+2. Read its open questions. Answer the ones that change the design; accept the proposals for the rest.
+3. Build it, check every acceptance criterion, record decisions in the story, and update its status.
+
+### Definition of done (applies to every story)
+
+- Builds in Swift 6 language mode with strict concurrency and no warnings; arm64 only.
+- Logic that lives in a package has unit tests. UI behavior has the manual or UI-test check its acceptance criteria list.
+- New commands are in the command table (so they appear in the menu bar and the cheat sheet), with the PRD's default key.
+- Code on a performance-sensitive path emits signposts (F-02).
+- Reachable by keyboard. Anything that shows state has a VoiceOver label.
+- Nothing is written into the photographer's folders except sidecars (and their temporary files during an atomic write, see G-9). Originals are never written.
+
+## Proposed architecture
+
+For orientation only. F-01 creates it; stories refine it.
+
+| Module | Responsibility | First story |
+| --- | --- | --- |
+| `App` | SwiftUI app, the window, settings, menus built from the command table | F-01 |
+| `Commands` | Command table, keymap files, key routing (physical keys, tap vs hold) | F-05, M-05 |
+| `Library` | Folder scan, `Photo` model, decisions, selection, filter and sort, session state | M-01 |
+| `Containers` | RAW and JPEG container parsing: embedded preview locations, maker notes | F-03 |
+| `Imaging` | Decoding (ImageIO, CIRAWFilter, LibRaw), request tokens, prefetch, memory and disk caches | M-02, M-04 |
+| `Canvas` | Metal image surface: fit, zoom, pan, overlays (peaking, clipping), histogram | M-03 |
+| `Sidecar` | XMP reading, in-place patching, atomic write queue, file watching | M-07 |
+| `Metadata` | EXIF via ImageIO, value formatting, maker-note fields | M-16 |
+
+Every module except `App` is a local Swift package, so it can be tested without launching the app.
+
+## Story index
+
+| ID | Story | Depends on | Status |
+| --- | --- | --- | --- |
+| **Phase 0** | **Foundations and spikes** | | |
+| F-01 | Project skeleton | none | done |
+| F-02 | Test corpus and performance harness | F-01 | todo |
+| F-03 | Spike: locating embedded previews | F-01 | todo |
+| F-04 | Spike: XMP interoperability | none | todo |
+| F-05 | Spike: keyboard routing | F-01 | todo |
+| F-06 | Spike: honest RAW decode | F-01 | todo |
+| **Phase 1** | **MVP** | | |
+| M-01 | Open a folder | F-01 | todo |
+| M-02 | Embedded preview reader | F-03, M-01 | todo |
+| M-03 | Loupe canvas | M-02 | todo |
+| M-04 | Image pipeline: prefetch, cancellation, caches | M-03, F-02 | todo |
+| M-05 | Command table, keymap and menu bar | F-05 | todo |
+| M-06 | Cull decisions and feedback | M-03, M-05 | todo |
+| M-07 | Read existing sidecars | M-01, F-04 | todo |
+| M-08 | Write sidecars safely | M-06, M-07 | todo |
+| M-09 | Undo and redo | M-08 | todo |
+| M-10 | React to outside sidecar changes | M-08 | todo |
+| M-11 | Write failures and read-only folders | M-08 | todo |
+| M-12 | Grid view | M-04, M-06 | todo |
+| M-13 | Modes and window chrome | M-12 | todo |
+| M-14 | Zoom: Fit and 1:1 | M-03, F-05 | todo |
+| M-15 | Zoom steps, panning and sticky zoom | M-14 | todo |
+| M-16 | EXIF | M-01 | todo |
+| M-17 | Histogram | M-03 | todo |
+| M-18 | Info overlay and inspector | M-16, M-17 | todo |
+| M-19 | Selection | M-12 | todo |
+| M-20 | Filter and sort bar | M-19 | todo |
+| M-21 | Reveal in Finder | M-19 | todo |
+| M-22 | Settings window | M-05 | todo |
+| M-23 | Cheat sheet and menu audit | M-05 and all MVP commands | todo |
+| M-24 | Keyboard-only and accessibility pass | all MVP UI | todo |
+| M-25 | MVP gate: interoperability and data safety | M-07 to M-11 | todo |
+| M-26 | MVP gate: performance | all MVP | todo |
+| **Phase 2** | **v1.0** | | |
+| V-01 | Maker notes: lens and AF point | M-16, F-03 | todo |
+| V-02 | Develop the RAW on demand | F-06, M-04, M-14 | todo |
+| V-03 | RAW modes and automatic RAW at 1:1 | V-02 | todo |
+| V-04 | LibRaw fallback | F-06, V-02, G-2 | todo |
+| V-05 | Truth badge | V-02 | todo |
+| V-06 | Focus peaking | M-15 | todo |
+| V-07 | Highlight and shadow clipping | M-17 | todo |
+| V-08 | Compare: layout and culling | M-13, M-19 | todo |
+| V-09 | Compare: linked zoom and EXIF differences | V-08, M-15, M-16 | todo |
+| V-10 | RAW+JPEG pairs | M-08, M-21 | todo |
+| V-11 | Auto-advance | M-06 | todo |
+| V-12 | External editors | M-19, M-22 | todo |
+| V-13 | Extract embedded JPEGs | M-02, M-19 | todo |
+| V-14 | Key remapping and presets | M-22, M-23 | todo |
+| V-15 | Session resume | M-20 | todo |
+| V-16 | Interop guidance | M-22, F-04 | todo |
+| V-17 | Distribution | G-2 | todo |
+| V-18 | v1.0 gate | all v1.0 | todo |
+
+### Dependency map (foundations and MVP)
+
+```mermaid
+flowchart LR
+  F01[F-01 Skeleton] --> F02[F-02 Corpus and perf]
+  F01 --> F03[F-03 Preview spike]
+  F01 --> F05[F-05 Keys spike]
+  F01 --> F06[F-06 RAW spike]
+  F04[F-04 XMP spike]
+  F01 --> M01[M-01 Open folder]
+  F03 --> M02
+  M01 --> M02[M-02 Previews] --> M03[M-03 Loupe] --> M04[M-04 Pipeline]
+  F02 --> M04
+  F05 --> M05[M-05 Commands]
+  M03 --> M06[M-06 Cull]
+  M05 --> M06
+  F04 --> M07[M-07 Read XMP]
+  M01 --> M07
+  M06 --> M08[M-08 Write XMP]
+  M07 --> M08
+  M08 --> M09[M-09 Undo]
+  M08 --> M10[M-10 Watch]
+  M08 --> M11[M-11 Read-only]
+  M04 --> M12[M-12 Grid]
+  M06 --> M12
+  M12 --> M13[M-13 Modes]
+  M03 --> M14[M-14 Zoom 1:1] --> M15[M-15 Zoom and pan]
+  M01 --> M16[M-16 EXIF]
+  M03 --> M17[M-17 Histogram]
+  M16 --> M18[M-18 Info and inspector]
+  M17 --> M18
+  M12 --> M19[M-19 Selection] --> M20[M-20 Filter]
+  M19 --> M21[M-21 Reveal]
+  M05 --> M22[M-22 Settings]
+  M05 --> M23[M-23 Cheat sheet]
+```
+
+M-24 to M-26 close the MVP and depend on everything above. F-04 needs no code, so it can start on day one, alongside F-01.
+
+## Cross-cutting open questions
+
+These are questions, plus gaps I found in the PRD while splitting it, that affect more than one story.
+
+| ID | Question | Proposed default | Affects |
+| --- | --- | --- | --- |
+| G-1 | Is "Oxys" the product name? It sets the bundle ID, the Application Support folder and the Homebrew cask name. | **Decided:** product name Oxys, bundle ID `dev.oxys.Oxys` as a placeholder. Set the real ID (with the GitHub org) before V-17; changing it later resets users' settings and cache. | F-01, V-17 |
+| G-2 | License (deferred in the PRD). It decides whether LibRaw or GPL code is usable, and it has to be settled before the first third-party code lands. | Decide right after F-03 and F-06, since those two spikes show which libraries we need. | F-03, V-04, V-17 |
+| G-3 | What is the slowest supported Mac? Every performance target is measured on it. | Base M1 with 8 GB of RAM. That also questions the 2 GB default prefetch budget. | F-02, M-04, M-26 |
+| G-4 | Scan subfolders? Cards use `DCIM/100XXXXX/`. | Not recursive in the MVP; show a hint when the folder holds no photos but its subfolders do. | M-01 |
+| G-5 | In Grid with several photos selected, do cull keys apply to all of them or only to the active one? | All selected in Grid (as in Lightroom's Grid), only the active photo in Loupe and Compare. One undo step for the group. | M-06, M-09, M-19 |
+| G-6 | When a decision makes the current photo leave the active filter (you press `2` while showing ≥3 stars), does it disappear at once? | It stays until you move away, so the view never jumps under your fingers. | M-06, M-20 |
+| G-7 | The PRD puts the disk cache in Application Support; the macOS convention for data that can be regenerated is `~/Library/Caches` (Time Machine skips it and the system can purge it). | `~/Library/Caches/<bundle id>/`. | M-04 |
+| G-8 | Lightroom Classic writes metadata inside DNG, JPEG and TIFF files rather than in sidecars, so it will likely ignore our sidecars for DNG and TIFF too, not only JPEG as the PRD says. DNG is in the supported set. | Verify in F-04; read embedded ratings as a fallback (M-07/Q3); explain it in the app (V-16). | F-04, M-07, V-16 |
+| G-9 | An atomic rename needs the temporary file on the same volume, so for a moment it sits in the photo folder under a hidden name. That is the one exception to "nothing but sidecars in the photographer's folders". | Accept it; clean up leftover temp files from a crash when the folder is next opened. | M-08 |
+| G-10 | Who runs the manual interoperability tests, and on which machine with a Lightroom Classic license? | You run the GUI steps from a checklist I write; I analyze the files they produce. | F-04, M-25 |
+| G-11 | Do the performance targets apply on SD cards and network shares too? | The targets apply on the SSD. On SD and SMB the "never a stale frame" rule must still hold, and latencies are reported but don't gate the release. | M-26 |
+| G-12 | Auto-repeat on cull keys: holding `⇧3` would rate and advance through many frames. | Cull keys and overlay toggles ignore auto-repeat; only navigation, zoom and pan repeat. | F-05, M-06 |
+| G-13 | `Esc` means both "return focus to the image" (from a text field) and "go to Grid". | First `Esc` leaves the text field or closes the popover or cheat sheet; the next `Esc` goes to Grid. | M-05, M-13 |
+
+---
+
+## Phase 0: Foundations and spikes
+
+Spikes answer a question and produce a short write-up in `docs/spikes/`. Their code is throwaway unless it turns out good enough to keep.
+
+### F-01 · Project skeleton
+
+**Depends on:** none
+
+> As the developer, I want an arm64-only Swift 6 project with testable modules and an empty window, so that every later story has somewhere to land.
+
+**Scope**
+- Git repository, `.gitignore`, README with build-from-source steps.
+- Xcode project: app target with `ARCHS = arm64`, deployment target macOS 27, Swift 6 language mode, App Sandbox off, ad-hoc signing ("Sign to Run Locally").
+- Local Swift packages for the modules in [Proposed architecture](#proposed-architecture), each with a test target.
+- A single SwiftUI `Window` scene hosting an AppKit content view, with the empty state "Drop a folder or press ⌘O" (it does nothing until M-01).
+- A Settings scene stub at `⌘,`.
+
+**Acceptance criteria**
+- [x] `lipo -archs` on the built app prints only `arm64` (`make check-arch`).
+- [x] One command runs every package's tests from the terminal (`make test`).
+- [x] Cold launch to the empty window takes under 1 s (first measurement; the formal check is in M-26).
+
+**Implementation notes**
+- Use a `Window` scene, not `WindowGroup`: the PRD asks for exactly one window.
+- Keep AppKit behind `NSViewRepresentable`: SwiftUI owns the layout, AppKit owns the pixels.
+
+**Open questions**
+1. Product name and bundle ID: see G-1 (**Decided**).
+2. CI: GitHub-hosted runners may not have Xcode with the macOS 27 SDK yet. **Decided:** a local `make test` script first; add CI once such a runner exists.
+3. Xcode project or SwiftPM-only (with a thin app wrapper)? **Decided:** an Xcode project plus local packages; no project generator. The bare project came from Xcode's template; build settings and package links were edited afterwards.
+
+**Result notes**
+- The Xcode project lives in `App/` (`App/Oxys.xcodeproj`, sources in `App/Oxys/`); the packages are in `Packages/`.
+- Checked by hand: one window with the empty-state text, `⌘,` opens the Settings stub, `⌘N` opens no second window.
+- Package manifests use `swift-tools-version: 6.4`, because `.macOS(.v27)` only exists from that version.
+- Launch to first drawn frame, measured with `make launch-time` (Release, 5 runs): 392 ms for the first launch, then 161–170 ms. Formal check is M-26.
+
+### F-02 · Test corpus and performance harness
+
+**Depends on:** F-01
+
+> As the developer, I want repeatable test folders and a way to measure key-to-pixel latency, so that "instant" is a number we check rather than a feeling.
+
+**Scope**
+- A script that downloads sample files for every supported format (for example from raw.pixls.us, mostly CC0; check each file's license) into a git-ignored `TestData/`. Camera files are never committed.
+- A script that builds benchmark folders: 1,000 files from a 24 MP camera, 1,000 from a 45–61 MP camera, 5,000 files for scan tests, 10,000 files for Grid scrolling.
+- Signpost intervals defined once in a shared helper: key event → frame on screen, preview read, decode, texture upload, sidecar write.
+- A script that records an Instruments trace (`xctrace`) and prints p50 and p95 for each interval.
+- The same folder copied to the internal SSD, a UHS-II SD card and a network share.
+
+**Acceptance criteria**
+- [ ] One command recreates the corpus on a clean machine.
+- [ ] One command prints the latency table for a run.
+- [ ] A manifest lists each file's camera, format, pixel size and embedded preview sizes.
+
+**Implementation notes**
+- Duplicated files are fine for scan and Grid tests, but not for next-image timings: the OS file cache makes repeated bytes look faster than real. Use real shoots there.
+
+**Open questions**
+1. Slowest supported Mac: see G-3.
+2. Can you provide real 1,000-frame shoots from a 24 MP and a 45–61 MP camera? Which cameras do you have access to? *Proposed:* your own shoots for performance tests, raw.pixls.us for format coverage.
+3. What kind of network share? *Proposed:* SMB from a NAS.
+
+### F-03 · Spike: locating embedded previews
+
+**Depends on:** F-01
+
+> As the developer, I want to know for every supported format where its embedded JPEGs are and how fast we can read them, so that the choice between our own parser and LibRaw rests on evidence.
+
+**Scope**
+- Prototype locators that return `(offset, length, width, height)` for every embedded JPEG:
+  - TIFF-based formats (ARW, CR2, NEF, DNG, ORF, RW2, PEF): the IFD chain, SubIFDs, EXIF and the vendor-specific maker-note preview IFDs.
+  - CR3: ISO base media file boxes (the THMB and PRVW boxes, and the full-size JPEG track).
+  - RAF: the JPEG offset and length in the fixed header.
+- Compare with ImageIO's own thumbnail path (`CGImageSourceCreateThumbnailAtIndex`), which decodes previews but cannot hand back their bytes.
+- Time read plus decode per format, memory-mapped, on SSD and SD card.
+
+**Acceptance criteria**
+- [ ] For every corpus file, the extracted bytes are identical to `exiftool -b -JpgFromRaw` or `-PreviewImage` (exiftool is a test oracle only, never a dependency).
+- [ ] `docs/spikes/previews.md` has a table: format, camera, available preview sizes, read and decode time.
+- [ ] The decision is recorded: our own parser, LibRaw, or ImageIO for browsing plus our parser for extraction.
+
+**Implementation notes**
+- Read only the headers and the preview bytes. Reading a whole 60 MB RAW would miss the 50 ms target on an SD card.
+- Many previews carry no ICC profile. Some Adobe RGB previews signal their color space only through EXIF (`InteroperabilityIndex = R03`). Record which cameras do this, since M-02 must honor it.
+- Record which previews lack an orientation tag.
+
+**Open questions**
+1. If ImageIO's thumbnail path is fast enough for browsing, may we use it for display and keep our parser only for extraction? *Proposed:* yes, if it meets the targets; fewer code paths to trust.
+2. Which camera bodies must work beyond the corpus (for example older CR2 bodies, Sony's compressed and lossless ARW variants)? *Proposed:* what raw.pixls.us has for the nine formats from the last eight years or so.
+
+### F-04 · Spike: XMP interoperability
+
+**Depends on:** none (manual testing)
+
+> As a photographer, I want the stars and colors this app writes to show up in Lightroom Classic, RawTherapee and ART, so that I never rate a shoot twice.
+
+**Scope**
+- Hand-write sidecars with `xmp:Rating` (-1 to 5), `xmp:Label` (the five names) and `xmp:MetadataDate`, in both naming styles (`name.xmp` and `name.ext.xmp`).
+- Open them in Lightroom Classic (current), RawTherapee (latest) and ART (latest), with one RAW each from Sony, Canon, Nikon and Fujifilm, plus one DNG.
+- The reverse direction: rate and label in each tool, save metadata, and keep the files they write as test fixtures.
+- Fill in the PRD's "To test" and "to be confirmed" cells: reject in Lightroom and ART, whether `MetadataDate` is needed, custom Lightroom label sets, DNG and JPEG behavior.
+
+**Acceptance criteria**
+- [ ] `docs/spikes/xmp-interop.md` holds the completed reader table and the exact preference steps for each tool.
+- [ ] Fixture sidecars from each tool, including a Lightroom sidecar with develop settings, are committed under `Tests/Fixtures/xmp/`.
+- [ ] Decided: what we write for "no rating" (`0` or no property) and "no label" (no property or empty).
+
+**Implementation notes**
+- Tools write properties either as attributes of `rdf:Description` or as child elements, and older Adobe files use the `xap:` prefix for the same namespace. Collect an example of each for M-07.
+- See G-8 on Lightroom and DNG.
+
+**Open questions**
+1. Who runs the tests: see G-10.
+2. If Lightroom ignores rating -1, do we still write -1 for reject? *Proposed:* yes (it's the Bridge convention and ART reads it); document the Lightroom behavior.
+
+### F-05 · Spike: keyboard routing
+
+**Depends on:** F-01
+
+> As a photographer, I want every bare key to act instantly and keep working with a Greek, Russian or Japanese input source active, so that the shortcut map is something I can rely on.
+
+**Scope** (prototype in a throwaway window)
+- Dispatch by physical key (`NSEvent.keyCode`), not by the character typed.
+- Key labels for menus and the cheat sheet come from the current layout, or from the ASCII-capable fallback layout when the input source is non-Latin.
+- Menu items show their key equivalents without firing twice alongside our dispatcher.
+- Tap vs hold: a tap toggles, a hold is momentary and reverts on key-up.
+- Auto-repeat for `←` / `→` arrives at the system repeat rate; see G-12 for keys that should ignore it.
+- Bare keys are ignored while a text field is first responder, and `Esc` returns focus to the canvas.
+
+**Acceptance criteria**
+- [ ] With a Greek or Russian layout active, `X`, `1`–`5`, `[`, `]`, `\`, `=`, `−` and `?` trigger the right commands.
+- [ ] `⌘` shortcuts (`⌘A`, `⌘R`, `⌘Z`) work on the same layouts.
+- [ ] Holding `Z` for half a second and releasing returns to the previous state; tapping toggles.
+- [ ] Typing in a search field never triggers a cull command.
+- [ ] A short write-up of the chosen routing design and its limits.
+
+**Implementation notes**
+- A likely design: a local key-down/key-up event monitor looks up `(keyCode, modifiers, mode)` in the keymap and swallows the events it handles. Menu items carry the same shortcut for display and mouse use; `NSMenuItem.allowsAutomaticKeyEquivalentLocalization` covers the `⌘` shortcuts.
+- The hold threshold can be the first auto-repeat event or a fixed time; try both.
+
+**Open questions**
+1. Punctuation keys (`[`, `]`, `\`, `=`, `?`) sit in different places on ISO, JIS and non-US layouts. Do we bind by US key position or by the character the user's Latin layout produces? *Proposed:* position for letters and digits (works everywhere), the character on the Latin layout for punctuation; the cheat sheet always shows what to press on the current keyboard.
+2. Hold threshold. *Proposed:* 250 ms, tunable through a hidden default.
+
+### F-06 · Spike: honest RAW decode
+
+**Depends on:** F-01
+
+> As a photographer, I want a developed RAW at 1:1 to show what the sensor recorded, with no added sharpening or noise reduction, so that a soft frame looks soft.
+
+**Scope**
+- Decode corpus RAWs with `CIRAWFilter`, with sharpening, luminance and color noise reduction, detail, local tone mapping and moiré reduction at 0 where supported; record the `is…Supported` flags per camera.
+- Compare with LibRaw (no sharpening) at 1:1: a visual diff plus a numeric sharpness measure (for example variance of the Laplacian) on the same crop.
+- Time decoding to a GPU texture at 24 MP and at 45–61 MP.
+- Check the corpus against `CIRAWFilter.supportedCameraModels`.
+
+**Acceptance criteria**
+- [ ] `docs/spikes/raw-decode.md`: per camera, whether decoding can be neutral, decode time, whether it is supported.
+- [ ] Decided: CIRAWFilter alone, or a LibRaw fallback in v1.0 (this feeds V-04 and G-2).
+
+**Implementation notes**
+- Not on the MVP critical path. Run it early anyway, because it can force the license choice.
+- Record the RAW output's geometry (crop, dimensions) against the embedded preview's; V-02 maps zoom positions between the two.
+
+**Open questions**
+1. Which tone rendering for RAW mode: the camera-like default, or something flatter? It changes what the clipping overlay (V-07) reports. *Proposed:* CIRAWFilter's default tone and as-shot white balance, with only detail processing switched off.
+
+---
+
+## Phase 1: MVP
+
+**Gate to leave the phase (PRD):** performance targets met on the test set; the Lightroom Classic and RawTherapee matrix passes.
+
+**Walking skeleton.** M-01 to M-08 together open a folder, step through previews in Loupe, rate them, and show the stars in Lightroom. They prove the PRD's two riskiest promises, keyboard speed and sidecar interoperability, so we build them first. Every later MVP story widens that path.
+
+### M-01 · Open a folder
+
+**Depends on:** F-01
+
+> As a photographer, I want to press ⌘O or drop a folder on the window and see my shoot listed at once, so that there is no import step.
+
+**Scope**
+- `⌘O` folder picker, dropping a folder on the window, and the empty state as a drop target.
+- Scan: supported extensions (any case); skip hidden files, AppleDouble `._*` files (common on exFAT cards) and `.xmp` files.
+- `Photo` model: URL, format, file size, modification date, capture time (filled in asynchronously), decision (M-06), preview info (M-02).
+- Capture time from EXIF (`DateTimeOriginal` plus sub-seconds and offset) without decoding the image. Default sort: capture time, then filename.
+- Window title is the folder name; the subtitle reads "1,204 photos" (it becomes "312 of 1,204 shown" in M-20).
+- Opening another folder replaces the current one.
+- Until Grid exists (M-12), opening a folder lands in Loupe on the first photo.
+
+**Acceptance criteria**
+- [ ] 5,000 files listed with capture times in under 3 s on the internal SSD (signpost).
+- [ ] The list appears before the capture times finish loading.
+- [ ] Unsupported, hidden and `._*` files never appear.
+- [ ] An empty folder, or one without photos, shows a clear one-line message.
+- [ ] Nothing is written into the folder.
+
+**Implementation notes**
+- Read files concurrently with a bound. On SD cards, sequential reads may be faster; measure both.
+- Capture-time reading shares code with EXIF (M-16).
+
+**Open questions**
+1. Subfolders: see G-4.
+2. File → Open Recent? *Proposed:* yes; it's standard macOS behavior and nearly free.
+3. Frames with no capture time (screenshots, exported JPEGs)? *Proposed:* fall back to the file's modification date.
+
+### M-02 · Embedded preview reader
+
+**Depends on:** F-03, M-01
+
+> As a photographer, I want each RAW's embedded JPEG shown instantly with the right orientation and color, so that browsing feels like flipping through prints.
+
+**Scope**
+- The production version of F-03's locators (or the library chosen there) behind one `PreviewSource` API: list the embedded images, pick the largest for Loupe and the smallest adequate one for Grid.
+- Memory-mapped reads; ImageIO decodes to the requested maximum size.
+- Orientation from the RAW's EXIF when the preview lacks it.
+- Color: an embedded ICC profile is honored; EXIF-signalled Adobe RGB is assigned; untagged images are treated as sRGB.
+- JPEG, HEIC and TIFF originals are their own preview (using their embedded thumbnail for Grid when there is one).
+- The preview's pixel size is stored on the `Photo` (the info strip uses it now, the truth badge in V-05).
+- Files with no embedded preview get a clear placeholder and message.
+
+**Acceptance criteria**
+- [ ] Every corpus file shows with the correct orientation, and colors match Preview.app (spot-check sRGB and Adobe RGB samples).
+- [ ] Unit tests cover each container type against fixtures.
+- [ ] A truncated or corrupt file shows an error tile and never crashes the app.
+
+**Open questions**
+1. "Smallest adequate" for Grid: adequate for the current cell size, or one fixed size? *Proposed:* the smallest embedded image at least as large as the biggest Grid cell in pixels; otherwise downscale the next larger one and keep it in the disk cache (M-04).
+
+### M-03 · Loupe canvas
+
+**Depends on:** M-02
+
+> As a photographer, I want one frame at a time on a neutral dark canvas, stepping with ← and →, so that I can judge each photo without distraction.
+
+**Scope**
+- An AppKit view on a `CAMetalLayer`, using Metal from the start so the v1.0 overlays slot in. It draws only when something changes.
+- Fit-to-window with high-quality downsampling.
+- Color management: the layer is tagged with the image's color space so the system matches it to the display profile; SDR only.
+- `←` / `→` for next and previous, `Home` / `End` for first and last. Image changes are cuts, never animations.
+- A minimal info strip: filename and "Preview 1616 px" (stars and label arrive in M-06).
+- The canvas is neutral dark gray whatever the system appearance.
+
+**Acceptance criteria**
+- [ ] 0% CPU while idle (Activity Monitor).
+- [ ] Moving the window between a Retina and a non-Retina display re-renders sharply.
+- [ ] A photo looks the same as in Preview.app on the same display.
+
+**Implementation notes**
+- Downsampling quality at Fit matters: a poor filter makes sharp frames look soft or jagged. Use mipmaps or a good pre-filter, and test on a frame with fine detail.
+
+**Open questions**
+1. Which gray exactly? *Proposed:* about `#303030`, identical in light and dark appearance; tune by eye.
+
+### M-04 · Image pipeline: prefetch, cancellation, caches
+
+**Depends on:** M-03, F-02
+
+> As a photographer, I want the next frame on screen before my next key repeat, even while I hold →, so that I never look at a stale image.
+
+**Scope**
+- Every request carries a token. Newer requests cancel stale ones before the read, before the decode and before the upload, so the newest target always wins.
+- A prefetch window of a few frames on each side, weighted toward the direction of travel, with bounded concurrency.
+- An in-memory cache with a byte budget (default 2 GB, adjustable in Settings) and least-recently-used eviction.
+- While scrubbing fast, show the best image of the target that is already available (its Grid thumbnail) at once, and swap in the full preview when ready. The frame on screen is always the newest one.
+- A disk thumbnail cache keyed by path, size and modification date, with a size cap and eviction.
+- Textures created without copies (shared storage on unified memory).
+
+**Acceptance criteria**
+- [ ] Next image p95 under 50 ms when prefetched and under 100 ms cold (signposts, SSD, 24 MP set).
+- [ ] Holding `→` at the fastest key repeat, a per-frame log of (cursor, displayed photo) never shows a photo the cursor has already left.
+- [ ] Memory stays within the budget while scrubbing 1,000 frames.
+- [ ] No cache file ever appears in the photo folder.
+
+**Open questions**
+1. Disk cache location: see G-7.
+2. Disk cache size cap. *Proposed:* 2 GB, least recently used first out.
+3. Prefetch window. *Proposed:* 4 ahead and 2 behind in the direction of travel, widened automatically when reads are slow (SD cards, shares).
+
+### M-05 · Command table, keymap and menu bar
+
+**Depends on:** F-05
+
+> As a photographer, I want every action in the menu bar with its key shown, and the keys to behave the same everywhere, so that I can learn the app from its menus.
+
+**Scope**
+- One command table. Each entry has an ID, a title, a menu placement, the modes it is available in, an enablement rule, a kind (action, toggle, or toggle with momentary hold) and a handler.
+- The keymap is data: a bundled Default (Lightroom-style) preset plus a per-user file that overrides it. Rebinding needs no code change.
+- The F-05 router dispatches by physical key and mode.
+- The menu bar is generated from the table in the standard order: app, File, Edit, View, Photo, Filter, Window, Help. Items are disabled, never hidden.
+- Help-menu search finds every command (real menu items give us this for free).
+- Register the commands that exist so far (open, navigation); later stories add their own.
+
+**Acceptance criteria**
+- [ ] Adding a command to the table is all it takes to get a menu item and a key.
+- [ ] Editing the per-user keymap file and relaunching changes the binding.
+- [ ] Menu items show the key as printed on the current keyboard layout.
+- [ ] Bare keys do nothing while a text field has focus (G-13 for `Esc`).
+
+**Open questions**
+1. Keymap file location and format. *Proposed:* `~/Library/Application Support/<app>/Keymap.json`, storing only the overrides, with a schema version.
+2. Show bare-key shortcuts in menus ("Reject   X")? *Proposed:* yes; AppKit displays key equivalents without modifiers.
+
+### M-06 · Cull decisions and feedback
+
+**Depends on:** M-03, M-05
+
+> As a photographer, I want 1–5, 0, [, ], 6–9 and X to rate, label and reject the current frame with instant confirmation, and ⇧ to apply and advance, so that the first pass has a rhythm.
+
+**Scope**
+- Decision model: rating -1 (reject) or 0 to 5; label none, Red, Yellow, Green, Blue or Purple.
+- Keys: `1`–`5` set stars, `0` clears, `[` / `]` step down and up, `6`–`9` set Red, Yellow, Green, Blue; Purple is menu-only; `X` rejects and clears the reject when pressed again.
+- `⇧` plus any of these keys applies it and moves to the next frame.
+- A small on-canvas badge confirms each change; the info strip shows stars, label and reject state.
+- Photo menu entries for all of the above.
+- Decisions live in memory in this story; M-08 saves them.
+- VoiceOver announces the new state as one phrase ("3 stars, red label").
+
+**Acceptance criteria**
+- [ ] The badge appears within one display frame of the key press (signpost; 16 ms at 60 Hz).
+- [ ] `⇧3` rates the current frame and shows the next one.
+- [ ] The label badge carries a letter or shape, not color alone.
+
+**Open questions**
+1. `X` on a 3-star photo, then `X` again: back to 0 or back to 3 stars? *Proposed:* back to 0. The file holds a single rating value, and restoring 3 would need hidden state.
+2. Pressing the current label's key again: clear the label? *Proposed:* yes, so `6`–`9` both set and clear.
+3. Pressing the current star count again: no change or clear? *Proposed:* no change; `0` clears.
+4. `[` / `]` on a rejected photo? *Proposed:* they work within 0 to 5; `]` on a reject gives 1 star, `[` does nothing.
+5. Several photos selected in Grid: see G-5. Filter side effects: see G-6. Auto-repeat: see G-12.
+
+### M-07 · Read existing sidecars
+
+**Depends on:** M-01, F-04
+
+> As a photographer, I want stars and labels set earlier, in this app or in Lightroom, to appear when I open the folder, so that decisions travel both ways.
+
+**Scope**
+- For each photo, look for a sidecar in the configured naming style, then in the other style.
+- A namespace-aware parse (by namespace URI, not prefix): `xmp:Rating` and `xmp:Label` as attributes or as elements, across any number of `rdf:Description` blocks, with or without the `<?xpacket?>` wrapper.
+- Sidecars are read after the list appears, off the main thread; ratings fill in progressively.
+- Remember which file each photo's sidecar is (M-08 and the inspector need it).
+
+**Acceptance criteria**
+- [ ] Every F-04 fixture (Lightroom, RawTherapee, ART, hand-written) parses to the expected values.
+- [ ] A malformed sidecar leaves the photo without a decision, shows the problem in the inspector, and flags the file so M-08 won't overwrite it blindly.
+- [ ] Reading 5,000 sidecars doesn't delay the first image.
+
+**Open questions**
+1. Both `name.xmp` and `name.ext.xmp` exist: which wins? *Proposed:* the configured style; the inspector mentions the other file.
+2. A label we don't know, such as a custom Lightroom label "Select"? *Proposed:* show "Other: Select" and leave it untouched unless the user sets a new label.
+3. Read ratings embedded in JPEG, DNG, TIFF and HEIC files, where Lightroom writes them? *Proposed:* yes, read-only, as a fallback when no sidecar exists. It's cheap with ImageIO and makes the Lightroom-to-app direction work for those formats (G-8).
+
+### M-08 · Write sidecars safely
+
+**Depends on:** M-06, M-07
+
+> As a photographer, I want every decision saved immediately to a standard XMP sidecar without ever damaging what is already in it, so that quitting mid-session loses nothing.
+
+**Scope**
+- A write queue off the main thread with per-photo coalescing (only the latest state is written). It never blocks input.
+- Always read, then modify, then write: read the file just before writing, patch only `xmp:Rating`, `xmp:Label` and `xmp:MetadataDate`, and keep every other byte.
+- A new sidecar is created from a minimal template on the photo's first decision.
+- Atomic: write a temporary file in the same folder, then rename it over the original, keeping its permissions.
+- Pending writes are flushed on quit.
+- Uses the naming setting (default `name.xmp`); its Settings UI arrives in M-22.
+
+**Acceptance criteria**
+- [ ] Golden-file tests: for each fixture, the output differs from the input only inside our three properties.
+- [ ] Killing the app mid-write leaves either the old or the new sidecar, never a partial one (automated test).
+- [ ] 1,000 decisions in one minute: no dropped key, every sidecar correct (stress script).
+- [ ] Walking-skeleton check: rate 20 frames, open the folder in Lightroom Classic and RawTherapee, and the values match.
+
+**Implementation notes**
+- A full XMP toolkit (Adobe's XMP Toolkit SDK is BSD-licensed) re-serializes the whole packet, which breaks "keep everything else byte-for-byte". Proposal: a small tokenizer that records byte offsets, and a patcher that edits spans (an attribute value or element text), or inserts an attribute on the `rdf:Description` that declares the XMP namespace, declaring the namespace if needed.
+- Because every write re-reads the file first, the PRD's rule "reload before our next write" holds by construction. M-10 covers the UI side.
+- Temporary files: see G-9.
+
+**Open questions**
+1. Rating 0: write `xmp:Rating="0"` or remove the property? No label: remove the property or write it empty? *Proposed:* follow F-04's findings; until then, write `0` and remove `xmp:Label`.
+2. Also update `xmp:ModifyDate` or add `xmp:CreatorTool`? *Proposed:* no; touch as little as possible.
+3. The existing sidecar is malformed (M-07)? *Proposed:* don't write; keep the decision in memory and say so in a banner and in the inspector.
+
+### M-09 · Undo and redo
+
+**Depends on:** M-08
+
+> As a photographer, I want ⌘Z to take back a mistyped rating, sidecar included, so that speed never costs me a decision.
+
+**Scope**
+- Each cull action registers its inverse (the previous decision of each photo it touched) with the window's undo manager. A multi-photo action is one undo step.
+- Undo and redo queue a sidecar write of the restored state.
+- The Edit menu names the action ("Undo Set Rating", "Undo Reject").
+- Undo brings the affected photo on screen if it isn't there.
+
+**Acceptance criteria**
+- [ ] `⇧3`, then `⌘Z`: the previous rating is back in the UI and in the sidecar; `⇧⌘Z` applies it again.
+- [ ] Unit tests cover undo stacks mixing all action types.
+
+**Open questions**
+1. Undoing the decision that created a sidecar: delete the file, or keep it with rating 0? *Proposed:* delete it only if its content is still exactly what we created; otherwise patch it.
+2. Undo after an apply-and-advance: also move back? *Proposed:* yes, undo navigates to the photo it changes.
+3. Undo history lifetime? *Proposed:* per folder, cleared when another folder opens.
+
+### M-10 · React to outside sidecar changes
+
+**Depends on:** M-08
+
+> As a photographer, I want the app to notice when Lightroom or another tool rewrites a sidecar while the folder is open, so that I always see and keep the latest values.
+
+**Scope**
+- A file-level FSEvents stream on the open folder.
+- Our own writes are ignored (matched by the modification date and inode we produced).
+- On an outside change: re-read the sidecar and update the photo's decision on screen.
+- The merge is per property: our next write patches only our properties on top of the fresh file (M-08).
+
+**Acceptance criteria**
+- [ ] Editing a sidecar in a text editor while the folder is open updates the UI within 1 s.
+- [ ] Automated test: an outside writer adds Camera Raw settings between two of our writes, and both sets of changes survive.
+
+**Open questions**
+1. Photos added to or removed from the folder while it's open (not a hot folder, which is v1.x)? *Proposed:* removed photos leave the view; added ones are ignored until reopened, with a small "3 new files, reload" banner.
+2. An outside tool changes the rating while our own change to it is still queued: who wins? *Proposed:* ours, since it is the user's latest intent here; the inspector records the overwrite.
+
+### M-11 · Write failures and read-only folders
+
+**Depends on:** M-08
+
+> As a photographer culling from a locked card or a read-only share, I want my decisions kept and a clear notice that doesn't block me, so that nothing is lost and nothing interrupts me.
+
+**Scope**
+- Detect read-only volumes and folders on open and show a non-modal banner.
+- Any failed write (permissions, full disk, card removed): banner, decision kept in memory, retry queue.
+- A "Save decisions to…" action in the banner: pick a folder and write the sidecars there.
+- The inspector shows which decisions are unsaved.
+- Quitting with unsaved decisions asks once. This is the only modal, and it sits outside the cull loop.
+
+**Acceptance criteria**
+- [ ] On a locked SD card, culling continues uninterrupted, the banner appears once, and sidecars land in the chosen folder.
+- [ ] Ejecting the card mid-session never crashes the app or loses decisions held in memory.
+
+**Open questions**
+1. What should "pick a place to save them" produce: sidecars only in another folder (the user moves them next to the RAWs later), or copies of the RAWs as well? *Proposed:* sidecars only, with the same names, and the banner explains how to reunite them.
+2. Keep unsaved decisions across a relaunch? *Proposed:* yes, once session state exists (V-15); in the MVP, the quit warning covers it.
+
+### M-12 · Grid view
+
+**Depends on:** M-04, M-06
+
+> As a photographer, I want a thumbnail grid of the whole folder with star, label and reject badges, so that I can see the shoot at a glance and jump anywhere.
+
+**Scope**
+- An AppKit collection view with a flow layout. Thumbnails come from the disk cache; visible cells fill first, then the rows ahead in the scroll direction.
+- Badges: stars, label (color plus a letter), reject mark.
+- Keys: `←↑→↓` move, `Home` / `End`, `−` / `=` change thumbnail size, `Return` or `Space` opens Loupe.
+- Mouse: click makes a photo active, double-click opens Loupe (selection arrives in M-19).
+- Opening a folder now lands in Grid.
+
+**Acceptance criteria**
+- [ ] 60 fps scrolling through 10,000 files with a warm disk cache (Instruments).
+- [ ] The first visible thumbnails appear within 300 ms of opening the 1,000-file folder.
+- [ ] Rating in Grid updates the badge within one frame.
+
+**Open questions**
+1. Filenames under thumbnails? *Proposed:* off by default; the `I` info levels could apply to Grid as well.
+2. Thumbnail size range. *Proposed:* five steps from about 120 to 480 points.
+
+### M-13 · Modes and window chrome
+
+**Depends on:** M-12
+
+> As a photographer, I want G, E and Esc to move between Grid and Loupe, and a window that stays out of the way, so that the photo is always the focus.
+
+**Scope**
+- A mode state machine following the PRD's diagram (Compare joins in V-08): `G`, `E`, `Esc` to Grid, `Return` / `Space` to Loupe.
+- Keys that depend on the mode: `−` / `=` resize thumbnails in Grid and zoom in Loupe (M-15).
+- A native, customizable toolbar with few items.
+- `⇥` hides and shows the toolbar and panels; moving the pointer to the top edge brings them back.
+- Full screen with `⌃⌘F` (the standard View menu item).
+- Title is the folder name; the subtitle shows the count.
+
+**Acceptance criteria**
+- [ ] Every transition in the PRD's mode diagram, Compare aside, works by key.
+- [ ] The toolbar can be customized and hidden; the chrome follows the system appearance while the canvas stays neutral gray.
+
+**Open questions**
+1. Default toolbar items. *Proposed:* a mode picker (Grid, Loupe, Compare), a filter-bar toggle and an inspector toggle; nothing else.
+2. Tapping `Space` in Loupe (holding it and dragging pans, M-15)? *Proposed:* does nothing.
+3. `Esc` in a zoomed Loupe: back to Fit, or to Grid as the PRD says? *Proposed:* to Grid, as the PRD says; `Z` returns to Fit.
+
+### M-14 · Zoom: Fit and 1:1
+
+**Depends on:** M-03, F-05
+
+> As a photographer, I want Z to show one image pixel per physical screen pixel at the spot I'm pointing at, so that I can check focus with one key.
+
+**Scope**
+- `Z` toggles between Fit and 1:1; holding `Z` shows 1:1 only while held. `⌘1` / `⌘0` set 1:1 and Fit explicitly.
+- 1:1 is computed from physical panel pixels, taking the backing scale and scaled display modes into account.
+- Anchor: the pointer if it's over the image, otherwise the center (the AF point joins in V-01).
+- Instant: the current preview is scaled right away.
+- The info strip shows the zoom level and flags when the preview has fewer pixels than 1:1 needs (the full truth badge is V-05).
+
+**Acceptance criteria**
+- [ ] On a Retina display at its default scaling, a test chart with 1-pixel lines shows exactly one image pixel per screen pixel.
+- [ ] Zoom completes within one display frame from any image (signpost).
+- [ ] The point under the pointer stays under the pointer.
+
+**Implementation notes**
+- In scaled display modes ("More Space"), macOS renders at twice the point size and then resamples to the panel, so one backing pixel is not one physical pixel. The true factor comes from the display's native pixel width against the current mode's width in points (`CGDisplayCopyDisplayMode`). Verify this on hardware.
+
+**Open questions**
+1. At 200% and 400%, nearest-neighbor (see the actual pixels) or smooth? *Proposed:* nearest-neighbor; honesty over prettiness.
+2. In a scaled display mode, an exact pixel-for-pixel view is impossible because the system resamples the whole screen. Is the closest match, with a note in the inspector, acceptable? *Proposed:* yes.
+
+### M-15 · Zoom steps, panning and sticky zoom
+
+**Depends on:** M-14
+
+> As a photographer, I want to step through zoom levels, move around a zoomed photo, and keep the same spot while stepping through a burst, so that I can inspect any part of any frame without the mouse.
+
+**Scope**
+- In Loupe, `=` / `−` step through Fit, 25, 50, 100 (1:1), 200 and 400%; `⌘+` / `⌘−` work everywhere.
+- Pinch and `⌥`-scroll zoom around the pointer.
+- Pan with two-finger scroll, drag, `⌥`-arrows, or by holding `Space` and dragging; panning stops at the image edges.
+- Bare arrows still change the image while zoomed.
+- Sticky zoom: on by default, zoom and position (in normalized image coordinates) carry over to the next frame; `⌥Z` switches it off.
+
+**Acceptance criteria**
+- [ ] Every zoom and pan input works in Loupe, and none of them changes a decision or the current image.
+- [ ] `⌥`-arrows can reach every edge of the image.
+- [ ] Stepping through a burst at 1:1 stays on the same spot.
+
+**Implementation notes**
+- The PRD's phasing lists only "one-key 1:1 zoom" for the MVP, but the core workflow's first pass relies on sticky zoom and it's cheap once zoom exists, so it's here.
+
+**Open questions**
+1. Pinch: snap to the steps, or continuous? *Proposed:* continuous; `Z`, `=` and `−` snap.
+2. How far does `⌥`-arrow move? *Proposed:* a quarter of the view; `⌥⇧`-arrow moves a full view.
+3. The next frame has a different orientation (portrait after landscape): keep the normalized center? *Proposed:* yes.
+
+### M-16 · EXIF
+
+**Depends on:** M-01
+
+> As a photographer, I want camera, lens and exposure facts for the current frame without waiting for a decode, so that I can explain what I see.
+
+**Scope**
+- ImageIO properties, read without decoding pixels: camera, lens, focal length, aperture, shutter, ISO, exposure compensation, white balance, metering, flash, capture time, dimensions, file size, GPS.
+- Human-readable formatting (1/250 s, f/2.8, +⅓ EV, 35 mm).
+- Loaded lazily per photo and cached; shares its reader with M-01's capture times.
+- `⌘C` copies the focused value.
+- Lens names from maker notes and AF data arrive in V-01.
+
+**Acceptance criteria**
+- [ ] For every corpus file, values match `exiftool` for the same fields.
+- [ ] Values appear within one frame of changing to a prefetched image.
+
+**Open questions**
+1. GPS: coordinates only, or also a place name (which needs a network lookup)? *Proposed:* coordinates plus a "Show in Maps" action.
+
+### M-17 · Histogram
+
+**Depends on:** M-03
+
+> As a photographer, I want a luminance and RGB histogram with clip markers for the frame I'm looking at, labeled with its source, so that I can judge exposure at a glance.
+
+**Scope**
+- Computed with Metal Performance Shaders or vImage from the displayed source image (the embedded preview in the MVP, the RAW from V-02), off the main thread.
+- Luminance plus R, G and B, with markers at both ends showing the clipped percentages.
+- Labeled "Preview" or "RAW".
+- Updates on every image change.
+- One reusable view for the info overlay and the inspector (M-18).
+
+**Acceptance criteria**
+- [ ] Synthetic test images with known distributions produce the expected bins.
+- [ ] Switching images at key-repeat speed never delays the image; the histogram may lag it by one frame at most.
+
+**Open questions**
+1. The whole image, or only the visible part when zoomed? The PRD says it "updates live while zooming". *Proposed:* the whole image by default (stable), with a visible-region mode later.
+2. Which luminance and which color space: Rec. 709 weights on the image's encoded values (as most viewers do), or on linear values? *Proposed:* encoded values in the image's own color space; check against FastRawViewer or RawTherapee on the "trust in checks" images.
+
+### M-18 · Info overlay and inspector
+
+**Depends on:** M-16, M-17
+
+> As a photographer, I want I to cycle how much information sits on the image, and ⌥⌘I to open a full inspector, so that facts are one key away but never in the way.
+
+**Scope**
+- `I` cycles: off → filename and stars → plus EXIF → plus histogram. `⇧I` toggles the histogram.
+- An inspector sidebar (`⌥⌘I`) with Histogram, EXIF and Sidecar sections. The Sidecar section shows the file path, whether it exists, the saved values, the last write, errors, and unsaved decisions (M-11).
+- Every field can be selected and copied.
+
+**Acceptance criteria**
+- [ ] Every level is readable on both bright and dark photos (a backing plate keeps text contrast at 4.5:1 or better).
+- [ ] The inspector is fully usable with Full Keyboard Access.
+
+**Open questions**
+1. Is `⇧I` an independent histogram switch, or a jump to the histogram level? *Proposed:* independent.
+2. Remember the `I` level across launches? *Proposed:* yes.
+
+### M-19 · Selection
+
+**Depends on:** M-12
+
+> As a photographer, I want to select photos from the keyboard, including by rating or label, so that I can act on a whole set at once.
+
+**Scope**
+- A selection separate from the active photo, kept across mode changes.
+- `⌘A` selects all visible (filtered) photos, `⇧⌘A` selects none, `/` deselects the active photo, `⌥⌘A` selects by rating, label or reject (a small popover you can operate by keyboard), `⇧⌘I` inverts.
+- Mouse in Grid: click, `⇧`-click for a range, `⌘`-click to toggle; `⇧`-arrows extend the selection.
+- The selection count is visible.
+
+**Acceptance criteria**
+- [ ] With a ≥3-star filter, `⌘A` selects exactly the visible photos.
+- [ ] Every selection command is in the menu and works in Grid and Loupe.
+
+**Open questions**
+1. When a filter hides selected photos, do they stay selected? *Proposed:* no, they're deselected, so hand-off acts on exactly what is visible.
+2. Cull keys with several photos selected: see G-5.
+
+### M-20 · Filter and sort bar
+
+**Depends on:** M-19
+
+> As a photographer, I want to show only frames with at least N stars, certain labels, or no rejects, and sort by time or name, so that each pass raises the bar.
+
+**Scope**
+- The bar toggles with `\`; `⌘L` turns filtering on and off without losing the settings.
+- Minimum stars (`⌥⌘1`–`⌥⌘5`, `⌥⌘0` clears), labels (any of the chosen ones), rejects (show all, hide rejected, only rejected).
+- Sort by capture time or filename, ascending or descending.
+- `⌘F` finds by filename: it focuses the search field, and `Esc` returns to the image.
+- Subtitle "312 of 1,204 shown".
+- A Filter menu with all of the above.
+
+**Acceptance criteria**
+- [ ] Filter changes apply within one frame on 5,000 photos.
+- [ ] Step 4 of the PRD's core workflow ("Narrow") can be done by keyboard alone.
+
+**Open questions**
+1. A decision that takes the current photo out of the filter: see G-6.
+2. A default filter on open: none, or hide rejects? *Proposed:* none.
+3. Filters by camera, lens or file type? *Proposed:* not in v1.
+
+### M-21 · Reveal in Finder
+
+**Depends on:** M-19
+
+> As a photographer, I want ⌘R to open one Finder window with exactly my selected files highlighted, so that I can hand my keepers to any tool.
+
+**Scope**
+- `⌘R` reveals the selected photos, or the active photo when nothing is selected, using `NSWorkspace.activateFileViewerSelecting`.
+- A Photo menu item.
+
+**Acceptance criteria**
+- [ ] With 500 files selected, one Finder window opens with exactly those files selected.
+- [ ] Works from Grid and Loupe.
+
+**Open questions**
+1. Reveal the sidecars too? *Proposed:* no. RAW+JPEG pairs reveal both images (V-10).
+
+### M-22 · Settings window
+
+**Depends on:** M-05
+
+> As a photographer, I want a standard Settings window for the few choices that rarely change, so that the main window stays clean.
+
+**Scope**
+- A Settings scene (`⌘,`) with panes added as features arrive: General, Keys, Analysis, Editors, Sidecars.
+- MVP content: Sidecars (naming style plus the one-line RawTherapee hint) and General (memory budget for prefetch).
+- Settings persist in user defaults; the keymap keeps its own file (M-05).
+
+**Acceptance criteria**
+- [ ] Every control is reachable by keyboard, and changes apply without a relaunch.
+
+**Open questions**
+1. Switching naming style when sidecars already exist in the old one: rename them? *Proposed:* no renaming. New writes use the new style, reads fall back to the old one (M-07), and the inspector shows which file is in use.
+
+### M-23 · Cheat sheet and menu audit
+
+**Depends on:** M-05 and every MVP command
+
+> As a new user, I want ? to show the keys that work in the current mode, so that I learn the shortcuts in minutes.
+
+**Scope**
+- A `?` overlay listing the current mode's commands, grouped as in the PRD, with key labels for the current keyboard, generated from the command table.
+- `?` or `Esc` dismisses it; it scrolls by keyboard.
+- Audit: every MVP command is in a menu and in the cheat sheet, and Help search finds them.
+
+**Acceptance criteria**
+- [ ] A unit test fails if any command lacks a menu placement or a cheat-sheet group.
+
+### M-24 · Keyboard-only and accessibility pass
+
+**Depends on:** all MVP UI
+
+> As a photographer who never wants to touch the mouse, or can't, I want every task reachable by keyboard and readable by VoiceOver, so that the app is both fast and inclusive.
+
+**Scope**
+- With Full Keyboard Access on, every control is reachable and shows focus.
+- VoiceOver reads the image as one phrase ("IMG_0412.ARW, 3 stars, red label" or "…, rejected") and announces changes.
+- No state shown by color alone; text contrast at least 4.5:1.
+- A full cull loop on a non-Latin keyboard layout.
+- A scripted UI test that walks through the core workflow without pointer events.
+
+**Acceptance criteria**
+- [ ] Core workflow steps 1, 2, 4 and 5 (Reveal only; Edit and Extract come in v1.0) complete by keyboard alone.
+- [ ] The full cull loop passes on at least one non-Latin layout.
+
+### M-25 · MVP gate: interoperability and data safety
+
+**Depends on:** M-07 to M-11
+
+> As a photographer, I want proof that my decisions survive every tool and every crash, so that I can trust the app with a real shoot.
+
+**Scope**
+- The PRD's test matrix with the real app: Lightroom Classic, RawTherapee and ART with Sony, Canon, Nikon and Fujifilm files, in both directions.
+- Automated sidecar diff tests on real Lightroom sidecars that contain Camera Raw settings.
+- A 10,000-write stress test that includes simulated outside writers and crashes.
+
+**Acceptance criteria**
+- [ ] The matrix passes for Lightroom Classic and RawTherapee; ART results are documented.
+- [ ] Zero corrupted sidecars, and zero sidecars that lost foreign data, across 10,000 writes.
+
+### M-26 · MVP gate: performance
+
+**Depends on:** all MVP
+
+> As a photographer, I want the speed promises measured on the slowest supported Mac, so that "instant" holds on real hardware and real media.
+
+**Scope**
+- Measure every MVP-relevant PRD target on the test set (SSD, SD card, network share): launch, folder open, scan, next image, cull feedback, zoom to 1:1 on the preview, Grid scrolling, sidecar writes, memory cap, idle CPU.
+
+**Acceptance criteria**
+- [ ] `docs/perf/mvp.md` lists each target with its measured value, pass or fail, and the fix for each miss.
+
+**Open questions**
+1. Slow media: see G-11.
+
+---
+
+## Phase 2: v1.0
+
+**Gate to leave the phase (PRD):** every "Done when" in Core features holds; the success metrics are met.
+
+### V-01 · Maker notes: lens and AF point
+
+**Depends on:** M-16, F-03
+
+> As a photographer, I want to see the exact lens and where the camera focused, and have Z zoom there when the pointer isn't on the image, so that I check focus where the camera actually focused.
+
+**Scope**
+- Parse maker notes for the lens name and the AF point(s): Sony, Canon, Nikon and Fujifilm first, other brands where the data is documented.
+- Map the AF point to image coordinates, respecting orientation, for both preview and RAW geometry.
+- `Z` anchor order: pointer, then AF point, then center.
+- The inspector shows the AF information. (Drawing the AF point as an overlay is v1.x.)
+
+**Acceptance criteria**
+- [ ] AF coordinates match exiftool's values on corpus files from the four brands.
+- [ ] With the pointer off the image, `Z` lands on the AF point.
+
+**Implementation notes**
+- exiftool's tag tables are the best documentation of maker notes. Reading them is fine; copying its code or tables verbatim would tie us to its license (G-2), so write our own from the documentation.
+
+**Open questions**
+1. Which brands are required for v1.0? *Proposed:* Sony, Canon, Nikon and Fujifilm (the test-matrix brands); others show "AF data not available".
+
+### V-02 · Develop the RAW on demand
+
+**Depends on:** F-06, M-04, M-14
+
+> As a photographer, I want R to replace the embedded preview with a real RAW development while the preview stays on screen, so that I can trust what I see at 1:1.
+
+**Scope**
+- Decode with F-06's neutral settings into a GPU texture; the badge reads "Developing", then "RAW".
+- `R` toggles back to the embedded preview.
+- The preview stays on screen and the RAW replaces it in place, at the same zoom position (mapping preview geometry to RAW geometry).
+- Moving on cancels the decode; at most 5 full-resolution decodes are held in memory.
+- The histogram (and later the overlays) switches its source label to "RAW".
+
+**Acceptance criteria**
+- [ ] Decode under 1 s at 24 MP and under 2 s at 45–61 MP on the reference Mac.
+- [ ] At 1:1 in RAW mode, each screen pixel is one (demosaiced) sensor pixel, checked with a test chart.
+- [ ] Moving away mid-decode cancels it; the signposts show no wasted completion.
+
+**Open questions**
+1. Does a frame stay in RAW mode when you come back to it? *Proposed:* yes, while it is still in the memory cache.
+2. Show the RAW's default crop or the full sensor area? *Proposed:* the default crop, which matches what editors show.
+
+### V-03 · RAW modes and automatic RAW at 1:1
+
+**Depends on:** V-02
+
+> As a photographer, I want to choose whether RAWs develop never, on demand or always, and have 1:1 develop the RAW automatically when the preview is too small, so that sharpness checks are honest without extra keys.
+
+**Scope**
+- A General setting: Never, On demand (default), Always.
+- A setting "Automatic RAW at 1:1", on by default: zooming to 1:1 develops the RAW when the preview has fewer pixels than the view needs.
+- `⇧R` switches the session to Always; pressing it again returns to On demand.
+- In Always mode, neighbors decode in the background within the memory cap.
+
+**Acceptance criteria**
+- [ ] Every "Done when" of the PRD's RAW decode option holds.
+- [ ] Always mode keeps up with key-repeat browsing (embedded previews show while neighbors develop).
+
+**Open questions**
+1. In Never mode, do `R` and `⇧R` still work for a single frame, or are they disabled? *Proposed:* disabled, and the menu item says why.
+2. How many neighbors decode in Always mode? *Proposed:* one ahead and one behind; the 5-decode memory cap has the last word.
+
+### V-04 · LibRaw fallback
+
+**Depends on:** F-06, V-02, G-2
+
+> As a photographer with a camera newer than my macOS, I want RAWs to develop anyway, so that a new body doesn't break my workflow.
+
+**Scope**
+- Build LibRaw for arm64 as a package dependency. Use it, without sharpening or noise reduction, when CIRAWFilter doesn't support the camera or fails, and for bodies where F-06 found CIRAWFilter can't be made neutral.
+- The inspector shows which decoder was used.
+
+**Acceptance criteria**
+- [ ] A camera missing from `CIRAWFilter.supportedCameraModels` develops through LibRaw.
+- [ ] A license review is done and recorded.
+
+**Open questions**
+1. Is it needed at all? *Proposed:* decide after F-06.
+2. LibRaw's LGPL-2.1 or CDDL-1.0 terms against the chosen app license: see G-2.
+
+### V-05 · Truth badge
+
+**Depends on:** V-02
+
+> As a photographer, I want an always-visible badge saying whether I'm seeing a small preview, an enlarged preview, or real RAW pixels at 1:1, so that I never mistake a preview for the truth.
+
+**Scope**
+- Badge states such as "Preview 1616 px", "Preview enlarged 2.4×", "Developing", "RAW", "RAW 1:1".
+- The warning style uses text and shape, not color alone.
+- Shown in Loupe and on each Compare pane.
+
+**Acceptance criteria**
+- [ ] Whenever the zoom needs more pixels than the preview has, the badge says so.
+
+**Open questions**
+1. Exact wording and states. *Proposed:* as above, refined while building.
+
+### V-06 · Focus peaking
+
+**Depends on:** M-15
+
+> As a photographer, I want F to paint in-focus edges in a color I choose, so that I see at once whether the subject is sharp.
+
+**Scope**
+- A Metal compute pass: luma, edge magnitude, threshold, then a colored overlay composited over the image.
+- `F` tap toggles, holding it is momentary; `⇧F` switches between Edges and Fine detail.
+- At Fit, compute on source pixels and reduce the result to display size, so small in-focus areas aren't lost to downsampling; at 1:1, work on source pixels directly.
+- Analysis settings: color and sensitivity.
+- Works on the preview or the RAW, with the source labeled.
+
+**Acceptance criteria**
+- [ ] Toggles within one display frame on a 24 MP image (Metal frame capture).
+- [ ] Works in Loupe, in Compare (V-08) and at 1:1.
+- [ ] On a focus-bracket test series, peaking density ranks the frames in the expected order.
+
+**Open questions**
+1. The algorithms for the two modes. *Proposed:* Edges is a gradient magnitude (Sobel) on lightly smoothed luma; Fine detail is a high-pass (Laplacian) at full resolution with a lower threshold. Tune them against FastRawViewer.
+2. Default color and sensitivity. *Proposed:* a saturated color that rarely occurs in photos (magenta), medium sensitivity.
+
+### V-07 · Highlight and shadow clipping
+
+**Depends on:** M-17
+
+> As a photographer, I want H and S to mark blown highlights and blocked shadows at thresholds I set, with the clipped percentage, so that exposure calls are objective.
+
+**Scope**
+- A Metal shader compares pixel levels with the thresholds (defaults 98% and 2%, in 1% steps).
+- `H` and `S` tap toggles; holding them is momentary.
+- `⌥H` opens a popover with a highlight % field and a shadow % field, operable by keyboard; the values persist.
+- A readout of the percentage of the frame clipped at each end.
+- The source (Preview or RAW) is labeled on screen.
+
+**Acceptance criteria**
+- [ ] The readout equals an independent pixel count on synthetic test images.
+- [ ] Toggles within one frame at 24 MP.
+- [ ] Thresholds survive a relaunch.
+
+**Open questions**
+1. What counts as clipped: any channel past the threshold, all channels, or luminance? *Proposed:* any channel for highlights (which also reveals single-channel clipping), all channels for shadows; revisit against the reference tools.
+2. Overlay colors. *Proposed:* red for highlights, blue for shadows, with a pattern option for color-blind users.
+3. A percentage of the whole frame or of the visible part when zoomed? *Proposed:* the whole frame.
+
+### V-08 · Compare: layout and culling
+
+**Depends on:** M-13, M-19
+
+> As a photographer, I want two similar frames side by side, rating whichever side is active and stepping through candidates, so that I can settle doubts between near-duplicates.
+
+**Scope**
+- `C` enters Compare: two selected photos compare those two; one selected (or none) compares the active photo with the next; from Loupe, the current photo with the next.
+- The left pane is the select, the right pane the candidate; a ring marks the active side, which receives every cull key (including the `⇧` variants).
+- `←` / `→` step the active side; `⇥` switches the active side (here it doesn't hide panels); `↓` swaps select and candidate; `↑` advances to the next pair; `⇧X` rejects the active side and advances.
+- `E` opens the active photo in Loupe; `G` or `Esc` goes to Grid.
+- Each pane has its own truth badge and info.
+
+**Acceptance criteria**
+- [ ] Every Compare key in the PRD works, by keyboard alone.
+- [ ] Both sides can be rated separately, and their sidecars are correct.
+
+**Open questions**
+1. `↑` "advance both to the next pair": does the candidate become the new select and the next frame the new candidate (the keeper stays in play), or do both sides jump to two new frames? *Proposed:* the candidate becomes the select and the next frame becomes the candidate, which suits "winner stays" culling.
+2. After `⇧X`, does the rejected side show the next frame while the other side stays? *Proposed:* yes.
+3. Stepping the active side onto the photo shown on the other side? *Proposed:* skip over it.
+4. Auto-advance (V-11) in Compare? *Proposed:* behaves like `⇧`: the active side moves on.
+
+### V-09 · Compare: linked zoom and EXIF differences
+
+**Depends on:** V-08, M-15, M-16
+
+> As a photographer, I want both frames zoomed to 1:1 at the same spot and moving together, with differing settings highlighted, so that I compare like with like.
+
+**Scope**
+- `Z` zooms both sides to 1:1 at the same relative point; while linked, pan and zoom move both; `⇧Z` links and unlinks.
+- Overlays (`F`, `H`, `S`) apply to both panes.
+- Differing EXIF values (shutter, aperture, ISO, focal length and so on) are highlighted in the info strip.
+
+**Acceptance criteria**
+- [ ] Both sides show the same relative point at 1:1 and move together.
+- [ ] Unlinked, each side pans on its own.
+
+**Open questions**
+1. Relinking after panning separately: snap together or keep the offset? *Proposed:* keep the offset, which lets you line up slightly shifted handheld frames.
+2. Does `R` develop only the active side? *Proposed:* both, since comparing sharpness is the point.
+
+### V-10 · RAW+JPEG pairs
+
+**Depends on:** M-08, M-21
+
+> As a photographer who shoots RAW+JPEG, I want each pair to appear once and take one decision, so that I don't see every frame twice.
+
+**Scope**
+- A RAW and a JPEG with the same base name (any case) in the same folder become one frame with a "RAW+JPEG" badge.
+- The decision is written for the pair (rules below).
+- Reveal, Edit and Extract follow the pair rules decided below.
+
+**Acceptance criteria**
+- [ ] A RAW+JPEG folder shows N frames, not 2N.
+- [ ] A pair's rating shows up in Lightroom, following the sidecar rule we choose.
+
+**Open questions**
+1. Sidecars: with `name.xmp` naming both files share one sidecar name; with `name.ext.xmp` there are two. *Proposed:* write the RAW's sidecar, and with `name.ext.xmp` write the JPEG's as well.
+2. Which image to show: the RAW's embedded preview or the camera JPEG, which is often full-size and better, giving a faster 1:1 check? *Proposed:* the camera JPEG, with the truth badge saying so.
+3. RAW+HEIC pairs as well? *Proposed:* yes, same rule.
+4. A setting to switch pairing off? *Proposed:* yes, in General.
+5. Hand-off. *Proposed:* Reveal selects both files, Edit sends the RAW, Extract uses the RAW.
+
+### V-11 · Auto-advance
+
+**Depends on:** M-06
+
+> As a photographer, I want an option that advances after every rating, so that I don't have to hold ⇧.
+
+**Scope**
+- A General setting and the `A` toggle, off by default.
+- An indicator in the info strip or toolbar while it's on.
+- Applies to rating, label and reject keys.
+
+**Acceptance criteria**
+- [ ] `A` toggles it, its state is always visible, and it persists.
+
+**Open questions**
+1. With auto-advance on, what does `⇧` do? *Proposed:* the opposite: apply without advancing.
+
+### V-12 · External editors
+
+**Depends on:** M-19, M-22
+
+> As a photographer, I want ⌘E to open my selection in Lightroom Classic, RawTherapee or ART, so that the keepers flow straight into editing.
+
+**Scope**
+- Settings → Editors: Lightroom Classic, RawTherapee and ART preconfigured; any other app can be added; one is the default.
+- `⌘E` opens the selection in the default editor; `⌥⌘E` picks another (an "Edit In" submenu and a keyboard chooser).
+- Installed apps are detected; items for missing apps are disabled.
+- All files open in one call (`NSWorkspace.open(_:withApplicationAt:configuration:)`).
+- Pending sidecar writes are flushed first, so the editor reads the newest values.
+- Spike Lightroom Classic's behavior: if it only launches or shows an Import dialog, label the command "Open with" and explain.
+
+**Acceptance criteria**
+- [ ] 100 files open in one call.
+- [ ] Menu items for missing editors are disabled, not hidden.
+
+**Open questions**
+1. Do RawTherapee and ART do something useful with 100 files at once? *Proposed:* test it in the spike; if an editor only takes one file, send the active photo and say so.
+
+### V-13 · Extract embedded JPEGs
+
+**Depends on:** M-02, M-19
+
+> As a photographer, I want ⇧⌘E to save each selected RAW's largest embedded JPEG to a folder, so that I can share previews without converting anything.
+
+**Scope**
+- Choose a destination folder; a background job with progress and cancel, never modal.
+- Copy each file's largest embedded JPEG byte-for-byte as `name.jpg`.
+- A summary lists files with no embedded JPEG, and any failures.
+
+**Acceptance criteria**
+- [ ] The image data is identical to the embedded stream (exiftool as the oracle).
+- [ ] 500 files finish within 20% of the time Finder takes to copy the same number of bytes.
+- [ ] Cancel stops promptly and leaves no partial file.
+
+**Open questions**
+1. The PRD asks for both "byte for byte" and "keep its EXIF", but embedded JPEGs often carry no EXIF or orientation. Copy them bare, or add the RAW's EXIF (which is no longer byte-for-byte)? *Proposed:* add the RAW's EXIF and orientation when the preview has none, leaving the image data untouched, since a sideways JPEG without a date is of little use; offer "exact bytes" as an option.
+2. Name collisions (an existing `name.jpg`, the camera JPEG of a pair, two cameras with the same file numbers)? *Proposed:* never overwrite; add a suffix (`name-1.jpg`) and list renamed files in the summary.
+3. JPEG and HEIC originals in the selection? *Proposed:* skip them and list them in the summary.
+
+### V-14 · Key remapping and presets
+
+**Depends on:** M-22, M-23
+
+> As a photographer coming from another tool, I want to remap any key or pick a FastRawViewer or Photo Mechanic preset, so that my muscle memory still works.
+
+**Scope**
+- Settings → Keys: a searchable command list; record a shortcut by pressing it; clear; reset.
+- Conflict detection across modes that overlap, with an offer to reassign.
+- Presets as data files: Default (Lightroom-style), FastRawViewer, Photo Mechanic.
+- Menus and the cheat sheet update immediately.
+- Purple can be given a key.
+
+**Acceptance criteria**
+- [ ] Remapping needs no code change; switching presets changes the menu shortcuts live.
+- [ ] Every conflict is reported before it is saved.
+
+**Open questions**
+1. The FastRawViewer and Photo Mechanic presets need research: their default keys for each of our commands. *Proposed:* I compile both tables from their documentation for you to review before we build.
+2. Import and export keymap files? *Proposed:* yes; it's the same JSON file.
+
+### V-15 · Session resume
+
+**Depends on:** M-20
+
+> As a photographer, I want reopening a folder to bring back my last frame, filter, sort and selection, so that I can stop and continue at any time.
+
+**Scope**
+- Per-folder state in Application Support, never in the photo folder: active photo, mode, filter, sort, selection, and decisions not yet saved (M-11).
+- Restored when the folder is reopened; photos that have disappeared are skipped.
+- Reopen the last folder at launch.
+
+**Acceptance criteria**
+- [ ] Quit mid-session, relaunch: the same photo, filter and selection come back.
+
+**Open questions**
+1. How do we recognize "the same folder" after a card is reinserted or a folder is moved? *Proposed:* volume UUID plus path, falling back to the path alone.
+2. Reopen the last folder automatically at launch? *Proposed:* yes, unless its volume is gone.
+3. How long to keep state for folders never reopened? *Proposed:* 90 days or 500 folders, whichever comes first.
+
+### V-16 · Interop guidance
+
+**Depends on:** M-22, F-04
+
+> As a photographer, I want the app to tell me exactly what to switch on in RawTherapee and Lightroom, and which files they can't read sidecars for, so that missing stars are never a mystery.
+
+**Scope**
+- A non-blocking first-run help panel plus help pages: RawTherapee's preference and sidecar style, Lightroom's "Read Metadata from Files", ART's settings.
+- Settings → Sidecars: the one-line hint about matching RawTherapee's sidecar style.
+- Inspector notes for file types an editor reads no sidecars for (JPEG, plus whatever F-04 finds for DNG, TIFF and HEIC; see G-8).
+
+**Acceptance criteria**
+- [ ] Every caveat found in F-04 has a message in the app.
+
+**Open questions**
+1. The PRD decides that embedding XMP into JPEGs is opt-in and off by default, but places it in no phase, and it writes to originals, against the principle that originals are never touched. *Proposed:* defer it to v1.x unless the Lightroom tests show that JPEG ratings matter to you.
+
+### V-17 · Distribution
+
+**Depends on:** G-2
+
+> As a photographer, I want to download and install an unsigned build, or build it myself, with clear instructions, so that I can use the app despite Gatekeeper.
+
+**Scope**
+- License chosen and applied; license audit of every dependency.
+- Release build: arm64, ad-hoc signed, zip or dmg, published on GitHub Releases.
+- Install notes with screenshots of System Settings → Privacy & Security → Open Anyway; a build-from-source guide.
+- A project-owned Homebrew tap with a cask.
+- Version numbering and a changelog.
+
+**Acceptance criteria**
+- [ ] On a clean Mac, the release installs by following the notes alone.
+- [ ] Installing through the tap works.
+
+**Open questions**
+1. An update mechanism? (Sparkle signs updates with its own key and doesn't need Apple signing.) *Proposed:* not in v1.0; Homebrew handles upgrades.
+2. The GitHub organization and repository name (see G-1).
+
+### V-18 · v1.0 gate
+
+**Depends on:** all v1.0
+
+> As the team, we ship v1.0 only when every "Done when" holds and the success metrics are met.
+
+**Scope**
+- A checklist of every "Done when" in the PRD's Core features.
+- The success metrics: benchmark cull speed (timed sessions against the photographer's current tool), keyboard-only completion (100%), all performance targets including RAW decode, the interop matrix, data safety, learnability (5 new users) and trust in checks (20 images against FastRawViewer or RawTherapee).
+
+**Open questions**
+1. Who are the five learnability testers and the benchmark photographers? *Proposed:* you recruit them; I prepare the scripts and the timing sheet.
+2. What tolerance counts as agreement in "trust in checks"? *Proposed:* clipped percentages within 0.5 percentage points, histogram shapes matching visually, peaking judged side by side.
+
+---
+
+## Backlog: v1.x and later
+
+These are not broken into stories yet. The right column shows what each one builds on, so the v1.0 design leaves room for it.
+
+| ID | Item | Phase | Builds on | Note |
+| --- | --- | --- | --- | --- |
+| B-01 | Burst and similar-shot stacks | v1.x | M-01 capture times, M-12 Grid | Groups by capture-time gap and sequence number |
+| B-02 | Focus-point overlay | v1.x | V-01 | The AF data is already parsed |
+| B-03 | Lights out (`L`) | v1.x | M-13 | |
+| B-04 | Survey view, 3–4 up | v1.x | V-08, V-09 | Keep Compare's pane code general enough for N panes |
+| B-05 | Progress and stats, Unreviewed filter | v1.x | M-20, V-15 | "Reviewed" isn't in XMP, so it lives in session state |
+| B-06 | Move or copy rejects to `_Rejected` | v1.x | M-19 | Must move sidecars along with the files |
+| B-07 | Save selection as a list file | v1.x | M-19 | |
+| B-08 | Hot folder | v1.x | M-10 | Extends the folder watcher to new images |
+| B-09 | Finder tags mirror | v1.x | M-08 | |
+| B-10 | Group by day and place | v1.x | M-16 GPS, M-12 | |
+| B-11 | Battery-friendly mode | v1.x | M-04 | Smaller prefetch window, cheaper overlays |
+| B-12 | Opt-in XMP embedding in JPEGs | v1.x? | V-16 | See V-16/Q1 |
+| L-01 | Sharpness score badge | Later | V-06 | Reuses the peaking kernels |
+| L-02 | RAW-level histogram and clipping stats | Later | V-02, V-04 | Needs sensor data before white balance |
+| L-03 | Waveform, RGB parade, vectorscope | Later | M-17 | |
+| L-04 | Shadow boost preview | Later | M-03 | |
+| L-05 | Second-display Loupe | Later | M-13 | Breaks the "one window" principle; revisit then |
+| L-06 | Card ingest with rename and verify | Later | M-01 | |
