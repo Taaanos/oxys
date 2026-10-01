@@ -115,7 +115,7 @@ private struct InfoStrip: View {
                         .help(photo.sidecar.notes.joined(separator: "\n"))
                 }
                 if let pixels {
-                    Text(verbatim: "Preview \(max(pixels.width, pixels.height)) px").foregroundStyle(.secondary)
+                    Text(verbatim: "Preview \(pixels.width) × \(pixels.height) px").foregroundStyle(.secondary)
                 }
                 if let zoom {
                     Text(zoom.level.isFit ? "Fit \(zoom.percent)%" : zoom.isActualSize ? "1:1" : "\(zoom.percent)%").foregroundStyle(.secondary)
