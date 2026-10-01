@@ -57,7 +57,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | **Phase 1** | **MVP** | | |
 | M-01 | Open a folder | F-01 | done (5,000-file timing measured warm on APFS clones; cold SSD, SD and a live UI click-through pending) |
 | M-02 | Embedded preview reader | F-03, M-01 | done (orientation checked by eye on the two rotated corpus files; no Preview.app color comparison, no Adobe RGB sample, no CR3/ORF file in the corpus) |
-| M-03 | Loupe canvas | M-02 | todo |
+| M-03 | Loupe canvas | M-02 | built, needs visual check |
 | M-04 | Image pipeline: prefetch, cancellation, caches | M-03, F-02 | todo |
 | M-05 | Command table, keymap and menu bar | F-05 | todo |
 | M-06 | Cull decisions and feedback | M-03, M-05 | todo |
@@ -476,6 +476,18 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 
 **Open questions**
 1. Which gray exactly? *Proposed:* about `#303030`, identical in light and dark appearance; tune by eye.
+
+**Built (decisions and results)**
+- Open question 1 **decided** as proposed: `#303030` (`LoupeView.canvasGray`), drawn by Metal's clear color and the layer background, so the system appearance never touches it. Not yet tuned by eye.
+- `Canvas.LoupeView` is a `CAMetalLayer`-backed `NSView` that renders only on a new image, layout, or backing-scale change (no display link, no timer). `LoupeGPU` (shared device, queue, pipeline; shader compiled from source at first use) prepares a `PreparedImage` off the main thread: the CGImage is drawn into BGRA8 in its own color space (values untouched), uploaded with a full mip chain, and sampled trilinear with 16x anisotropy for the Fit downsample. The layer's `colorspace` is set to the image's, so the system does the display match. Untagged or non-RGB images are treated as sRGB.
+- Orientation is applied on the GPU through `OrientationMap` (corner texture coordinates per EXIF value); a test checks all eight against `CIImage.oriented`. `FitGeometry` centers the image and snaps its rect to device pixels. Fit fills the window, upscaling small images; 1:1 is M-14.
+- Live resize presents with a transaction so the frame matches the layout.
+- Navigation: `FolderModel.currentURL` (tracked by URL so the capture-time re-sort cannot change the frame), `move(.next/.previous/.first/.last)`, stopping at the ends. Keys `←` `→` (repeating) and `Home` `End` go through `KeyRouter` with a four-entry keymap in `LoupeController`, plus a Go menu for display and the mouse. M-05 replaces both with the command table. `PhysicalKey` gained `home` and `end`.
+- The previous frame stays up until the next one is decoded; the info strip (name, "Preview N px" on the long edge) changes together with the frame, so it never describes another photo. Loading is a stopgap (decode up to 8192 px per navigation, no cache); M-04 replaces it.
+- `key-to-frame` begins at the key or menu action and ends in the layer's presented handler; `texture-upload` wraps the upload.
+- Files that cannot be previewed show the error tile and an empty canvas.
+- Checked: idle CPU read 0.0% in `ps` with a folder open. Unit tests: orientation (8 cases), fit geometry, mip chain, navigation.
+- **Not checked:** the three acceptance criteria that need eyes (sharp on moving between Retina and non-Retina, match with Preview.app, Activity Monitor), and fine-detail downsample quality. This session cannot capture the app's window. Keys and the Go menu were not exercised live.
 
 ### M-04 · Image pipeline: prefetch, cancellation, caches
 

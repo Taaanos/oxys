@@ -17,6 +17,9 @@ public final class FolderModel {
     public private(set) var content: Content = .none
     public private(set) var isReadingCaptureTimes = false
 
+    /// The photo Loupe shows. Tracked by URL so the capture-time re-sort cannot change which frame is current.
+    public private(set) var currentURL: URL?
+
     private var generation = 0
     private var loading: Task<Void, Never>?
 
@@ -30,6 +33,7 @@ public final class FolderModel {
         let mine = generation
         folder = url
         photos = []
+        currentURL = nil
         content = .opening(url)
         isReadingCaptureTimes = false
 
@@ -43,6 +47,7 @@ public final class FolderModel {
                 content = .empty(hasSubfolderPhotos: result.subfolderHasPhotos)
             case .success(let result):
                 photos = result.photos
+                currentURL = photos.first?.url
                 content = .photos
                 await readCaptureTimes(generation: mine)
             }
@@ -59,6 +64,31 @@ public final class FolderModel {
         updated.sort(by: Photo.isOrderedBefore)
         photos = updated
         isReadingCaptureTimes = false
+    }
+
+    public var currentIndex: Int? {
+        guard let currentURL else { return nil }
+        return photos.firstIndex { $0.url == currentURL }
+    }
+
+    public var currentPhoto: Photo? { currentIndex.map { photos[$0] } }
+
+    public enum Step: Sendable { case next, previous, first, last }
+
+    /// Moves the current photo. Stops at either end (no wrap-around). Returns whether the photo changed.
+    @discardableResult
+    public func move(_ step: Step) -> Bool {
+        guard !photos.isEmpty else { return false }
+        let from = currentIndex ?? 0
+        let to = switch step {
+        case .next: min(from + 1, photos.count - 1)
+        case .previous: max(from - 1, 0)
+        case .first: 0
+        case .last: photos.count - 1
+        }
+        guard to != from || currentURL == nil else { return false }
+        currentURL = photos[to].url
+        return true
     }
 
     /// Records what the preview reader found for `url`. Ignored if the photo is no longer in the folder.

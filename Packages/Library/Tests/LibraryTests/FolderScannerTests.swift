@@ -160,3 +160,37 @@ struct TempFolder {
         #expect(model.photos.map(\.name).sorted() == ["two.jpg", "two2.jpg"])
     }
 }
+
+@Suite @MainActor struct FolderNavigationTests {
+    private func openFolder(names: [String]) async throws -> FolderModel {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("nav-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        for name in names { try Data([0]).write(to: dir.appendingPathComponent(name)) }
+        let model = FolderModel()
+        model.open(dir)
+        for _ in 0..<500 where model.isReadingCaptureTimes || model.content != .photos {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        return model
+    }
+
+    @Test func startsOnTheFirstPhotoAndStopsAtTheEnds() async throws {
+        let model = try await openFolder(names: ["a.jpg", "b.jpg", "c.jpg"])
+        #expect(model.currentIndex == 0)
+        #expect(model.move(.previous) == false)
+        #expect(model.move(.next))
+        #expect(model.currentPhoto?.name == "b.jpg")
+        #expect(model.move(.last))
+        #expect(model.currentPhoto?.name == "c.jpg")
+        #expect(model.move(.next) == false)
+        #expect(model.move(.first))
+        #expect(model.currentIndex == 0)
+        #expect(model.move(.first) == false)
+    }
+
+    @Test func movingInAnEmptyModelDoesNothing() {
+        let model = FolderModel()
+        #expect(model.move(.next) == false)
+        #expect(model.currentPhoto == nil)
+    }
+}

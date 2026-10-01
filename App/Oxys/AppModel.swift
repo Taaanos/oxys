@@ -6,6 +6,7 @@ import Observation
 @MainActor @Observable
 final class AppModel {
     let folder = FolderModel()
+    let loupe = LoupeController()
     private(set) var recentFolders: [URL] = NSDocumentController.shared.recentDocumentURLs
 
     init() {

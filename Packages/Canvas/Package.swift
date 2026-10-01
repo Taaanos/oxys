@@ -7,8 +7,11 @@ let package = Package(
     products: [
         .library(name: "Canvas", targets: ["Canvas"]),
     ],
+    dependencies: [
+        .package(path: "../Diagnostics"),
+    ],
     targets: [
-        .target(name: "Canvas"),
+        .target(name: "Canvas", dependencies: ["Diagnostics"]),
         .testTarget(name: "CanvasTests", dependencies: ["Canvas"]),
     ]
 )
