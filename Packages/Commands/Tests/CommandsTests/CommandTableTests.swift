@@ -22,16 +22,16 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
 
 @Test func addingACommandGivesAMenuItemAndAKey() {
     let table = CommandTable(CommandTable.standard.commands + [
-        Command("cull.reject", "Reject", menu: .init(.photo, group: 1), modes: [.loupe], keys: [Shortcut(.position(.x))]),
+        Command("test.extra", "Reject", menu: .init(.photo, group: 9), modes: [.loupe], keys: [Shortcut(.position(.q))]),
     ])
-    #expect(table.groups(in: .photo).last?.map(\.id) == ["cull.reject"])
+    #expect(table.groups(in: .photo).last?.map(\.id) == ["test.extra"])
     let r = resolve(nil, table: table)
-    #expect(keys(r, "cull.reject") == [Shortcut(.position(.x))])
+    #expect(keys(r, "test.extra") == [Shortcut(.position(.q))])
     var router = KeyRouter(keymap: r.keymap)
-    let result = router.handle(KeyInput(keyCode: PhysicalKey.x.rawValue, timestamp: 0), mode: .loupe, focus: .canvas)
-    #expect(result.actions == [.perform("cull.reject")])
+    let result = router.handle(KeyInput(keyCode: PhysicalKey.q.rawValue, timestamp: 0), mode: .loupe, focus: .canvas)
+    #expect(result.actions == [.perform("test.extra")])
     // Its modes carry over to the key.
-    let grid = router.handle(KeyInput(keyCode: PhysicalKey.x.rawValue, timestamp: 1), mode: .grid, focus: .canvas)
+    let grid = router.handle(KeyInput(keyCode: PhysicalKey.q.rawValue, timestamp: 1), mode: .grid, focus: .canvas)
     #expect(!grid.consumed)
 }
 
@@ -135,4 +135,36 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
 
 @Test func physicalKeyNamesRoundTrip() {
     for key in PhysicalKey.allCases { #expect(PhysicalKey(name: key.name) == key) }
+}
+
+@Test func cullKeysHaveShiftTwinsThatAdvance() {
+    var router = KeyRouter(keymap: resolve(nil).keymap)
+    func press(_ key: PhysicalKey, _ mods: KeyModifiers = [], at t: Double, character: Character? = nil) -> [RoutedAction] {
+        let down = router.handle(KeyInput(keyCode: key.rawValue, modifiers: mods, timestamp: t, character: character), mode: .loupe, focus: .canvas).actions
+        _ = router.handle(KeyInput(keyCode: key.rawValue, modifiers: mods, isDown: false, timestamp: t + 0.05), mode: .loupe, focus: .canvas)
+        return down
+    }
+    #expect(press(.digit3, at: 0) == [.perform("cull.rate.3")])
+    #expect(press(.digit3, [.shift], at: 1) == [.performAdvancing("cull.rate.3")])
+    #expect(press(.keypad3, [.shift], at: 2) == [.performAdvancing("cull.rate.3")])
+    #expect(press(.x, [.shift], at: 3) == [.performAdvancing("cull.reject")])
+    #expect(press(.leftBracket, at: 4, character: "[") == [.perform("cull.rate.down")])
+    #expect(press(.rightBracket, [.shift], at: 5, character: "}") == [.performAdvancing("cull.rate.up")])
+    // Purple is menu-only.
+    #expect(!resolve(nil).keymap.bindings.contains { $0.command == "cull.label.purple" })
+}
+
+@Test func cullKeysIgnoreAutoRepeatAndGrid() {
+    var router = KeyRouter(keymap: resolve(nil).keymap)
+    let key = PhysicalKey.digit4.rawValue
+    #expect(router.handle(KeyInput(keyCode: key, timestamp: 0), mode: .loupe, focus: .canvas).actions == [.perform("cull.rate.4")])
+    let repeated = router.handle(KeyInput(keyCode: key, isRepeat: true, timestamp: 0.5), mode: .loupe, focus: .canvas)
+    #expect(repeated.consumed && repeated.actions.isEmpty)
+    #expect(!router.handle(KeyInput(keyCode: PhysicalKey.digit5.rawValue, timestamp: 1), mode: .grid, focus: .canvas).consumed)
+}
+
+@Test func menuShowsTheBareKeyNotTheShiftTwin() {
+    let keys = resolve(nil).keymap.shortcuts(for: "cull.rate.3")
+    #expect(keys.first == Shortcut(.position(.digit3)))
+    #expect(keys.count == 2)
 }

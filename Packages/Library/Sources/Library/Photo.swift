@@ -42,6 +42,8 @@ public struct Photo: Sendable, Identifiable, Hashable {
     public var captureTime: Date?
     /// Set once the preview has been opened; nil until then, and for files that have none.
     public var preview: PreviewInfo?
+    /// Stars, reject and label. In memory until M-08 saves it.
+    public var decision: Decision = .none
 
     public var id: URL { url }
     public var name: String { url.lastPathComponent }

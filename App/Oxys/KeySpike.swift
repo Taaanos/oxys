@@ -92,6 +92,9 @@ final class KeySpikeModel {
             if id.rawValue == "view.zoom" { zoomed.toggle() }
             routed[id.rawValue, default: 0] += 1
             record("\(source): \(id.rawValue)\(id.rawValue == "view.zoom" ? " → \(zoomed ? "1:1" : "fit")" : "")")
+        case .performAdvancing(let id):
+            routed[id.rawValue, default: 0] += 1
+            record("\(source): \(id.rawValue) + advance")
         case .releaseHold(let id):
             if id.rawValue == "view.zoom" { zoomed.toggle() }
             record("\(source): release \(id.rawValue)\(id.rawValue == "view.zoom" ? " → \(zoomed ? "1:1" : "fit")" : "")")

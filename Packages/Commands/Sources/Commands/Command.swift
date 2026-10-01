@@ -70,10 +70,12 @@ public struct Command: Sendable, Identifiable {
     public var repeats: Bool
     /// The bundled Default preset's keys for this command. The first one is shown in the menu.
     public var defaultKeys: [Shortcut]
+    /// Every key of this command also has a `⇧` twin that runs it and then moves to the next photo (M-06).
+    public var shiftAdvances: Bool
 
     public init(_ id: CommandID, _ title: String, menu: MenuPlacement?, modes: Set<ViewMode> = [],
                 requires: Requirements = [], kind: CommandKind = .action, repeats: Bool = false,
-                keys: [Shortcut] = []) {
+                shiftAdvances: Bool = false, keys: [Shortcut] = []) {
         self.id = id
         self.title = title
         self.menu = menu
@@ -82,6 +84,7 @@ public struct Command: Sendable, Identifiable {
         self.kind = kind
         self.repeats = repeats
         self.defaultKeys = keys
+        self.shiftAdvances = shiftAdvances
     }
 
     public var behavior: KeyBehavior {
@@ -93,7 +96,22 @@ public struct Command: Sendable, Identifiable {
         (modes.isEmpty || modes.contains(context.mode)) && (!requires.contains(.photos) || context.hasPhotos)
     }
 
-    func binding(for shortcut: Shortcut) -> KeyBinding {
-        KeyBinding(shortcut.key, shortcut.modifiers, modes: modes, command: id, behavior: behavior)
+    /// The binding for a shortcut, plus its `⇧` twin when the command has one. A character key cannot carry
+    /// `⇧`, so its twin is the character `⇧` types on a US layout (`[` becomes `{`); keys without a known
+    /// shifted character get no twin.
+    func bindings(for shortcut: Shortcut) -> [KeyBinding] {
+        var result = [KeyBinding(shortcut.key, shortcut.modifiers, modes: modes, command: id, behavior: behavior)]
+        guard shiftAdvances, !shortcut.modifiers.contains(.shift) else { return result }
+        let twin: KeySpec? = switch shortcut.key {
+        case .position: shortcut.key
+        case .character(let c): Self.shifted[c].map(KeySpec.character)
+        }
+        if let twin {
+            let modifiers: KeyModifiers = if case .position = twin { shortcut.modifiers.union(.shift) } else { shortcut.modifiers }
+            result.append(KeyBinding(twin, modifiers, modes: modes, command: id, behavior: behavior, advances: true))
+        }
+        return result
     }
+
+    private static let shifted: [Character: Character] = ["[": "{", "]": "}"]
 }

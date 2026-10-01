@@ -18,6 +18,17 @@ final class LoupeController {
     private(set) var shownPixels: (width: Int, height: Int)?
     private(set) var failure: String?
 
+    /// The confirmation over the canvas after a cull key; nil when it has timed out.
+    struct Badge: Equatable {
+        let id: Int
+        let decision: Decision
+        /// Set when `⇧` moved on, so the badge says which photo it is about.
+        let photoName: String?
+    }
+    private(set) var badge: Badge?
+    @ObservationIgnored private var badgeCount = 0
+    @ObservationIgnored private var badgeTimeout: Task<Void, Never>?
+
     @ObservationIgnored weak var canvas: LoupeView?
     @ObservationIgnored private var pendingFrameToken: Perf.Token?
 
@@ -148,5 +159,67 @@ final class LoupeController {
         } else {
             Perf.end(token)
         }
+    }
+
+    // MARK: cull
+
+    /// Applies a cull key to the current photo (Loupe acts on the active photo only, G-5), confirms it with
+    /// the badge and a VoiceOver phrase, and with `⇧` moves to the next frame. The in-memory decision is
+    /// the only effect until M-08 saves it.
+    func cull(_ action: CullAction, advance: Bool, folder: FolderModel) {
+        let token = Perf.begin(.cullFeedback)
+        guard let photo = folder.currentPhoto, let decision = folder.apply(action, to: photo.url) else {
+            Perf.end(token)
+            return
+        }
+        badgeCount += 1
+        badge = Badge(id: badgeCount, decision: decision, photoName: advance ? photo.name : nil)
+        endAtNextDisplayFrame(token)
+        announce(advance ? "\(photo.name), \(decision.summary)" : decision.summary)
+        let id = badgeCount
+        badgeTimeout?.cancel()
+        badgeTimeout = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.2))
+            guard !Task.isCancelled, let self, badge?.id == id else { return }
+            badge = nil
+        }
+        if advance { navigate(.next, folder: folder) }
+    }
+
+    private func announce(_ phrase: String) {
+        guard let canvas else { return }
+        NSAccessibility.post(element: canvas, notification: .announcementRequested, userInfo: [
+            .announcement: phrase, .priority: NSAccessibilityPriorityLevel.high.rawValue,
+        ])
+    }
+
+    /// Ends the interval on the first display-link tick after the state change, i.e. the next display frame.
+    private func endAtNextDisplayFrame(_ token: Perf.Token) {
+        guard let canvas, canvas.window != nil else { Perf.end(token); return }
+        let ticker = FrameTicker(token)
+        ticker.link = canvas.displayLink(target: ticker, selector: #selector(FrameTicker.tick(_:)))
+        ticker.link?.add(to: .main, forMode: .common)
+    }
+}
+
+/// A one-shot display link: ends a signpost interval on its first tick, then stops itself.
+@MainActor
+private final class FrameTicker: NSObject {
+    var link: CADisplayLink?
+    private var token: Perf.Token?
+    private var keepAlive: FrameTicker?
+
+    init(_ token: Perf.Token) {
+        self.token = token
+        super.init()
+        keepAlive = self
+    }
+
+    @objc func tick(_ link: CADisplayLink) {
+        if let token { Perf.end(token) }
+        token = nil
+        link.invalidate()
+        self.link = nil
+        keepAlive = nil
     }
 }

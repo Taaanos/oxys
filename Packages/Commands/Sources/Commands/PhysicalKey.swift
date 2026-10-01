@@ -11,6 +11,8 @@ public enum PhysicalKey: UInt16, CaseIterable, Sendable {
     case `return` = 36, tab = 48, space = 49, delete = 51, escape = 53
     case leftArrow = 123, rightArrow = 124, downArrow = 125, upArrow = 126
     case home = 115, end = 119
+    case keypad0 = 82, keypad1 = 83, keypad2 = 84, keypad3 = 85, keypad4 = 86, keypad5 = 87
+    case keypad6 = 88, keypad7 = 89, keypad8 = 91, keypad9 = 92
 
     /// The ASCII label printed on a US keyboard, used when no layout can be asked.
     public var usLabel: String {
@@ -47,6 +49,16 @@ public enum PhysicalKey: UInt16, CaseIterable, Sendable {
         case .upArrow: "↑"
         case .home: "Home"
         case .end: "End"
+        case .keypad0: "Keypad 0"
+        case .keypad1: "Keypad 1"
+        case .keypad2: "Keypad 2"
+        case .keypad3: "Keypad 3"
+        case .keypad4: "Keypad 4"
+        case .keypad5: "Keypad 5"
+        case .keypad6: "Keypad 6"
+        case .keypad7: "Keypad 7"
+        case .keypad8: "Keypad 8"
+        case .keypad9: "Keypad 9"
         default: String(describing: self).uppercased()
         }
     }

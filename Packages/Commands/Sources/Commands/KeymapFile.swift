@@ -45,7 +45,7 @@ public struct ResolvedKeymap: Sendable {
 extension Keymap {
     /// Bindings for one command, in order. The first is what menus show.
     public func shortcuts(for command: CommandID) -> [Shortcut] {
-        bindings.filter { $0.command == command }.map { Shortcut($0.key, $0.modifiers) }
+        bindings.filter { $0.command == command && !$0.advances }.map { Shortcut($0.key, $0.modifiers) }
     }
 
     /// The Default preset with the user's overrides applied. Bad entries are skipped and reported; an
@@ -93,7 +93,7 @@ extension Keymap {
                 || claimed.contains { $0.shortcut == Shortcut(b.key, b.modifiers) && Self.overlap($0.modes, b.modes) }
         }
         for claim in claimed {
-            if let command = table[claim.command] { bindings.append(command.binding(for: claim.shortcut)) }
+            if let command = table[claim.command] { bindings.append(contentsOf: command.bindings(for: claim.shortcut)) }
         }
         return ResolvedKeymap(keymap: Keymap(bindings), problems: problems)
     }

@@ -48,14 +48,17 @@ public struct KeyBinding: Sendable, Hashable {
     public var modes: Set<ViewMode>
     public var command: CommandID
     public var behavior: KeyBehavior
+    /// The `⇧` twin of a cull key: run the command, then move to the next photo (M-06).
+    public var advances: Bool
 
     public init(_ key: KeySpec, _ modifiers: KeyModifiers = [], modes: Set<ViewMode> = [],
-                command: CommandID, behavior: KeyBehavior = .once) {
+                command: CommandID, behavior: KeyBehavior = .once, advances: Bool = false) {
         self.key = key
         self.modifiers = modifiers
         self.modes = modes
         self.command = command
         self.behavior = behavior
+        self.advances = advances
     }
 }
 

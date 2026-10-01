@@ -59,8 +59,10 @@ public final class FolderModel {
         let snapshot = photos
         let times = await FolderScanner.captureTimes(for: snapshot)
         guard mine == generation, !Task.isCancelled else { return }
-        var updated = snapshot
-        for index in updated.indices { updated[index].captureTime = times[index] }
+        // Merge into the live list: decisions and previews recorded while the times were read must survive.
+        var updated = photos
+        let byURL = Dictionary(uniqueKeysWithValues: zip(snapshot.map(\.url), times))
+        for index in updated.indices { updated[index].captureTime = byURL[updated[index].url] ?? nil }
         updated.sort(by: Photo.isOrderedBefore)
         photos = updated
         isReadingCaptureTimes = false
@@ -69,6 +71,10 @@ public final class FolderModel {
     public var currentIndex: Int? {
         guard let currentURL else { return nil }
         return photos.firstIndex { $0.url == currentURL }
+    }
+
+    public func decision(for url: URL) -> Decision? {
+        photos.first { $0.url == url }?.decision
     }
 
     public var currentPhoto: Photo? { currentIndex.map { photos[$0] } }
@@ -95,5 +101,15 @@ public final class FolderModel {
     public func setPreview(_ info: PreviewInfo, for url: URL) {
         guard let index = photos.firstIndex(where: { $0.url == url }) else { return }
         photos[index].preview = info
+    }
+
+    /// Applies a cull key to the photo at `url` (the current one when nil). Returns the new decision, or nil
+    /// when the photo is not in the folder.
+    @discardableResult
+    public func apply(_ action: CullAction, to url: URL? = nil) -> Decision? {
+        guard let url = url ?? currentURL, let index = photos.firstIndex(where: { $0.url == url }) else { return nil }
+        let decision = action.applied(to: photos[index].decision)
+        if decision != photos[index].decision { photos[index].decision = decision }
+        return decision
     }
 }

@@ -18,6 +18,19 @@ final class AppModel {
                            ("nav.first", .first), ("nav.last", .last)] {
             commands.register(CommandID(rawValue: id)) { [unowned self] _ in loupe.navigate(step, folder: folder) }
         }
+        let cullActions: [(String, CullAction)] = [
+            ("cull.rate.0", .setRating(0)), ("cull.rate.1", .setRating(1)), ("cull.rate.2", .setRating(2)),
+            ("cull.rate.3", .setRating(3)), ("cull.rate.4", .setRating(4)), ("cull.rate.5", .setRating(5)),
+            ("cull.rate.down", .stepRating(-1)), ("cull.rate.up", .stepRating(1)), ("cull.reject", .toggleReject),
+            ("cull.label.red", .toggleLabel(.red)), ("cull.label.yellow", .toggleLabel(.yellow)),
+            ("cull.label.green", .toggleLabel(.green)), ("cull.label.blue", .toggleLabel(.blue)),
+            ("cull.label.purple", .toggleLabel(.purple)),
+        ]
+        for (id, action) in cullActions {
+            commands.register(CommandID(rawValue: id)) { [unowned self] phase in
+                loupe.cull(action, advance: phase == .performAdvancing, folder: folder)
+            }
+        }
         commands.start()
         // Developer hook, like OXYS_REPORT_LAUNCH: open a folder at launch for scripted checks.
         if let path = ProcessInfo.processInfo.environment["OXYS_OPEN"] { open(URL(fileURLWithPath: path)) }

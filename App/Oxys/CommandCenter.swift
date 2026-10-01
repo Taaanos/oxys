@@ -11,7 +11,8 @@ import SwiftUI
 final class CommandCenter {
     typealias Handler = @MainActor (CommandPhase) -> Void
 
-    enum CommandPhase { case perform, releaseHold }
+    /// `performAdvancing` is a cull key pressed with `⇧`: do it, then show the next photo.
+    enum CommandPhase { case perform, performAdvancing, releaseHold }
 
     let table: CommandTable
     private(set) var keymap: Keymap
@@ -141,6 +142,7 @@ final class CommandCenter {
         for action in actions {
             switch action {
             case .perform(let id): perform(id, phase: .perform)
+            case .performAdvancing(let id): perform(id, phase: .performAdvancing)
             case .releaseHold(let id): perform(id, phase: .releaseHold)
             case .returnFocusToCanvas: NSApp.keyWindow?.makeFirstResponder(nil)
             }

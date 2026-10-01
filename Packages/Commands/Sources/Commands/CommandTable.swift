@@ -21,7 +21,7 @@ public struct CommandTable: Sendable {
 
     /// The Default preset: every command's own keys.
     public var defaultBindings: [KeyBinding] {
-        commands.flatMap { command in command.defaultKeys.map(command.binding(for:)) }
+        commands.flatMap { command in command.defaultKeys.flatMap(command.bindings(for:)) }
     }
 
     public static let standard = CommandTable([
@@ -36,5 +36,37 @@ public struct CommandTable: Sendable {
                 keys: [Shortcut(.position(.home))]),
         Command("nav.last", "Last Photo", menu: .init(.photo, group: 0), requires: .photos,
                 keys: [Shortcut(.position(.end))]),
+
+        // Cull (M-06). Each has a ⇧ twin that also moves to the next photo. Keypad digits mirror the digit row.
+        Command("cull.rate.0", "Clear Rating", menu: .init(.photo, group: 1), modes: cull, requires: .photos, shiftAdvances: true,
+                keys: [Shortcut(.position(.digit0)), Shortcut(.position(.keypad0))]),
+        Command("cull.rate.1", "1 Star", menu: .init(.photo, group: 1), modes: cull, requires: .photos, shiftAdvances: true,
+                keys: [Shortcut(.position(.digit1)), Shortcut(.position(.keypad1))]),
+        Command("cull.rate.2", "2 Stars", menu: .init(.photo, group: 1), modes: cull, requires: .photos, shiftAdvances: true,
+                keys: [Shortcut(.position(.digit2)), Shortcut(.position(.keypad2))]),
+        Command("cull.rate.3", "3 Stars", menu: .init(.photo, group: 1), modes: cull, requires: .photos, shiftAdvances: true,
+                keys: [Shortcut(.position(.digit3)), Shortcut(.position(.keypad3))]),
+        Command("cull.rate.4", "4 Stars", menu: .init(.photo, group: 1), modes: cull, requires: .photos, shiftAdvances: true,
+                keys: [Shortcut(.position(.digit4)), Shortcut(.position(.keypad4))]),
+        Command("cull.rate.5", "5 Stars", menu: .init(.photo, group: 1), modes: cull, requires: .photos, shiftAdvances: true,
+                keys: [Shortcut(.position(.digit5)), Shortcut(.position(.keypad5))]),
+        Command("cull.rate.down", "Decrease Rating", menu: .init(.photo, group: 1), modes: cull, requires: .photos,
+                shiftAdvances: true, keys: [Shortcut(.character("["))]),
+        Command("cull.rate.up", "Increase Rating", menu: .init(.photo, group: 1), modes: cull, requires: .photos,
+                shiftAdvances: true, keys: [Shortcut(.character("]"))]),
+        Command("cull.reject", "Reject", menu: .init(.photo, group: 2), modes: cull, requires: .photos, shiftAdvances: true,
+                keys: [Shortcut(.position(.x))]),
+        Command("cull.label.red", "Red Label", menu: .init(.photo, group: 3), modes: cull, requires: .photos, shiftAdvances: true,
+                keys: [Shortcut(.position(.digit6)), Shortcut(.position(.keypad6))]),
+        Command("cull.label.yellow", "Yellow Label", menu: .init(.photo, group: 3), modes: cull, requires: .photos, shiftAdvances: true,
+                keys: [Shortcut(.position(.digit7)), Shortcut(.position(.keypad7))]),
+        Command("cull.label.green", "Green Label", menu: .init(.photo, group: 3), modes: cull, requires: .photos, shiftAdvances: true,
+                keys: [Shortcut(.position(.digit8)), Shortcut(.position(.keypad8))]),
+        Command("cull.label.blue", "Blue Label", menu: .init(.photo, group: 3), modes: cull, requires: .photos, shiftAdvances: true,
+                keys: [Shortcut(.position(.digit9)), Shortcut(.position(.keypad9))]),
+        Command("cull.label.purple", "Purple Label", menu: .init(.photo, group: 3), modes: cull, requires: .photos),
     ])
+
+    /// Cull keys act on the active photo in Loupe and Compare. Grid joins in M-12 (G-5).
+    private static let cull: Set<ViewMode> = [.loupe, .compare]
 }
