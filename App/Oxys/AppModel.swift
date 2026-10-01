@@ -46,8 +46,17 @@ final class AppModel {
     func deactivateInspector() { inspectorActive = false }
 
     /// Keys while the inspector is active; true when consumed.
-    func inspectorKey(code: UInt16, shift: Bool) -> Bool {
-        guard inspectorActive else { return false }
+    func inspectorKey(code: UInt16, shift: Bool, option: Bool) -> Bool {
+        // `⌥↑` and `⌥↓` walk the rows whenever the inspector is open, like chat apps' message navigation.
+        // They take over Loupe's pan keys then; `⌥⇧` still pans a whole view.
+        if option, !shift, showInspector, !chromeHidden, commands.mode != .compare,
+           code == PhysicalKey.upArrow.rawValue || code == PhysicalKey.downArrow.rawValue {
+            // A first press lands on the first or last row, as `moveInspectorFocus` does with no row focused.
+            if !inspectorActive { inspectorActive = true; inspectorFocusID = nil }
+            moveInspectorFocus(code == PhysicalKey.downArrow.rawValue ? 1 : -1, wraps: false)
+            return true
+        }
+        guard inspectorActive, !option else { return false }
         switch code {
         case PhysicalKey.escape.rawValue: deactivateInspector()
         case PhysicalKey.tab.rawValue: moveInspectorFocus(shift ? -1 : 1, wraps: true)
@@ -167,7 +176,7 @@ final class AppModel {
                           title: { [unowned self] in folder.redoName.map { "Redo \($0)" } ?? "Redo" }) { [unowned self] _ in
             loupe.redo(folder: folder)
         }
-        commands.inspectorKey = { [unowned self] code, shift in inspectorKey(code: code, shift: shift) }
+        commands.inspectorKey = { [unowned self] code, shift, option in inspectorKey(code: code, shift: shift, option: option) }
         commands.start()
         // Decisions are written as they are made; this waits for the last ones to land before the process exits.
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [folder] _ in
