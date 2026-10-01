@@ -72,7 +72,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-15 | Zoom steps, panning and sticky zoom | M-14 | done |
 | M-16 | EXIF | M-01 | done (reference comparison passes on the corpus; live panel, ⌘C and the one-frame timing not checked in the running app) |
 | M-17 | Histogram | M-03 | done |
-| M-18 | Info overlay and inspector | M-16, M-17 | todo |
+| M-18 | Info overlay and inspector | M-16, M-17 | built, not checked in the live app |
 | M-19 | Selection | M-12 | todo |
 | M-20 | Filter and sort bar | M-19 | todo |
 | M-21 | Reveal in Finder | M-19 | todo |
@@ -1013,6 +1013,18 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 **Open questions**
 1. Is `⇧I` an independent histogram switch, or a jump to the histogram level? *Proposed:* independent.
 2. Remember the `I` level across launches? *Proposed:* yes.
+
+**Built (decisions and results)**
+- Both questions **decided** as proposed: `⇧I` is independent of the `I` level, and the level is remembered across launches (default: filename and stars, as before).
+- `I` (`info.cycle`, replaces `info.exif`) cycles Off → filename and stars → plus EXIF → plus histogram → Off, announcing the new level. The last level turns the histogram on and leaving it turns it off; `⇧I` toggles it alone at any level, and turning it on while info is Off brings the strip back to the first level. Off hides the strip too, including its sidecar notes (the inspector and the write banner still carry those).
+- Inspector (`⌥⌘I`, `info.inspector`, toolbar button, View menu): a SwiftUI `.inspector` sidebar in Grid and Loupe, hidden with the toolbar by `⇥`, remembered across launches. Sections: Histogram (only for the photo open in Loupe), EXIF (the Loupe cache), Sidecar (path it reads or will write, exists, rating and label, saved or kept in memory, last write time from the file, the problem, the last write error, outside changes, the other naming style's file, unsaved count for the folder).
+- Keyboard: `⇥` stays the toolbar key, so "Move Focus to Inspector" (`⌃⌘I`) puts focus on the first row, and opening the inspector does the same. While focus is inside it the key router treats it like a text field (bare keys pass through, `Esc` returns to the image), `⇥` moves between rows, `⌘C` copies the focused row's value, and the text can be selected with the pointer. Rows are one VoiceOver element each ("Label, value").
+- Contrast: all text on the image sits on a plate of black at 70% (`InfoPlate.swift`) with secondary text at 85% white, which computes to about 6.7:1 over a pure white photo; the strip used 45% before, which would have been about 3.4:1.
+- New `FolderModel.sidecarTarget(for:)`.
+
+**Checked**
+- Unit tests: `Commands` (new: `⌥⌘I` and `⌃⌘I` in Grid and Loupe; `I` now cycles). All packages pass. Release build clean, arm64.
+- **Not checked** (this session cannot send keys or see the window): the cycle and the inspector in the live app, `⇥` and `Esc` between the inspector and the image, `⌘C` from an inspector row, Full Keyboard Access and VoiceOver, and the contrast on real bright and dark photos (computed, not measured).
 
 ### M-19 · Selection
 

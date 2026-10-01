@@ -99,13 +99,18 @@ public struct CommandTable: Sendable {
         Command("pan.pageDown", "Pan Down a View", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.downArrow), [.option, .shift])]),
 
-        // EXIF panel (M-16). `I` shows or hides it until M-18's cycle takes the key over. `↑` and `↓` move between
-        // its values, `⌘C` copies the focused one (all of them when none is), and Show in Maps opens the GPS spot.
-        Command("info.exif", "Show EXIF", menu: .init(.view, group: 4), modes: loupe, requires: .photos,
-                kind: .toggle, keys: [Shortcut(.position(.i))]),
-        // Histogram (M-17): `⇧I`. Stays on screen with the EXIF panel; M-18 folds both into the info cycle.
+        // Info on the image (M-18). `I` cycles off, filename and stars, plus EXIF, plus histogram; `⇧I` toggles the
+        // histogram on its own. `⌥⌘I` opens the inspector (every mode); "Move Focus to Inspector" puts the keyboard
+        // there, since `⇥` belongs to the toolbar. In Loupe `↑` and `↓` walk the EXIF values (M-16), `⌘C` copies the
+        // focused one (all when none is), and Show in Maps opens the GPS spot.
+        Command("info.cycle", "Cycle Info", menu: .init(.view, group: 4), modes: loupe, requires: .photos,
+                keys: [Shortcut(.position(.i))]),
         Command("info.histogram", "Show Histogram", menu: .init(.view, group: 4), modes: loupe, requires: .photos,
                 kind: .toggle, keys: [Shortcut(.position(.i), [.shift])]),
+        Command("info.inspector", "Show Inspector", menu: .init(.view, group: 4), requires: .photos,
+                kind: .toggle, keys: [Shortcut(.position(.i), [.command, .option])]),
+        Command("info.inspectorFocus", "Move Focus to Inspector", menu: .init(.view, group: 4), requires: .photos,
+                keys: [Shortcut(.position(.i), [.command, .control])]),
         Command("info.fieldNext", "Next EXIF Value", menu: .init(.view, group: 4), modes: loupe, requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.downArrow))]),
         Command("info.fieldPrevious", "Previous EXIF Value", menu: .init(.view, group: 4), modes: loupe, requires: .photos, repeats: true,

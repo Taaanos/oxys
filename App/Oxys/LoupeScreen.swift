@@ -21,12 +21,14 @@ struct LoupeScreen: View {
             if loupe.showExif, let exif = loupe.exif, loupe.failure == nil {
                 ExifPanel(info: exif, focused: Bindable(loupe).focusedExifField)
             }
-            if loupe.showHistogram, let histogram = loupe.histogram, loupe.failure == nil {
+            if loupe.showHistogram, loupe.showInfoStrip, let histogram = loupe.histogram, loupe.failure == nil {
                 HistogramView(histogram: histogram)
                     .padding(12)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
-            InfoStrip(photo: loupe.shown, decision: loupe.shown.flatMap { folder.decision(for: $0.url) }, pixels: loupe.shownPixels, zoom: loupe.zoomInfo)
+            if loupe.showInfoStrip {
+                InfoStrip(photo: loupe.shown, decision: loupe.shown.flatMap { folder.decision(for: $0.url) }, pixels: loupe.shownPixels, zoom: loupe.zoomInfo)
+            }
         }
         .background(Color(white: LoupeView.canvasGray))
         .task(id: LoadKey(url: folder.currentURL, active: active)) {
@@ -63,7 +65,7 @@ private struct ExifPanel: View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(info.fields) { field in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(field.label).foregroundStyle(.secondary).frame(width: 110, alignment: .leading)
+                    Text(field.label).foregroundStyle(Plate.secondary).frame(width: 110, alignment: .leading)
                     Text(field.value).textSelection(.enabled)
                 }
                 .font(.callout.monospacedDigit())
@@ -78,9 +80,7 @@ private struct ExifPanel: View {
             }
         }
         .padding(10)
-        .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
-        .foregroundStyle(.white)
-        .environment(\.colorScheme, .dark)
+        .infoPlate()
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -110,15 +110,15 @@ private struct InfoStrip: View {
                 if let decision, !decision.isUndecided { DecisionGlyphs(decision: decision) }
                 if let note = photo.sidecar.notes.first {
                     Label(note, systemImage: photo.sidecar.problem == nil ? "info.circle" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(photo.sidecar.problem == nil ? Color.secondary : Color.orange)
+                        .foregroundStyle(photo.sidecar.problem == nil ? Plate.secondary : Color.orange)
                         .lineLimit(1)
                         .help(photo.sidecar.notes.joined(separator: "\n"))
                 }
                 if let pixels {
-                    Text(verbatim: "Preview \(pixels.width) × \(pixels.height) px").foregroundStyle(.secondary)
+                    Text(verbatim: "Preview \(pixels.width) × \(pixels.height) px").foregroundStyle(Plate.secondary)
                 }
                 if let zoom {
-                    Text(zoom.level.isFit ? "Fit \(zoom.percent)%" : zoom.isActualSize ? "1:1" : "\(zoom.percent)%").foregroundStyle(.secondary)
+                    Text(zoom.level.isFit ? "Fit \(zoom.percent)%" : zoom.isActualSize ? "1:1" : "\(zoom.percent)%").foregroundStyle(Plate.secondary)
                     if previewShort {
                         Label("Preview pixels, fewer than the sensor", systemImage: "exclamationmark.triangle")
                             .foregroundStyle(.orange)
@@ -129,7 +129,8 @@ private struct InfoStrip: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
-            .background(.black.opacity(0.45))
+            .background(.black.opacity(Plate.opacity))
+            .foregroundStyle(.white)
             .environment(\.colorScheme, .dark)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(([photo.name, decision?.summary].compactMap { $0 } + photo.sidecar.notes).joined(separator: ", ") + zoomSpoken)
@@ -193,13 +194,11 @@ private struct CullBadge: View {
                 .font(.title2)
                 .opacity(badge.decision.isUndecided ? 0 : 1)
             if badge.decision.isUndecided { Text("No rating").font(.title2) }
-            if let name = badge.photoName { Text(name).font(.caption.monospaced()).foregroundStyle(.secondary) }
+            if let name = badge.photoName { Text(name).font(.caption.monospaced()).foregroundStyle(Plate.secondary) }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
-        .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
-        .foregroundStyle(.white)
-        .environment(\.colorScheme, .dark)
+        .infoPlate(cornerRadius: 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(false)
         .accessibilityHidden(true)

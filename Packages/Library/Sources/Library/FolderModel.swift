@@ -485,6 +485,9 @@ public final class FolderModel {
         return shown
     }
 
+    /// Where the next write for `photo` goes: the sidecar it has, else the configured naming style's file (M-18).
+    public func sidecarTarget(for photo: Photo) -> URL? { photo.sidecar.file ?? primaryURL(for: photo) }
+
     private func primaryURL(for photo: Photo) -> URL? {
         folder?.appendingPathComponent(sidecarNaming.fileName(for: photo.name))
     }

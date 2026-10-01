@@ -271,9 +271,14 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     func press(_ key: PhysicalKey, _ mode: ViewMode, _ mods: KeyModifiers = [], at t: Double) -> [RoutedAction] {
         router.handle(KeyInput(keyCode: key.rawValue, modifiers: mods, timestamp: t), mode: mode, focus: .canvas).actions
     }
-    #expect(press(.i, .loupe, at: 0) == [.perform("info.exif")])
+    #expect(press(.i, .loupe, at: 0) == [.perform("info.cycle")])
     #expect(press(.i, .loupe, [.shift], at: 0) == [.perform("info.histogram")])   // M-17
     #expect(press(.i, .grid, at: 1).isEmpty)
+    // The inspector opens from every mode; the focus command too (M-18).
+    for mode in [ViewMode.grid, .loupe] {
+        #expect(press(.i, mode, [.command, .option], at: 1) == [.perform("info.inspector")])
+        #expect(press(.i, mode, [.command, .control], at: 1) == [.perform("info.inspectorFocus")])
+    }
     #expect(press(.upArrow, .loupe, at: 2) == [.perform("info.fieldPrevious")])
     #expect(press(.c, .loupe, [.command], at: 3) == [.perform("info.copy")])
     #expect(press(.c, .grid, [.command], at: 4).isEmpty)

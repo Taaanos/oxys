@@ -37,20 +37,18 @@ struct HistogramView: View {
             .frame(width: Self.width, height: Self.height)
             HStack {
                 Text("◀ \(Self.percent(histogram.clippedShadowsPercent))")
-                    .foregroundStyle(histogram.clippedShadowsPercent > 0 ? Color.cyan : .secondary)
+                    .foregroundStyle(histogram.clippedShadowsPercent > 0 ? Color.cyan : Plate.secondary)
                 Spacer()
-                Text(histogram.source.rawValue).foregroundStyle(.secondary)
+                Text(histogram.source.rawValue).foregroundStyle(Plate.secondary)
                 Spacer()
                 Text("\(Self.percent(histogram.clippedHighlightsPercent)) ▶")
-                    .foregroundStyle(histogram.clippedHighlightsPercent > 0 ? Color.orange : .secondary)
+                    .foregroundStyle(histogram.clippedHighlightsPercent > 0 ? Color.orange : Plate.secondary)
             }
             .font(.caption.monospacedDigit())
             .frame(width: Self.width)
         }
         .padding(10)
-        .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
-        .foregroundStyle(.white)
-        .environment(\.colorScheme, .dark)
+        .infoPlate()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spoken)
     }

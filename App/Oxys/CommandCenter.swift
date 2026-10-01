@@ -19,6 +19,8 @@ final class CommandCenter {
     /// What was wrong with the user's keymap file, if anything.
     private(set) var keymapProblems: [String]
     var mode: ViewMode = .loupe
+    /// True while keyboard focus sits in the inspector sidebar: it owns bare keys, like a text field (M-18).
+    @ObservationIgnored var inspectorHasFocus: () -> Bool = { false }
     /// Bumped when the input source changes, so menus re-read the key labels.
     private(set) var layoutRevision = 0
 
@@ -142,7 +144,7 @@ final class CommandCenter {
         else { return false }
         let focus: KeyFocus = if let tv = window.firstResponder as? NSTextView, tv.isEditable || tv.isFieldEditor {
             .textInput
-        } else { .canvas }
+        } else if inspectorHasFocus() { .textInput } else { .canvas }
         let result = router.handle(input, mode: mode, focus: focus)
         apply(result.actions)
         return result.consumed

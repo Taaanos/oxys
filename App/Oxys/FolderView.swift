@@ -38,6 +38,12 @@ struct FolderView: View {
                 WriteBanner(banner: banner, unsaved: folder.unsavedCount, model: model)
             }
         }
+        .inspector(isPresented: Binding(
+            get: { model.showInspector && !model.chromeHidden },
+            set: { if !model.chromeHidden { model.setInspector($0) } })) {
+            InspectorView(model: model)
+                .inspectorColumnWidth(min: 240, ideal: 280, max: 420)
+        }
         .toolbar(id: "oxys.main") { ToolbarItems(model: model) }
         .toolbarVisibility(model.chromeHidden ? .hidden : .visible, for: .windowToolbar)
         .navigationTitle(folder.folder?.lastPathComponent ?? "Oxys")
@@ -55,7 +61,7 @@ struct FolderView: View {
     }
 }
 
-/// The toolbar (M-13): a mode picker and two toggles for panels that arrive later. Customizable from the
+/// The toolbar (M-13): a mode picker, the inspector toggle and a filter placeholder (M-20). Customizable from the
 /// toolbar's context menu; every item is also a command in the menu bar.
 private struct ToolbarItems: CustomizableToolbarContent {
     let model: AppModel
@@ -80,9 +86,10 @@ private struct ToolbarItems: CustomizableToolbarContent {
                 .disabled(true)
         }
         ToolbarItem(id: "inspector") {
-            Button("Inspector", systemImage: "sidebar.trailing") {}
-                .help("Inspector (arrives with M-18)")
-                .disabled(true)
+            Button("Inspector", systemImage: "sidebar.trailing") { model.commands.perform("info.inspector") }
+                .help("Inspector (⌥⌘I)")
+                .accessibilityValue(model.showInspector ? "Shown" : "Hidden")
+                .disabled(model.folder.content != .photos)
         }
     }
 }

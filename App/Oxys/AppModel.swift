@@ -23,6 +23,14 @@ final class AppModel {
     let commands: CommandCenter
     /// `⇥` hides the toolbar (and, later, the panels); the pointer at the top edge brings it back (M-13).
     private(set) var chromeHidden = false
+    /// The inspector sidebar (⌥⌘I), remembered across launches. Hidden along with the toolbar by `⇥` (M-13).
+    private(set) var showInspector = UserDefaults.standard.bool(forKey: "showInspector")
+    /// Bumped by "Move Focus to Inspector"; the inspector moves its keyboard focus to its first row.
+    private(set) var inspectorFocusRequest = 0
+    /// What the inspector's focused row holds, or nil when focus is elsewhere. While it is set, `⌘C` copies it
+    /// and bare keys go to the inspector (see `CommandCenter.route`).
+    var inspectorValue: String?
+    var inspectorHasFocus = false
     @ObservationIgnored private var pointerMonitor: Any?
     private(set) var recentFolders: [URL] = NSDocumentController.shared.recentDocumentURLs
 
@@ -66,20 +74,26 @@ final class AppModel {
         commands.register("zoom.sticky", isOn: { [unowned self] in loupe.stickyZoom }) { [unowned self] _ in
             loupe.stickyZoom.toggle()
         }
-        commands.register("info.exif", isOn: { [unowned self] in loupe.showExif }) { [unowned self] _ in
-            loupe.showExif.toggle()
+        commands.register("info.cycle", title: { [unowned self] in "Cycle Info (now \(loupe.infoLevel.title))" }) { [unowned self] _ in
+            loupe.cycleInfo()
         }
         commands.register("info.histogram", isOn: { [unowned self] in loupe.showHistogram }) { [unowned self] _ in
-            loupe.showHistogram.toggle()
+            loupe.toggleHistogram()
         }
-        commands.register("info.fieldNext", isAvailable: { [unowned self] in loupe.showExif }) { [unowned self] _ in
+        commands.register("info.inspector", isOn: { [unowned self] in showInspector }) { [unowned self] _ in
+            setInspector(!showInspector)
+        }
+        commands.register("info.inspectorFocus", isAvailable: { [unowned self] in showInspector && !chromeHidden }) { [unowned self] _ in
+            inspectorFocusRequest += 1
+        }
+        commands.register("info.fieldNext", isAvailable: { [unowned self] in loupe.showExif && !inspectorHasFocus }) { [unowned self] _ in
             loupe.moveExifFocus(1)
         }
-        commands.register("info.fieldPrevious", isAvailable: { [unowned self] in loupe.showExif }) { [unowned self] _ in
+        commands.register("info.fieldPrevious", isAvailable: { [unowned self] in loupe.showExif && !inspectorHasFocus }) { [unowned self] _ in
             loupe.moveExifFocus(-1)
         }
-        commands.register("info.copy", isAvailable: { [unowned self] in loupe.showExif && loupe.exif != nil }) { [unowned self] _ in
-            loupe.copyExif()
+        commands.register("info.copy", isAvailable: { [unowned self] in inspectorValue != nil || (loupe.showExif && loupe.exif != nil) }) { [unowned self] _ in
+            if let inspectorValue { copyToPasteboard(inspectorValue) } else { loupe.copyExif() }
         }
         commands.register("info.maps", isAvailable: { [unowned self] in loupe.exif?.gps != nil }) { [unowned self] _ in
             loupe.showInMaps()
@@ -112,6 +126,7 @@ final class AppModel {
                           title: { [unowned self] in folder.redoName.map { "Redo \($0)" } ?? "Redo" }) { [unowned self] _ in
             loupe.redo(folder: folder)
         }
+        commands.inspectorHasFocus = { [unowned self] in inspectorHasFocus }
         commands.start()
         // Decisions are written as they are made; this waits for the last ones to land before the process exits.
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [folder] _ in
@@ -119,6 +134,17 @@ final class AppModel {
         }
         // Developer hook, like OXYS_REPORT_LAUNCH: open a folder at launch for scripted checks.
         if let path = ProcessInfo.processInfo.environment["OXYS_OPEN"] { open(URL(fileURLWithPath: path)) }
+    }
+
+    func setInspector(_ on: Bool) {
+        showInspector = on
+        UserDefaults.standard.set(on, forKey: "showInspector")
+        if on { inspectorFocusRequest += 1 }
+    }
+
+    private func copyToPasteboard(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 
     func setChromeHidden(_ hidden: Bool) {

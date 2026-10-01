@@ -23,15 +23,51 @@ final class LoupeController {
 
     /// EXIF of the photo on screen (M-16), formatted; nil while it is being read and for a file without any.
     private(set) var exif: ExifInfo?
-    /// The EXIF panel's visibility, remembered across launches. M-18's `I` cycle absorbs it.
-    var showExif = UserDefaults.standard.object(forKey: "showExif") as? Bool ?? false {
-        didSet { UserDefaults.standard.set(showExif, forKey: "showExif") }
+    /// How much sits on the image (M-18): `I` steps through the levels. Remembered across launches.
+    enum InfoLevel: Int, CaseIterable, Comparable {
+        case off, name, exif, histogram
+        static func < (a: Self, b: Self) -> Bool { a.rawValue < b.rawValue }
+        var next: Self { Self(rawValue: rawValue + 1) ?? .off }
+        var title: String {
+            switch self {
+            case .off: "Off"
+            case .name: "Filename"
+            case .exif: "EXIF"
+            case .histogram: "Histogram"
+            }
+        }
+        var spoken: String {
+            switch self {
+            case .off: "Info off"
+            case .name: "Filename and rating"
+            case .exif: "Filename, rating and EXIF"
+            case .histogram: "Filename, rating, EXIF and histogram"
+            }
+        }
+    }
+    private(set) var infoLevel = InfoLevel(rawValue: UserDefaults.standard.object(forKey: "infoLevel") as? Int ?? 1) ?? .name {
+        didSet { UserDefaults.standard.set(infoLevel.rawValue, forKey: "infoLevel") }
+    }
+    var showExif: Bool { infoLevel >= .exif }
+    var showInfoStrip: Bool { infoLevel != .off }
+
+    func cycleInfo() {
+        infoLevel = infoLevel.next
+        // The last level adds the histogram; stepping on to Off or back to the first level takes it away.
+        showHistogram = infoLevel == .histogram || (showHistogram && infoLevel >= .exif)
+        announce(infoLevel.spoken)
+    }
+
+    /// `⇧I`, independent of the level. Turning it on while info is off brings up the strip too.
+    func toggleHistogram() {
+        showHistogram.toggle()
+        if showHistogram, infoLevel == .off { infoLevel = .name }
     }
     /// Label of the focused value, set by `↑`/`↓` or a click; `⌘C` copies it.
     var focusedExifField: String?
     /// Histogram of the frame on screen (M-17); nil while a stand-in or no frame is shown.
     private(set) var histogram: Histogram?
-    /// `⇧I`; remembered across launches. M-18's cycle and the inspector reuse the same view.
+    /// Whether the histogram is on the image; remembered across launches. The inspector reuses the same view.
     var showHistogram = UserDefaults.standard.object(forKey: "showHistogram") as? Bool ?? false {
         didSet { UserDefaults.standard.set(showHistogram, forKey: "showHistogram") }
     }
@@ -241,6 +277,13 @@ final class LoupeController {
             guard let self, shown?.url == url else { return }
             exif = info
         }
+    }
+
+    /// EXIF of any photo, for the inspector when Grid is in front (M-18). Shares the cache with the Loupe panel.
+    func exifInfo(for url: URL) async -> ExifInfo? {
+        if let hit = exifCache.cached(url) { return hit }
+        let cache = exifCache
+        return await Task.detached(priority: .userInitiated) { cache.info(for: url) }.value
     }
 
     /// Reads the EXIF of the photos the prefetch is about to load, so stepping to them has the values ready.
