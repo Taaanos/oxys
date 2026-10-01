@@ -55,11 +55,23 @@ final class AppModel {
         }
         commands.register("grid.smaller") { [unowned self] _ in grid.resize(by: -1) }
         commands.register("grid.larger") { [unowned self] _ in grid.resize(by: 1) }
-        commands.register("zoom.toggle", isOn: { [unowned self] in loupe.zoomInfo?.mode == .actual }) { [unowned self] _ in
+        commands.register("zoom.toggle", isOn: { [unowned self] in loupe.zoomInfo?.isActualSize == true }) { [unowned self] _ in
             loupe.toggleZoom()
         }
         commands.register("zoom.actual") { [unowned self] _ in loupe.setZoom(.actual) }
         commands.register("zoom.fit") { [unowned self] _ in loupe.setZoom(.fit) }
+        commands.register("zoom.in") { [unowned self] _ in loupe.stepZoom(.in) }
+        commands.register("zoom.out") { [unowned self] _ in loupe.stepZoom(.out) }
+        commands.register("zoom.sticky", isOn: { [unowned self] in loupe.stickyZoom }) { [unowned self] _ in
+            loupe.stickyZoom.toggle()
+        }
+        let pans: [(String, PanDirection, Bool)] = [
+            ("pan.left", .left, false), ("pan.right", .right, false), ("pan.up", .up, false), ("pan.down", .down, false),
+            ("pan.pageLeft", .left, true), ("pan.pageRight", .right, true), ("pan.pageUp", .up, true), ("pan.pageDown", .down, true),
+        ]
+        for (id, direction, page) in pans {
+            commands.register(CommandID(rawValue: id)) { [unowned self] _ in loupe.pan(direction, page: page) }
+        }
         let cullActions: [(String, CullAction)] = [
             ("cull.rate.0", .setRating(0)), ("cull.rate.1", .setRating(1)), ("cull.rate.2", .setRating(2)),
             ("cull.rate.3", .setRating(3)), ("cull.rate.4", .setRating(4)), ("cull.rate.5", .setRating(5)),

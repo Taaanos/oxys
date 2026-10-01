@@ -69,7 +69,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-12 | Grid view | M-04, M-06 | done (60 fps scroll in Instruments, badge-in-one-frame as a number and VoiceOver pending) |
 | M-13 | Modes and window chrome | M-12 | built (keys, toolbar and `⇥` not checked in the running app) |
 | M-14 | Zoom: Fit and 1:1 | M-03, F-05 | built, needs visual check |
-| M-15 | Zoom steps, panning and sticky zoom | M-14 | todo |
+| M-15 | Zoom steps, panning and sticky zoom | M-14 | done |
 | M-16 | EXIF | M-01 | todo |
 | M-17 | Histogram | M-03 | todo |
 | M-18 | Info overlay and inspector | M-16, M-17 | todo |
@@ -846,7 +846,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Keys: `view.loupe` is `E`, `Return`, `Space` (Grid, and Compare once it exists); `view.grid` is `G`, `Esc` (Loupe, Compare). `Esc` and `G` in Grid do nothing. G-13 was already in the router: in a text field the first `Esc` returns focus to the canvas, the next goes to Grid. `view.chrome` (`⇥`, title "Hide Toolbar" / "Show Toolbar") works in every mode.
 - Chrome: SwiftUI `toolbar(id:)` makes the toolbar customizable; `⇥` flips `toolbarVisibility`. While hidden, a local `mouseMoved` monitor shows it again when the pointer is within 6 pt of the content top. There are no panels yet; M-18 and M-20 hang off the same `chromeHidden` flag. Full screen and the title/subtitle (folder name, photo count) were already standard.
 - Loupe's screen is kept alive behind Grid (hidden, not rebuilt) and only loads while it is in front. Rebuilding its Metal canvas on every Grid-to-Loupe entry sometimes left the canvas blank; eight enter/leave cycles in a script now end with the photo showing, 4 runs of 4. Leaving Loupe blanks the canvas so the next entry never flashes the old photo.
-- `−` / `=` stay Grid-only until M-15 gives them a Loupe meaning.
+- `−` / `=` stay Grid-only until M-15 gives them a Loupe meaning (done: they step the zoom in Loupe).
 
 **Checked**
 - Unit tests: `Commands` 40 (new: every mode-diagram transition except Compare's entries, `⇥` in every mode). Release build clean, arm64.
@@ -914,6 +914,20 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 1. Pinch: snap to the steps, or continuous? *Proposed:* continuous; `Z`, `=` and `−` snap.
 2. How far does `⌥`-arrow move? *Proposed:* a quarter of the view; `⌥⇧`-arrow moves a full view.
 3. The next frame has a different orientation (portrait after landscape): keep the normalized center? *Proposed:* yes.
+
+**Built (decisions and results)**
+- All three open questions **decided** as proposed: pinch and `⌥`-scroll are continuous (clamped between Fit and 400%, at or under Fit it is Fit), `=`/`−`/`Z` snap; `⌥`-arrow pans a quarter of the view and `⌥⇧`-arrow a whole view; the normalized center carries over to a frame of another orientation.
+- `ZoomMode` became `ZoomLevel` (`.fit` or `.scale(s)`, physical pixels per image pixel). `ZoomSteps.next` (pure, tested): the stops are Fit and every step of 25, 50, 100, 200, 400% above Fit's own scale (so no 25% on a photo whose Fit is 31%, and a small image that Fit upscales gets only the steps above that). Between stops (after a pinch) a step goes to the nearest stop that way. `ZoomGeometry.panned` (pure, tested) moves the content by a delta from the rect actually on screen, so pushing against an edge does not wind up.
+- Commands (Loupe only, View menu): `zoom.in` (`=`, `⌘=`, `⌘⇧=`, i.e. `⌘+`), `zoom.out` (`−`, `⌘−`), `zoom.sticky` (`⌥Z`, a checked toggle), `pan.*` (`⌥`-arrows, repeating) and `pan.page*` (`⌥⇧`-arrows). In Grid `⌘+`/`⌘−` resize thumbnails like the bare keys, so the shortcut means "bigger/smaller" in both modes. Bare arrows still navigate.
+- Mouse and trackpad: two-finger scroll pans, `⌥`-scroll and pinch zoom about the pointer, a drag pans once zoomed in (open hand cursor, closed while dragging). Holding Space shows the hand cursor; since a drag always pans, Space adds nothing else. No input here touches a decision or the current photo.
+- `Z` out of a zoom that was not 1:1 remembers it: the next `Z` (or the end of a hold) returns to that zoom, not 1:1.
+- Sticky zoom is on by default, persisted (`stickyZoom` default), and keeps the level and spot across photos, across an unreadable photo, and across Grid and back. Off, a different photo opens at Fit. A new folder resets to Fit.
+- A thumbnail stand-in is smaller than its preview, so at a sticky 1:1 it would flash tiny. The view scales the stand-in's zoom geometry to the last preview's long side (`zoomSizeFactor`), so it covers the same area, and the preview replaces it at the same spot.
+- Info strip: Fit shows "Fit n%", 1:1 shows "1:1", anything else "n%". The RAW preview warning shows at any zoom past Fit.
+
+**Checked**
+- Unit tests: `Canvas` 19 (new: step order and ends, between-stop steps, small-image steps, pan reaches all four edges, no wind-up, pan by delta, an axis that fits stays put, normalized center in another orientation), `Commands` 43 (new: the zoom, pan and sticky keys in Loupe and Grid; `−` in Loupe now zooms out). Release build clean, arm64.
+- **Not checked** (this session cannot send keys, gestures or see the window): that each input works in the live app, that `⌥`-arrows reach every edge on a real photo, and that stepping a burst at 1:1 keeps the spot.
 
 ### M-16 · EXIF
 

@@ -179,7 +179,7 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(press(.g, .grid, at: 6).isEmpty)
     #expect(press(.minus, .grid, at: 7, character: "-") == [.perform("grid.smaller")])
     #expect(press(.equal, .grid, at: 8, character: "=") == [.perform("grid.larger")])
-    #expect(press(.minus, .loupe, at: 9, character: "-").isEmpty)
+    #expect(press(.minus, .loupe, at: 9, character: "-") == [.perform("zoom.out")])  // M-15 gives it Loupe's meaning
 }
 
 @Test func menuShowsTheBareKeyNotTheShiftTwin() {
@@ -239,4 +239,29 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(router.handle(KeyInput(keyCode: one, modifiers: [.command], timestamp: 0), mode: .loupe, focus: .canvas).actions == [.perform("zoom.actual")])
     #expect(router.handle(KeyInput(keyCode: zero, modifiers: [.command], timestamp: 1), mode: .loupe, focus: .canvas).actions == [.perform("zoom.fit")])
     #expect(router.handle(KeyInput(keyCode: one, timestamp: 2), mode: .loupe, focus: .canvas).actions == [.perform("cull.rate.1")])
+}
+
+@Test func zoomStepsPanAndStickyKeys() {
+    var router = KeyRouter(keymap: resolve(nil).keymap)
+    func actions(_ key: PhysicalKey, _ mods: KeyModifiers, mode: ViewMode = .loupe, t: Double) -> [RoutedAction] {
+        let input = KeyInput(keyCode: key.rawValue, modifiers: mods, timestamp: t, character: key == .equal ? "=" : key == .minus ? "-" : nil)
+        defer { _ = router.handle(KeyInput(keyCode: key.rawValue, modifiers: mods, isDown: false, timestamp: t + 0.01), mode: mode, focus: .canvas) }
+        return router.handle(input, mode: mode, focus: .canvas).actions
+    }
+    #expect(actions(.equal, [], t: 0) == [.perform("zoom.in")])
+    #expect(actions(.minus, [], t: 1) == [.perform("zoom.out")])
+    #expect(actions(.equal, [.command], t: 2) == [.perform("zoom.in")])
+    #expect(actions(.equal, [.command, .shift], t: 3) == [.perform("zoom.in")])
+    #expect(actions(.minus, [.command], t: 4) == [.perform("zoom.out")])
+    // Grid keeps the same keys for its thumbnails.
+    #expect(actions(.equal, [], mode: .grid, t: 5) == [.perform("grid.larger")])
+    #expect(actions(.equal, [.command], mode: .grid, t: 6) == [.perform("grid.larger")])
+    // ⌥-arrows pan, bare arrows still navigate.
+    #expect(actions(.leftArrow, [.option], t: 7) == [.perform("pan.left")])
+    #expect(actions(.downArrow, [.option, .shift], t: 8) == [.perform("pan.pageDown")])
+    #expect(actions(.rightArrow, [], t: 9) == [.perform("nav.next")])
+    #expect(actions(.leftArrow, [.option], mode: .grid, t: 10).isEmpty)
+    // ⌥Z is sticky zoom, not Z's toggle.
+    #expect(actions(.z, [.option], t: 11) == [.perform("zoom.sticky")])
+    #expect(actions(.z, [], t: 12) == [.perform("zoom.toggle")])
 }

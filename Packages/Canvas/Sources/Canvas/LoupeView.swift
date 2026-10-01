@@ -3,6 +3,8 @@ import Diagnostics
 import Metal
 import QuartzCore
 
+public enum PanDirection: Sendable { case left, right, up, down }
+
 /// One frame at Fit on a neutral dark gray, drawn by Metal. It draws only when something changes (a new image,
 /// a resize, a change of display), never on a timer, so an idle window costs no CPU.
 @MainActor
@@ -15,12 +17,23 @@ public final class LoupeView: NSView {
     private var pendingToken: Perf.Token?
     private var lastDrawableSize = CGSize.zero
 
-    /// Fit or 1:1, and the image point (0...1) at the middle of the view while zoomed in.
-    public private(set) var zoom = ZoomMode.fit
+    /// Fit or a scale, and the image point (0...1) at the middle of the view while zoomed in.
+    public private(set) var zoom = ZoomLevel.fit
     private var zoomCenter = CGPoint(x: 0.5, y: 0.5)
     private var lastInfo: ZoomInfo?
+    /// Where Z goes back to after leaving a zoom that was not 1:1 (so tap or hold of Z round-trips).
+    private var returnScale: CGFloat?
     /// Called when the zoom level the info strip shows changes.
     public var onZoomChange: ((ZoomInfo?) -> Void)?
+    /// Sticky zoom (M-15): a different photo keeps the zoom level and the spot. Off, it opens at Fit.
+    public var stickyZoom = true
+    /// Scales the image's size for zoom geometry. A thumbnail standing in for a preview is smaller than the
+    /// preview it stands for; this makes it cover the same area at the same zoom.
+    private var sizeFactor: CGFloat = 1
+    private var spaceHeld = false {
+        didSet { if spaceHeld != oldValue { window?.invalidateCursorRects(for: self) } }
+    }
+    private var dragging = false
 
     private var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
 
@@ -46,50 +59,141 @@ public final class LoupeView: NSView {
     public override var acceptsFirstResponder: Bool { true }
     public override var isOpaque: Bool { true }
 
-    /// Shows `image`, or the empty canvas for nil. `keyToFrame` ends when the frame is on screen. A different
-    /// photo opens at Fit; the same photo's better frame (`sameZoom`) keeps the zoom and the spot.
-    public func show(_ image: PreparedImage?, keyToFrame token: Perf.Token? = nil, sameZoom: Bool = false) {
+    /// Shows `image`, or the empty canvas for nil. `keyToFrame` ends when the frame is on screen. The same
+    /// photo's better frame (`sameZoom`) keeps the zoom and the spot, and so does any frame while sticky zoom
+    /// is on; otherwise a photo opens at Fit. `zoomSizeFactor` is for a stand-in (see `sizeFactor`).
+    public func show(_ image: PreparedImage?, keyToFrame token: Perf.Token? = nil, sameZoom: Bool = false,
+                     zoomSizeFactor: CGFloat = 1) {
         if let stale = pendingToken { Perf.end(stale) }
         pendingToken = token
         self.image = image
-        if !sameZoom || image == nil { resetZoom() }
+        sizeFactor = zoomSizeFactor
+        if !stickyZoom && !(sameZoom && image != nil) { resetZoom() }
         render()
     }
 
-    private func resetZoom() {
+    /// Back to Fit, for a new folder.
+    public func resetZoom() {
         zoom = .fit
         zoomCenter = CGPoint(x: 0.5, y: 0.5)
-    }
-
-    /// Switches to `mode` at once, scaling the frame on screen. Zooming in keeps the image point under the
-    /// pointer there, or zooms about the middle when the pointer is not over the image. `token` (a `zoom`
-    /// interval) ends when the result is presented.
-    public func setZoom(_ mode: ZoomMode, token: Perf.Token? = nil) {
-        guard let image, window != nil, mode != zoom else {
-            if let token { Perf.end(token) }
-            return
-        }
-        if let stale = pendingToken { Perf.end(stale) }
-        pendingToken = token
-        let size = drawableSize
-        if mode == .actual {
-            let imageSize = image.displaySize
-            let old = currentRect(image: image, size: size)
-            var anchor: CGPoint?
-            if let p = pointerInPixels(), old.contains(p) { anchor = p }
-            let u = anchor.map { CGPoint(x: ($0.x - old.minX) / old.width, y: ($0.y - old.minY) / old.height) }
-                ?? CGPoint(x: 0.5, y: 0.5)
-            let scale = oneToOneScale
-            let point = anchor ?? CGPoint(x: size.width / 2, y: size.height / 2)
-            zoomCenter = ZoomGeometry.center(keeping: u, under: point, imageSize: imageSize, viewSize: size, scale: scale)
-        } else {
-            zoomCenter = CGPoint(x: 0.5, y: 0.5)
-        }
-        zoom = mode
+        returnScale = nil
+        window?.invalidateCursorRects(for: self)
         render()
     }
 
-    public func toggleZoom(token: Perf.Token? = nil) { setZoom(zoom == .fit ? .actual : .fit, token: token) }
+    private func zoomSize(of image: PreparedImage) -> CGSize {
+        CGSize(width: image.displaySize.width * sizeFactor, height: image.displaySize.height * sizeFactor)
+    }
+
+    /// Drawable pixels per image pixel on screen now.
+    private func currentScale(image: PreparedImage, size: CGSize) -> CGFloat {
+        let imageSize = zoomSize(of: image)
+        switch zoom {
+        case .fit: return ZoomGeometry.fitScale(imageSize: imageSize, viewSize: size)
+        case .scale(let s): return s * oneToOneScale
+        }
+    }
+
+    /// Switches to `level` at once, scaling the frame on screen. Zooming keeps the image point under the
+    /// pointer there, or about the middle of the view when the pointer is not over the image. `token` (a `zoom`
+    /// interval) ends when the result is presented.
+    public func setZoom(_ level: ZoomLevel, token: Perf.Token? = nil) {
+        if let image, window != nil, level != zoom {
+            if let stale = pendingToken { Perf.end(stale) }
+            pendingToken = token
+            returnScale = nil
+            change(to: level, image: image)
+            render()
+        } else if let token {
+            Perf.end(token)
+        }
+    }
+
+    /// One stop of `=` or `−`.
+    public func stepZoom(_ direction: ZoomDirection, token: Perf.Token? = nil) {
+        guard let image, window != nil else { if let token { Perf.end(token) }; return }
+        let size = drawableSize
+        let fit = ZoomGeometry.fitScale(imageSize: zoomSize(of: image), viewSize: size) / oneToOneScale
+        let current = currentScale(image: image, size: size) / oneToOneScale
+        if let level = ZoomSteps.next(from: current, fit: fit, direction: direction) {
+            setZoom(level, token: token)
+        } else if let token {
+            Perf.end(token)
+        }
+    }
+
+    /// Z: Fit when zoomed, otherwise 1:1 (or the zoom Z last left, if that was not 1:1).
+    public func toggleZoom(token: Perf.Token? = nil) {
+        if case .scale(let s) = zoom {
+            setZoom(.fit, token: token)
+            if s != 1 { returnScale = s }
+        } else {
+            let back = returnScale
+            setZoom(back.map(ZoomLevel.scale) ?? .actual, token: token)
+        }
+    }
+
+    /// Changes the level, keeping the image point under the pointer (or the middle of the view).
+    private func change(to level: ZoomLevel, image: PreparedImage) {
+        let size = drawableSize
+        let imageSize = zoomSize(of: image)
+        let old = currentRect(image: image, size: size)
+        var point = CGPoint(x: size.width / 2, y: size.height / 2)
+        if let p = pointerInPixels(), old.contains(p) { point = p }
+        let u = old.width > 0 && old.height > 0
+            ? CGPoint(x: (point.x - old.minX) / old.width, y: (point.y - old.minY) / old.height)
+            : CGPoint(x: 0.5, y: 0.5)
+        zoom = level
+        if level == .fit {
+            zoomCenter = CGPoint(x: 0.5, y: 0.5)
+        } else {
+            zoomCenter = ZoomGeometry.center(keeping: u, under: point, imageSize: imageSize, viewSize: size,
+                                             scale: currentScale(image: image, size: size))
+        }
+        window?.invalidateCursorRects(for: self)
+    }
+
+    /// A continuous zoom (pinch, `⌥`-scroll) by `factor` about the pointer. At or under Fit it is Fit.
+    public func zoom(by factor: CGFloat) {
+        guard let image, window != nil, factor > 0, factor.isFinite else { return }
+        let size = drawableSize
+        let one = oneToOneScale
+        let fit = ZoomGeometry.fitScale(imageSize: zoomSize(of: image), viewSize: size)
+        let target = min(max(currentScale(image: image, size: size) * factor, fit), max(ZoomSteps.maxScale * one, fit))
+        let level: ZoomLevel = target <= fit * 1.0001 ? .fit : .scale(target / one)
+        guard level != zoom else { return }
+        returnScale = nil
+        change(to: level, image: image)
+        render()
+    }
+
+    /// Moves the picture by `delta` points (the way the content moves), stopping at the image edges.
+    public func pan(byPoints delta: CGPoint) {
+        let scale = window?.backingScaleFactor ?? 1
+        pan(byPixels: CGPoint(x: delta.x * scale, y: delta.y * scale))
+    }
+
+    private func pan(byPixels delta: CGPoint) {
+        guard let image, window != nil, zoom != .fit else { return }
+        let size = drawableSize
+        zoomCenter = ZoomGeometry.panned(center: zoomCenter, by: delta, imageSize: zoomSize(of: image), viewSize: size,
+                                         scale: currentScale(image: image, size: size))
+        render()
+    }
+
+    /// `⌥`-arrows: the view moves a quarter of its size over the photo, or a whole view with `page`.
+    public func pan(_ direction: PanDirection, page: Bool = false) {
+        let size = drawableSize
+        let fraction: CGFloat = page ? 1 : 0.25
+        // Looking left means the picture moves right.
+        let (dx, dy): (CGFloat, CGFloat) = switch direction {
+        case .left: (size.width * fraction, 0)
+        case .right: (-size.width * fraction, 0)
+        case .up: (0, size.height * fraction)
+        case .down: (0, -size.height * fraction)
+        }
+        pan(byPixels: CGPoint(x: dx, y: dy))
+    }
 
     /// Drawable pixels per image pixel at 1:1 on the display the window is on.
     private var oneToOneScale: CGFloat {
@@ -122,18 +226,19 @@ public final class LoupeView: NSView {
     }
 
     private func currentRect(image: PreparedImage, size: CGSize) -> CGRect {
-        switch zoom {
-        case .fit: FitGeometry.fitRect(imageSize: image.displaySize, viewSize: size)
-        case .actual:
-            ZoomGeometry.rect(imageSize: image.displaySize, viewSize: size, scale: oneToOneScale, center: zoomCenter)
+        let imageSize = zoomSize(of: image)
+        return switch zoom {
+        case .fit: FitGeometry.fitRect(imageSize: imageSize, viewSize: size)
+        case .scale(let s):
+            ZoomGeometry.rect(imageSize: imageSize, viewSize: size, scale: s * oneToOneScale, center: zoomCenter)
         }
     }
 
     private func publishZoom(rect: CGRect?) {
         var info: ZoomInfo?
-        if let image, let rect, image.displaySize.width > 0 {
-            let percent = Int((rect.width / image.displaySize.width / oneToOneScale * 100).rounded())
-            info = ZoomInfo(mode: zoom, percent: percent)
+        if let image, let rect, image.displaySize.width > 0, sizeFactor > 0 {
+            let percent = Int((rect.width / zoomSize(of: image).width / oneToOneScale * 100).rounded())
+            info = ZoomInfo(level: zoom, percent: percent)
         }
         guard info != lastInfo else { return }
         lastInfo = info
@@ -166,6 +271,61 @@ public final class LoupeView: NSView {
         super.viewDidMoveToWindow()
         window?.makeFirstResponder(self)
         render()
+    }
+
+    // MARK: pointer and keys
+
+    /// Two-finger scroll pans; with `⌥` it zooms about the pointer. A mouse wheel's notches are scaled up.
+    public override func scrollWheel(with event: NSEvent) {
+        let precise = event.hasPreciseScrollingDeltas
+        let unit: CGFloat = precise ? 1 : 10
+        if event.modifierFlags.contains(.option) {
+            let dy = event.scrollingDeltaY * unit
+            if dy != 0 { zoom(by: exp(dy * 0.01)) }
+        } else {
+            pan(byPoints: CGPoint(x: event.scrollingDeltaX * unit, y: event.scrollingDeltaY * unit))
+        }
+    }
+
+    public override func magnify(with event: NSEvent) { zoom(by: 1 + event.magnification) }
+
+    public override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        dragging = zoom != .fit
+        if dragging { NSCursor.closedHand.push() }
+    }
+
+    public override func mouseDragged(with event: NSEvent) {
+        guard dragging else { return }
+        pan(byPoints: CGPoint(x: event.deltaX, y: event.deltaY))
+    }
+
+    public override func mouseUp(with event: NSEvent) { endDrag() }
+
+    private func endDrag() {
+        guard dragging else { return }
+        dragging = false
+        NSCursor.pop()
+    }
+
+    public override func resetCursorRects() {
+        if zoom != .fit || spaceHeld { addCursorRect(bounds, cursor: .openHand) }
+    }
+
+    /// Holding Space shows the hand: Space and drag pans (a drag always does once zoomed in; Space says so).
+    /// Every other key goes on to the responder chain as before.
+    public override func keyDown(with event: NSEvent) {
+        if event.keyCode == 49 { if !event.isARepeat { spaceHeld = true } } else { super.keyDown(with: event) }
+    }
+
+    public override func keyUp(with event: NSEvent) {
+        if event.keyCode == 49 { spaceHeld = false } else { super.keyUp(with: event) }
+    }
+
+    public override func resignFirstResponder() -> Bool {
+        spaceHeld = false
+        endDrag()
+        return super.resignFirstResponder()
     }
 
     // MARK: drawing
@@ -202,7 +362,7 @@ public final class LoupeView: NSView {
             encoder.setRenderPipelineState(gpu.pipeline)
             encoder.setVertexBytes(&quad, length: MemoryLayout<Quad>.stride, index: 0)
             encoder.setFragmentTexture(image.texture, index: 0)
-            let crisp = zoom == .actual && rect.width >= image.displaySize.width
+            let crisp = zoom != .fit && rect.width >= image.displaySize.width
             encoder.setFragmentSamplerState(crisp ? gpu.nearestSampler : gpu.sampler, index: 0)
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         }

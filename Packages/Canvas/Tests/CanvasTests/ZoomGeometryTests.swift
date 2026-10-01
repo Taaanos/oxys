@@ -50,8 +50,79 @@ import Testing
     }
 
     @Test func centerRoundTrips() {
-        let c = CGPoint(x: 0.3, y: 0.6)
+        let c = CGPoint(x: 0.45, y: 0.6)
         let rect = ZoomGeometry.rect(imageSize: image, viewSize: view, scale: 1, center: c)
+        let back = ZoomGeometry.center(of: rect, viewSize: view)
+        #expect(abs(back.x - c.x) < 0.001 && abs(back.y - c.y) < 0.001)
+    }
+
+    @Test func stepsGoFitThenEveryStopAboveFit() {
+        let fit: CGFloat = 0.31
+        var level = ZoomLevel.fit
+        var seen: [ZoomLevel] = [level]
+        var current = fit
+        while let next = ZoomSteps.next(from: current, fit: fit, direction: .in) {
+            seen.append(next)
+            current = if case .scale(let s) = next { s } else { fit }
+        }
+        #expect(seen == [.fit, .scale(0.5), .scale(1), .scale(2), .scale(4)])
+        level = .scale(0.5)
+        #expect(ZoomSteps.next(from: 0.5, fit: fit, direction: .out) == .fit)
+        #expect(ZoomSteps.next(from: fit, fit: fit, direction: .out) == nil)
+        _ = level
+    }
+
+    @Test func stepsFromBetweenStopsGoToTheNearestInThatDirection() {
+        #expect(ZoomSteps.next(from: 1.4, fit: 0.2, direction: .in) == .scale(2))
+        #expect(ZoomSteps.next(from: 1.4, fit: 0.2, direction: .out) == .scale(1))
+        #expect(ZoomSteps.next(from: 0.1, fit: 0.2, direction: .in) == .fit)
+        #expect(ZoomSteps.next(from: 4, fit: 0.2, direction: .in) == nil)
+    }
+
+    @Test func aSmallImageHasNoStepsBelowItsFitScale() {
+        // Fit upscales a small image to 3x: only 4x is above it.
+        #expect(ZoomSteps.next(from: 3, fit: 3, direction: .in) == .scale(4))
+        #expect(ZoomSteps.next(from: 4, fit: 3, direction: .out) == .fit)
+    }
+
+    @Test func panStopsAtEveryEdge() {
+        var center = CGPoint(x: 0.5, y: 0.5)
+        for _ in 0..<20 {
+            center = ZoomGeometry.panned(center: center, by: CGPoint(x: 700, y: 500), imageSize: image, viewSize: view, scale: 1)
+        }
+        var rect = ZoomGeometry.rect(imageSize: image, viewSize: view, scale: 1, center: center)
+        #expect(rect.minX == 0 && rect.minY == 0)   // looked as far left and up as possible
+        for _ in 0..<20 {
+            center = ZoomGeometry.panned(center: center, by: CGPoint(x: -700, y: -500), imageSize: image, viewSize: view, scale: 1)
+        }
+        rect = ZoomGeometry.rect(imageSize: image, viewSize: view, scale: 1, center: center)
+        #expect(rect.maxX == view.width && rect.maxY == view.height)
+    }
+
+    @Test func panDoesNotWindUpPastAnEdge() {
+        // Pushing against the left edge, then back by one step, moves at once.
+        var center = CGPoint(x: 0.5, y: 0.5)
+        for _ in 0..<50 {
+            center = ZoomGeometry.panned(center: center, by: CGPoint(x: 700, y: 0), imageSize: image, viewSize: view, scale: 1)
+        }
+        let back = ZoomGeometry.panned(center: center, by: CGPoint(x: -100, y: 0), imageSize: image, viewSize: view, scale: 1)
+        let rect = ZoomGeometry.rect(imageSize: image, viewSize: view, scale: 1, center: back)
+        #expect(rect.minX == -100)
+    }
+
+    @Test func panMovesByTheDeltaAndLeavesAnAxisThatFits() {
+        let wide = CGSize(width: 6000, height: 1000)
+        let c = ZoomGeometry.panned(center: CGPoint(x: 0.5, y: 0.5), by: CGPoint(x: -300, y: 200), imageSize: wide, viewSize: view, scale: 1)
+        let rect = ZoomGeometry.rect(imageSize: wide, viewSize: view, scale: 1, center: c)
+        #expect(abs(rect.minX - (-1500 - 300)) <= 1)
+        #expect(rect.minY == 500)   // 1000 px tall in a 2000 px view stays centered
+    }
+
+    @Test func stickyCenterSurvivesAnotherOrientation() {
+        // The same normalized center on a portrait frame lands on the same relative spot.
+        let c = CGPoint(x: 0.45, y: 0.6)
+        let portrait = CGSize(width: 4000, height: 6000)
+        let rect = ZoomGeometry.rect(imageSize: portrait, viewSize: view, scale: 1, center: c)
         let back = ZoomGeometry.center(of: rect, viewSize: view)
         #expect(abs(back.x - c.x) < 0.001 && abs(back.y - c.y) < 0.001)
     }

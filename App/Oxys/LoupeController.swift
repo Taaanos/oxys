@@ -20,6 +20,16 @@ final class LoupeController {
     /// Zoom level of the frame on screen, for the info strip; nil when there is no frame.
     private(set) var zoomInfo: ZoomInfo?
 
+    /// Sticky zoom (M-15): zoom and spot carry over to the next photo. On by default; `⌥Z` toggles it.
+    var stickyZoom = UserDefaults.standard.object(forKey: "stickyZoom") as? Bool ?? true {
+        didSet {
+            canvas?.stickyZoom = stickyZoom
+            UserDefaults.standard.set(stickyZoom, forKey: "stickyZoom")
+        }
+    }
+    /// Longer side of the last full preview, to size a thumbnail stand-in's zoom (see `LoupeView.show`).
+    @ObservationIgnored private var lastPreviewLongSide: CGFloat?
+
     /// The confirmation over the canvas after a cull key; nil when it has timed out.
     struct Badge: Equatable {
         let id: Int
@@ -37,6 +47,7 @@ final class LoupeController {
     @ObservationIgnored weak var canvas: LoupeView? {
         didSet {
             canvas?.onZoomChange = { [weak self] info in self?.zoomInfo = info }
+            canvas?.stickyZoom = stickyZoom
             guard let canvas, canvas !== oldValue, let last = lastRequest else { return }
             Task { await load(last.photo, in: last.folder) }
         }
@@ -97,6 +108,8 @@ final class LoupeController {
     /// A new folder: drop the frames of the old one.
     func reset() {
         lastIndex = nil
+        lastPreviewLongSide = nil
+        canvas?.resetZoom()
         let pipeline = pipeline
         Task { await pipeline.reset() }
     }
@@ -134,7 +147,9 @@ final class LoupeController {
                 shownPixels = nil
                 failure = nil
                 canvas.setAccessibilityLabel(photo.name)
-                canvas.show(stand, sameZoom: same)
+                let long = max(stand.displaySize.width, stand.displaySize.height)
+                let factor = lastPreviewLongSide.map { long > 0 ? $0 / long : 1 } ?? 1
+                canvas.show(stand, sameZoom: same, zoomSizeFactor: factor)
                 FrameLog.record(cursor: folder.currentURL, displayed: photo.url, kind: "thumbnail")
             }
         }
@@ -155,6 +170,7 @@ final class LoupeController {
         shown = photo
         folder.setPreview(PreviewInfo(pixelWidth: frame.width, pixelHeight: frame.height), for: photo.url)
         shownPixels = (frame.width, frame.height)
+        lastPreviewLongSide = CGFloat(max(frame.width, frame.height))
         failure = nil
         canvas.setAccessibilityLabel("\(photo.name), \(frame.width) by \(frame.height) pixels")
         canvas.show(frame.image, keyToFrame: token, sameZoom: same)
@@ -205,9 +221,19 @@ final class LoupeController {
     // MARK: zoom
 
     /// Zoom commands act on the frame on screen; the `zoom` interval ends when the scaled frame is presented.
-    func setZoom(_ mode: ZoomMode) {
+    func setZoom(_ level: ZoomLevel) {
         guard isActive, let canvas, canvas.window != nil else { return }
-        canvas.setZoom(mode, token: Perf.begin(.zoom))
+        canvas.setZoom(level, token: Perf.begin(.zoom))
+    }
+
+    func stepZoom(_ direction: ZoomDirection) {
+        guard isActive, let canvas, canvas.window != nil else { return }
+        canvas.stepZoom(direction, token: Perf.begin(.zoom))
+    }
+
+    func pan(_ direction: PanDirection, page: Bool) {
+        guard isActive, let canvas, canvas.window != nil else { return }
+        canvas.pan(direction, page: page)
     }
 
     func toggleZoom() {

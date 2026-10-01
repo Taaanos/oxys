@@ -54,13 +54,13 @@ private struct InfoStrip: View {
 
     private var zoomSpoken: String {
         guard let zoom else { return "" }
-        return (zoom.mode == .fit ? ", fit, \(zoom.percent) percent" : ", actual size")
+        return (zoom.level.isFit ? ", fit, \(zoom.percent) percent" : zoom.isActualSize ? ", actual size" : ", zoom \(zoom.percent) percent")
             + (previewShort ? ", preview pixels, fewer than the sensor" : "")
     }
 
     /// 1:1 of an embedded preview is not 1:1 of the sensor; the full truth badge is V-05. Until the sensor size
     /// is known (M-16), any RAW zoomed past Fit carries the flag.
-    private var previewShort: Bool { zoom?.mode == .actual && photo?.format.isRaw == true }
+    private var previewShort: Bool { zoom.map { !$0.level.isFit } == true && photo?.format.isRaw == true }
 
     var body: some View {
         if let photo {
@@ -77,7 +77,7 @@ private struct InfoStrip: View {
                     Text("Preview \(max(pixels.width, pixels.height)) px").foregroundStyle(.secondary)
                 }
                 if let zoom {
-                    Text(zoom.mode == .fit ? "Fit \(zoom.percent)%" : "1:1").foregroundStyle(.secondary)
+                    Text(zoom.level.isFit ? "Fit \(zoom.percent)%" : zoom.isActualSize ? "1:1" : "\(zoom.percent)%").foregroundStyle(.secondary)
                     if previewShort {
                         Label("Preview pixels, fewer than the sensor", systemImage: "exclamationmark.triangle")
                             .foregroundStyle(.orange)

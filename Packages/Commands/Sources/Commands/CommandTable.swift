@@ -60,9 +60,10 @@ public struct CommandTable: Sendable {
         Command("view.grid", "Show Grid", menu: .init(.view, group: 0), modes: [.loupe, .compare], requires: .photos,
                 keys: [Shortcut(.position(.g)), Shortcut(.position(.escape))]),
         Command("grid.smaller", "Smaller Thumbnails", menu: .init(.view, group: 1), modes: grid, requires: .photos, repeats: true,
-                keys: [Shortcut(.character("-"))]),
+                keys: [Shortcut(.character("-")), Shortcut(.position(.minus), [.command])]),
         Command("grid.larger", "Larger Thumbnails", menu: .init(.view, group: 1), modes: grid, requires: .photos, repeats: true,
-                keys: [Shortcut(.character("="))]),
+                keys: [Shortcut(.character("=")), Shortcut(.position(.equal), [.command]),
+                       Shortcut(.position(.equal), [.command, .shift])]),
 
         // Zoom (M-14). `Z` toggles Fit and 1:1, and shows 1:1 only while held; `⌘1` and `⌘0` are explicit.
         Command("zoom.toggle", "Toggle Fit / 1:1", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
@@ -71,6 +72,32 @@ public struct CommandTable: Sendable {
                 keys: [Shortcut(.position(.digit1), [.command])]),
         Command("zoom.fit", "Zoom to Fit", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
                 keys: [Shortcut(.position(.digit0), [.command])]),
+        // Steps and panning (M-15). `=` and `−` step Fit, 25, 50, 100, 200, 400% in Loupe, and `⌘+` and `⌘−` do too
+        // (Grid gives the same keys to its thumbnails). `⌥`-arrows pan a quarter of the view, `⌥⇧` a whole view.
+        // `⌥Z` turns sticky zoom (zoom and spot carry over to the next photo) off and on.
+        Command("zoom.in", "Zoom In", menu: .init(.view, group: 1), modes: loupe, requires: .photos, repeats: true,
+                keys: [Shortcut(.character("=")), Shortcut(.position(.equal), [.command]),
+                       Shortcut(.position(.equal), [.command, .shift])]),
+        Command("zoom.out", "Zoom Out", menu: .init(.view, group: 1), modes: loupe, requires: .photos, repeats: true,
+                keys: [Shortcut(.character("-")), Shortcut(.position(.minus), [.command])]),
+        Command("zoom.sticky", "Keep Zoom Between Photos", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
+                kind: .toggle, keys: [Shortcut(.position(.z), [.option])]),
+        Command("pan.left", "Pan Left", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
+                keys: [Shortcut(.position(.leftArrow), [.option])]),
+        Command("pan.right", "Pan Right", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
+                keys: [Shortcut(.position(.rightArrow), [.option])]),
+        Command("pan.up", "Pan Up", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
+                keys: [Shortcut(.position(.upArrow), [.option])]),
+        Command("pan.down", "Pan Down", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
+                keys: [Shortcut(.position(.downArrow), [.option])]),
+        Command("pan.pageLeft", "Pan Left a View", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
+                keys: [Shortcut(.position(.leftArrow), [.option, .shift])]),
+        Command("pan.pageRight", "Pan Right a View", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
+                keys: [Shortcut(.position(.rightArrow), [.option, .shift])]),
+        Command("pan.pageUp", "Pan Up a View", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
+                keys: [Shortcut(.position(.upArrow), [.option, .shift])]),
+        Command("pan.pageDown", "Pan Down a View", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
+                keys: [Shortcut(.position(.downArrow), [.option, .shift])]),
 
         // `⇥` hides the toolbar and panels; the pointer at the top edge, or `⇥` again, brings them back (M-13).
         Command("view.chrome", "Hide Toolbar", menu: .init(.view, group: 2),
