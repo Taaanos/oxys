@@ -53,7 +53,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | F-03 | Spike: locating embedded previews | F-01 | done (ORF, real RW2 and Nikon maker-note previews open) |
 | F-04 | Spike: XMP interoperability | none | done (ART tested; RawTherapee, `name.ext.xmp` and the preference wording still open; Lightroom deferred to M-25) |
 | F-05 | Spike: keyboard routing | F-01 | done (router and layouts tested; live input-source and menu double-fire check pending, see `docs/spikes/keyboard-routing.md`) |
-| F-06 | Spike: honest RAW decode | F-01 | todo |
+| F-06 | Spike: honest RAW decode | F-01 | done |
 | **Phase 1** | **MVP** | | |
 | M-01 | Open a folder | F-01 | todo |
 | M-02 | Embedded preview reader | F-03, M-01 | todo |
@@ -85,7 +85,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-01 | Maker notes: lens and AF point | M-16, F-03 | todo |
 | V-02 | Develop the RAW on demand | F-06, M-04, M-14 | todo |
 | V-03 | RAW modes and automatic RAW at 1:1 | V-02 | todo |
-| V-04 | LibRaw fallback | F-06, V-02, G-2 | todo |
+| V-04 | LibRaw fallback | F-06, V-02, G-2 | parked |
 | V-05 | Truth badge | V-02 | todo |
 | V-06 | Focus peaking | M-15 | todo |
 | V-07 | Highlight and shadow clipping | M-17 | todo |
@@ -147,7 +147,7 @@ These are questions, plus gaps I found in the PRD while splitting it, that affec
 | ID | Question | Proposed default | Affects |
 | --- | --- | --- | --- |
 | G-1 | Is "Oxys" the product name? It sets the bundle ID, the Application Support folder and the Homebrew cask name. | **Decided:** product name Oxys, bundle ID `dev.oxys.Oxys` as a placeholder. Set the real ID (with the GitHub org) before V-17; changing it later resets users' settings and cache. | F-01, V-17 |
-| G-2 | License (deferred in the PRD). It decides whether LibRaw or GPL code is usable, and it has to be settled before the first third-party code lands. | Decide right after F-03 and F-06, since those two spikes show which libraries we need. | F-03, V-04, V-17 |
+| G-2 | License (deferred in the PRD). It decides whether LibRaw or GPL code is usable, and it has to be settled before the first third-party code lands. F-06 found LibRaw is not needed for v1.0. | Decide right after F-03 and F-06, since those two spikes show which libraries we need. | F-03, V-04, V-17 |
 | G-3 | What is the slowest supported Mac? Every performance target is measured on it. | Base M1 with 8 GB of RAM. That also questions the 2 GB default prefetch budget. | F-02, M-04, M-26 |
 | G-4 | Scan subfolders? Cards use `DCIM/100XXXXX/`. | Not recursive in the MVP; show a hint when the folder holds no photos but its subfolders do. | M-01 |
 | G-5 | In Grid with several photos selected, do cull keys apply to all of them or only to the active one? | All selected in Grid (as in Lightroom's Grid), only the active photo in Loupe and Compare. One undo step for the group. | M-06, M-09, M-19 |
@@ -351,15 +351,23 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Check the corpus against `CIRAWFilter.supportedCameraModels`.
 
 **Acceptance criteria**
-- [ ] `docs/spikes/raw-decode.md`: per camera, whether decoding can be neutral, decode time, whether it is supported.
-- [ ] Decided: CIRAWFilter alone, or a LibRaw fallback in v1.0 (this feeds V-04 and G-2).
+- [x] `docs/spikes/raw-decode.md`: per camera, whether decoding can be neutral, decode time, whether it is supported.
+- [x] Decided: CIRAWFilter alone, or a LibRaw fallback in v1.0 (this feeds V-04 and G-2). **CIRAWFilter alone.**
 
 **Implementation notes**
 - Not on the MVP critical path. Run it early anyway, because it can force the license choice.
 - Record the RAW output's geometry (crop, dimensions) against the embedded preview's; V-02 maps zoom positions between the two.
 
 **Open questions**
-1. Which tone rendering for RAW mode: the camera-like default, or something flatter? It changes what the clipping overlay (V-07) reports. *Proposed:* CIRAWFilter's default tone and as-shot white balance, with only detail processing switched off.
+1. Which tone rendering for RAW mode: the camera-like default, or something flatter? It changes what the clipping overlay (V-07) reports. **Decided:** CIRAWFilter's default tone and as-shot white balance, with only detail processing switched off. V-07's overlay reports the rendered pixels, not the sensor data.
+
+**Findings that shape later stories** (details in `docs/spikes/raw-decode.md`)
+- Every decodable corpus RAW can be made neutral (sharpness, both noise reductions, detail and moiré at 0; local tone map is unsupported and defaults to 0 except on ProRAW). Decode to a texture took 37–288 ms, the 48.8 MP DNG 109 ms. 61 MP is not measured; the corpus has none.
+- Neutral output is never sharper than LibRaw's no-sharpening decode (crude single-crop metric plus two visual checks). So no LibRaw in v1.0: V-04 is parked.
+- `CIRAWFilter.supportedCameraModels` lists marketing names and is not a gate; DNG cameras decode regardless. Success means an image with the expected `nativeSize`.
+- CIRAWFilter trusts the file extension: raw.pixls.us `.tiff` files returned only the thumbnail until copied under their real extension. V-02 must sniff the container (`identifierHint` untried).
+- `nativeSize` equals the embedded preview's pixel size (no crop), but `outputImage` is already rotated by the orientation tag while the preview JPEG is not. Lens correction is on by default for some bodies; whether to disable it in RAW mode is open for V-02.
+- A Nikon Coolscan "NEF" is not a RAW; CIRAWFilter gives nothing, so it stays preview-only.
 
 ---
 
@@ -1003,6 +1011,8 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 2. How many neighbors decode in Always mode? *Proposed:* one ahead and one behind; the 5-decode memory cap has the last word.
 
 ### V-04 · LibRaw fallback
+
+**Parked after F-06:** CIRAWFilter can be made neutral on every camera it decodes, so v1.0 ships without LibRaw. Reopen if a real camera returns no image from CIRAWFilter.
 
 **Depends on:** F-06, V-02, G-2
 
