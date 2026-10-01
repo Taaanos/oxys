@@ -29,7 +29,16 @@ final class LoupeController {
     @ObservationIgnored private var badgeCount = 0
     @ObservationIgnored private var badgeTimeout: Task<Void, Never>?
 
-    @ObservationIgnored weak var canvas: LoupeView?
+    /// Set when the canvas is created, which can be after the screen's load task has already run (entering
+    /// Loupe from Grid). A load that found no canvas is replayed then.
+    @ObservationIgnored weak var canvas: LoupeView? {
+        didSet {
+            guard canvas != nil, let waiting else { return }
+            self.waiting = nil
+            Task { await load(waiting.photo, in: waiting.folder) }
+        }
+    }
+    @ObservationIgnored private var waiting: (photo: Photo, folder: FolderModel)?
     /// Grid's view, which hosts the announcements and the frame tick while Loupe's canvas is not on screen.
     @ObservationIgnored weak var fallbackHost: NSView?
     private var host: NSView? {
@@ -77,7 +86,11 @@ final class LoupeController {
     /// read and decode); the previous frame stays up until something for `photo` is ready, and `shown`
     /// changes with it. While the full preview loads, its disk thumbnail stands in if there is one.
     func load(_ photo: Photo?, in folder: FolderModel) async {
-        guard let photo, let canvas else { return }
+        guard let photo else { return }
+        guard let canvas else {
+            waiting = (photo, folder)
+            return
+        }
         let target = FrameLoader.key(for: photo)
         let index = folder.currentIndex
         let direction: PrefetchPlan.Direction = if let index, let last = lastIndex, index < last { .backward } else { .forward }
