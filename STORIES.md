@@ -51,7 +51,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | F-01 | Project skeleton | none | done |
 | F-02 | Test corpus and performance harness | F-01 | done (real-shoot and SD/SMB measurements pending) |
 | F-03 | Spike: locating embedded previews | F-01 | done (ORF, real RW2 and Nikon maker-note previews open) |
-| F-04 | Spike: XMP interoperability | none | todo |
+| F-04 | Spike: XMP interoperability | none | done (ART tested; RawTherapee, `name.ext.xmp` and the preference wording still open; Lightroom deferred to M-25) |
 | F-05 | Spike: keyboard routing | F-01 | todo |
 | F-06 | Spike: honest RAW decode | F-01 | todo |
 | **Phase 1** | **MVP** | | |
@@ -155,7 +155,7 @@ These are questions, plus gaps I found in the PRD while splitting it, that affec
 | G-7 | The PRD puts the disk cache in Application Support; the macOS convention for data that can be regenerated is `~/Library/Caches` (Time Machine skips it and the system can purge it). | `~/Library/Caches/<bundle id>/`. | M-04 |
 | G-8 | Lightroom Classic writes metadata inside DNG, JPEG and TIFF files rather than in sidecars, so it will likely ignore our sidecars for DNG and TIFF too, not only JPEG as the PRD says. DNG is in the supported set. | Verify in F-04; read embedded ratings as a fallback (M-07/Q3); explain it in the app (V-16). | F-04, M-07, V-16 |
 | G-9 | An atomic rename needs the temporary file on the same volume, so for a moment it sits in the photo folder under a hidden name. That is the one exception to "nothing but sidecars in the photographer's folders". | Accept it; clean up leftover temp files from a crash when the folder is next opened. | M-08 |
-| G-10 | Who runs the manual interoperability tests, and on which machine with a Lightroom Classic license? | You run the GUI steps from a checklist I write; I analyze the files they produce. | F-04, M-25 |
+| G-10 | Who runs the manual interoperability tests, and on which machine with a Lightroom Classic license? | **Decided:** you run the GUI steps from a checklist I write; I analyze the files they produce. No Lightroom license is available during the spikes (only RawTherapee and ART), so Lightroom Classic is tested later with users, against the real app, in M-25. | F-04, M-25 |
 | G-11 | Do the performance targets apply on SD cards and network shares too? | The targets apply on the SSD. On SD and SMB the "never a stale frame" rule must still hold, and latencies are reported but don't gate the release. | M-26 |
 | G-12 | Auto-repeat on cull keys: holding `⇧3` would rate and advance through many frames. | Cull keys and overlay toggles ignore auto-repeat; only navigation, zoom and pan repeat. | F-05, M-06 |
 | G-13 | `Esc` means both "return focus to the image" (from a text field) and "go to Grid". | First `Esc` leaves the text field or closes the popover or cheat sheet; the next `Esc` goes to Grid. | M-05, M-13 |
@@ -285,17 +285,23 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Fill in the PRD's "To test" and "to be confirmed" cells: reject in Lightroom and ART, whether `MetadataDate` is needed, custom Lightroom label sets, DNG and JPEG behavior.
 
 **Acceptance criteria**
-- [ ] `docs/spikes/xmp-interop.md` holds the completed reader table and the exact preference steps for each tool.
-- [ ] Fixture sidecars from each tool, including a Lightroom sidecar with develop settings, are committed under `Tests/Fixtures/xmp/`.
-- [ ] Decided: what we write for "no rating" (`0` or no property) and "no label" (no property or empty).
+- [~] `docs/spikes/xmp-interop.md` holds the reader table and the exact preference steps for each tool. ART read and write results are in; RawTherapee, ART's preference wording and Lightroom are open (the last is deferred to M-25).
+- [~] Fixture sidecars from each tool are committed under `Packages/Sidecar/Tests/Fixtures/xmp/` (moved there: the Sidecar package owns the tests). ART 1.26.7 is in. No RawTherapee or Lightroom fixtures yet. ART's sidecars hold no develop settings (they go to `.arp`), so the foreign-data fixture comes from Lightroom at M-25 or is hand-written `crs:` content.
+- [x] Decided (provisionally, on ART alone): "no rating" writes `xmp:Rating="0"`; "no label" removes `xmp:Label` (ART writes an empty `Label=""` and reads both as no label, but removing is the safer form for readers we haven't tested). Revisit after RawTherapee and at M-25.
 
 **Implementation notes**
 - Tools write properties either as attributes of `rdf:Description` or as child elements, and older Adobe files use the `xap:` prefix for the same namespace. Collect an example of each for M-07.
 - See G-8 on Lightroom and DNG.
 
 **Open questions**
-1. Who runs the tests: see G-10.
-2. If Lightroom ignores rating -1, do we still write -1 for reject? *Proposed:* yes (it's the Bridge convention and ART reads it); document the Lightroom behavior.
+1. Who runs the tests: see G-10. **Decided:** RawTherapee and ART now; Lightroom Classic deferred to M-25. The Lightroom cells in the reader table stay "untested" and the PRD's Lightroom claims stay unverified until then.
+2. If Lightroom ignores rating -1, do we still write -1 for reject? **Decided:** yes. ART writes `-1` itself for trash and reads it back, so it is the one convention we can confirm; Lightroom's behavior is documented at M-25.
+
+**Findings that shape later stories** (details in `docs/spikes/xmp-interop.md`)
+- ART reads `xmp:Rating` and `xmp:Label` as attributes, child elements, with the `xap:` prefix, and mixed: M-07 parses all four.
+- Labels match exactly and case-sensitively (`Red` works, `red` does not): M-07 keeps the string as is, M-08 writes only the five names.
+- ART edits an existing sidecar in place and leaves `xmp:MetadataDate` alone; it creates `<stem>.xmp` when none exists.
+- ART keeps develop settings in `<name>.<ext>.arp`: M-01 and M-07 ignore `.arp` files, and nothing in Oxys writes them.
 
 ### F-05 · Spike: keyboard routing
 
@@ -897,7 +903,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 > As a photographer, I want proof that my decisions survive every tool and every crash, so that I can trust the app with a real shoot.
 
 **Scope**
-- The PRD's test matrix with the real app: Lightroom Classic, RawTherapee and ART with Sony, Canon, Nikon and Fujifilm files, in both directions.
+- The PRD's test matrix with the real app (Lightroom Classic is first tested here, with users, since F-04 had no license; this includes the `MetadataDate` and custom label set checks from `docs/spikes/xmp-interop.md`): Lightroom Classic, RawTherapee and ART with Sony, Canon, Nikon and Fujifilm files, in both directions.
 - Automated sidecar diff tests on real Lightroom sidecars that contain Camera Raw settings.
 - A 10,000-write stress test that includes simulated outside writers and crashes.
 
