@@ -30,6 +30,10 @@ public final class FolderModel {
     /// disk cannot be patched safely, also mark the photo's `sidecar.problem`.
     public private(set) var lastWriteFailure: String?
 
+    /// The selected photos (M-19), apart from the current one and kept across Grid and Loupe. Only photos in
+    /// `photos` can be selected, so what hand-off acts on is exactly what is shown (M-19/Q1).
+    public private(set) var selection = Selection()
+
     /// What ⌘Z and ⇧⌘Z step through. Cleared when another folder opens (M-09/Q3).
     public private(set) var undoStack = UndoStack()
 
@@ -173,6 +177,7 @@ public final class FolderModel {
         folder = url
         photos = []
         currentURL = nil
+        selection.removeAll()
         undoStack.removeAll()
         newFiles = []
         isReadOnly = false
@@ -324,6 +329,7 @@ public final class FolderModel {
     private func remove(_ urls: Set<URL>) {
         let oldIndex = currentIndex ?? 0
         photos.removeAll { urls.contains($0.url) }
+        selection.retain(photos)
         if photos.isEmpty {
             currentURL = nil
             content = .empty(hasSubfolderPhotos: false)
@@ -411,6 +417,45 @@ public final class FolderModel {
     public func setCurrent(index: Int) -> Bool {
         guard photos.indices.contains(index) else { return false }
         return setCurrent(photos[index].url)
+    }
+
+    // MARK: selection (M-19)
+
+    public enum ClickMode: Sendable { case replace, toggle, range }
+
+    /// The photos a cull key acts on in Grid: the selection in screen order, or the current photo alone when
+    /// nothing is selected (G-5). Loupe and Compare always use the current photo.
+    public var cullTargets: [URL] {
+        selection.isEmpty ? currentURL.map { [$0] } ?? [] : photos.filter { selection.contains($0.url) }.map(\.url)
+    }
+
+    public func selectAll() { selection.selectAll(photos) }
+    public func selectNone() { selection.removeAll() }
+    public func invertSelection() { selection.invert(photos) }
+    public func select(matching criteria: SelectionCriteria) { selection.select(matching: criteria, in: photos) }
+
+    /// `/`: takes the current photo out of the selection.
+    public func deselectCurrent() {
+        if let currentURL { selection.deselect(currentURL) }
+    }
+
+    /// A click in Grid: `.replace` selects only that photo, `.toggle` (`⌘`) flips it, `.range` (`⇧`) selects
+    /// from the last anchor. The clicked photo becomes the current one.
+    public func click(_ url: URL, mode: ClickMode) {
+        guard photos.contains(where: { $0.url == url }) else { return }
+        switch mode {
+        case .replace: selection.select(only: url)
+        case .toggle: selection.toggle(url)
+        case .range: selection.extend(to: url, from: currentURL, in: photos)
+        }
+        currentURL = url
+    }
+
+    /// `⇧`-arrow: moves the current photo to `index` and selects the range from the anchor to it.
+    public func extendSelection(toIndex index: Int) {
+        guard photos.indices.contains(index) else { return }
+        selection.extend(to: photos[index].url, from: currentURL, in: photos)
+        currentURL = photos[index].url
     }
 
     /// Records what the preview reader found for `url`. Ignored if the photo is no longer in the folder.

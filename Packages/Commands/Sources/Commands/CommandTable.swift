@@ -40,6 +40,26 @@ public struct CommandTable: Sendable {
         Command("edit.redo", "Redo", menu: .init(.edit, group: 0), requires: .photos,
                 keys: [Shortcut(.position(.z), [.command, .shift])]),
 
+        // Selection (M-19), in every mode. `⇧`-arrows extend it in Grid. `/` takes the active photo out.
+        Command("select.all", "Select All", menu: .init(.edit, group: 1), requires: .photos,
+                keys: [Shortcut(.position(.a), [.command])]),
+        Command("select.none", "Select None", menu: .init(.edit, group: 1), requires: .photos,
+                keys: [Shortcut(.position(.a), [.command, .shift])]),
+        Command("select.invert", "Invert Selection", menu: .init(.edit, group: 1), requires: .photos,
+                keys: [Shortcut(.position(.i), [.command, .shift])]),
+        Command("select.deselectActive", "Deselect Active Photo", menu: .init(.edit, group: 1), requires: .photos,
+                keys: [Shortcut(.position(.slash))]),
+        Command("select.by", "Select by Rating or Label…", menu: .init(.edit, group: 1), requires: .photos,
+                keys: [Shortcut(.position(.a), [.command, .option])]),
+        Command("select.extendNext", "Extend Selection Right", menu: .init(.edit, group: 1), modes: grid, requires: .photos, repeats: true,
+                keys: [Shortcut(.position(.rightArrow), [.shift])]),
+        Command("select.extendPrevious", "Extend Selection Left", menu: .init(.edit, group: 1), modes: grid, requires: .photos, repeats: true,
+                keys: [Shortcut(.position(.leftArrow), [.shift])]),
+        Command("select.extendUp", "Extend Selection Up", menu: .init(.edit, group: 1), modes: grid, requires: .photos, repeats: true,
+                keys: [Shortcut(.position(.upArrow), [.shift])]),
+        Command("select.extendDown", "Extend Selection Down", menu: .init(.edit, group: 1), modes: grid, requires: .photos, repeats: true,
+                keys: [Shortcut(.position(.downArrow), [.shift])]),
+
         Command("nav.next", "Next Photo", menu: .init(.photo, group: 0), requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.rightArrow))]),
         Command("nav.previous", "Previous Photo", menu: .init(.photo, group: 0), requires: .photos, repeats: true,
@@ -156,6 +176,6 @@ public struct CommandTable: Sendable {
     private static let grid: Set<ViewMode> = [.grid]
     private static let loupe: Set<ViewMode> = [.loupe]
 
-    /// Cull keys act on the active photo in every mode. In Grid they will act on the whole selection (G-5, M-19).
+    /// Cull keys act on the active photo in every mode. In Grid they act on the whole selection when there is one (G-5, M-19).
     private static let cull: Set<ViewMode> = [.grid, .loupe, .compare]
 }

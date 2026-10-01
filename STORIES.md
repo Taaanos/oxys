@@ -73,7 +73,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-16 | EXIF | M-01 | done (reference comparison passes on the corpus; live panel, ⌘C and the one-frame timing not checked in the running app) |
 | M-17 | Histogram | M-03 | done |
 | M-18 | Info overlay and inspector | M-16, M-17 | built, not checked in the live app |
-| M-19 | Selection | M-12 | todo |
+| M-19 | Selection | M-12 | built, not checked in the live app |
 | M-20 | Filter and sort bar | M-19 | todo |
 | M-21 | Reveal in Finder | M-19 | todo |
 | M-22 | Settings window | M-05 | todo |
@@ -1045,6 +1045,19 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 **Open questions**
 1. When a filter hides selected photos, do they stay selected? *Proposed:* no, they're deselected, so hand-off acts on exactly what is visible.
 2. Cull keys with several photos selected: see G-5.
+
+**Built (decisions and results)**
+- Q1 **decided** as proposed: only photos in `FolderModel.photos` can be selected, and `Selection.retain` drops the rest when photos leave the list. There is no filter yet (M-20), so "visible" is the whole folder today; M-20 must call `selection.retain` with the filtered list. Opening another folder clears the selection.
+- Q2 follows **G-5**: in Grid, cull keys act on the selection when there is one (one undo step), otherwise on the active photo; Loupe and Compare act on the active photo only. A plain click in Grid clears the selection, so a key never reaches photos that no longer look chosen; plain arrows move the active photo and leave the selection alone.
+- `Selection` and `SelectionCriteria` (new, `Library`) are pure and tested; `FolderModel` holds the selection (by URL, so a re-sort cannot change it) and adds `selectAll`, `selectNone`, `invertSelection`, `deselectCurrent`, `select(matching:)`, `click(_:mode:)` and `extendSelection(toIndex:)`.
+- Commands (Edit menu, every mode): `select.all` `⌘A`, `select.none` `⇧⌘A`, `select.invert` `⇧⌘I`, `select.deselectActive` `/`, `select.by` `⌥⌘A`. Grid only: `select.extendNext/Previous/Up/Down` on `⇧`-arrows (the range runs from the anchor, which a click sets, or from the active photo).
+- `⌥⌘A` opens a popover with two segmented pickers (rating: any, 1–5 stars or more, none, rejected; label: any, none, a color). `⇥` and arrows move between and within them, `Return` selects, `Esc` closes. "3 stars or more" excludes rejects.
+- Mouse in Grid: click, `⇧`-click for a range, `⌘`-click to toggle. A selected cell has an accent tint and a checkmark (so it never relies on color alone), and the active photo keeps its ring; VoiceOver reads a selected cell as selected and announces the count.
+- The count is in the window subtitle ("1,204 photos · 38 selected"), visible in Grid and Loupe.
+
+**Checked**
+- Unit tests: `Library` (select all and none, invert, click modes, `⇧`-arrow extension, deselect active, select by rating and label including "3 stars or more" with a reject, cull targets, one undo step for a group, cleared on reopen), `Commands` (keys, menu, modes). All packages pass. Release build clean, arm64.
+- **Not checked** (this session cannot send keys or see the window): the acceptance criterion with a ≥3-star filter (the filter arrives in M-20; the logic is tested against `select(matching:)` and `selectAll`), the popover and `⇧`-arrows in the live app, the cell tint and checkmark, VoiceOver, and Loupe's `⌘A` and friends by hand. Cull with a group in Grid shows no badge (no canvas), only the announcement.
 
 ### M-20 · Filter and sort bar
 

@@ -366,16 +366,22 @@ final class LoupeController {
 
     // MARK: cull
 
-    /// Applies a cull key to the current photo (Loupe acts on the active photo only, G-5), confirms it with
+    /// Applies a cull key (Loupe acts on the active photo only; Grid passes its selection, G-5), confirms it with
     /// the badge and a VoiceOver phrase, and with `⇧` moves to the next frame. The in-memory decision is
     /// the only effect until M-08 saves it.
-    func cull(_ action: CullAction, advance: Bool, folder: FolderModel) {
+    func cull(_ action: CullAction, advance: Bool, folder: FolderModel, targets: [URL]? = nil) {
         let token = Perf.begin(.cullFeedback)
-        guard let photo = folder.currentPhoto, let decision = folder.apply(action, to: photo.url) else {
+        let urls = targets ?? folder.currentURL.map { [$0] } ?? []
+        guard let photo = folder.currentPhoto, let decision = folder.apply(action, toAll: urls) else {
             Perf.end(token)
             return
         }
-        confirm(decision, photoName: advance ? photo.name : nil, phrase: advance ? "\(photo.name), \(decision.summary)" : decision.summary, token: token)
+        if urls.count > 1 {
+            let phrase = "\(urls.count) photos, \(decision.summary)"
+            confirm(decision, photoName: "\(urls.count) photos", phrase: phrase, token: token)
+        } else {
+            confirm(decision, photoName: advance ? photo.name : nil, phrase: advance ? "\(photo.name), \(decision.summary)" : decision.summary, token: token)
+        }
         if advance { navigate(.next, folder: folder) }
     }
 

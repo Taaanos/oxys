@@ -283,3 +283,21 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(press(.c, .loupe, [.command], at: 3) == [.perform("info.copy")])
     #expect(press(.c, .grid, [.command], at: 4).isEmpty)
 }
+
+@Test func selectionCommandsHaveTheirKeysAndWorkInEveryMode() {
+    let table = CommandTable.standard
+    let expected: [(String, Shortcut)] = [
+        ("select.all", Shortcut(.position(.a), [.command])),
+        ("select.none", Shortcut(.position(.a), [.command, .shift])),
+        ("select.invert", Shortcut(.position(.i), [.command, .shift])),
+        ("select.deselectActive", Shortcut(.position(.slash))),
+        ("select.by", Shortcut(.position(.a), [.command, .option])),
+    ]
+    for (id, shortcut) in expected {
+        let command = table[CommandID(rawValue: id)]
+        #expect(command?.defaultKeys == [shortcut], "\(id)")
+        #expect(command?.menu != nil, "\(id)")
+        #expect(command?.modes.isEmpty == true, "\(id) works in Grid and Loupe")
+    }
+    #expect(table["select.extendNext"]?.modes == [.grid])
+}

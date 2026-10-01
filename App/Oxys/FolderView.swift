@@ -55,9 +55,11 @@ struct FolderView: View {
         guard case .photos = folder.content else { return "" }
         let count = folder.photos.count
         let photos = count == 1 ? "1 photo" : "\(count.formatted()) photos"
+        let selected = folder.selection.count
+        let head = selected > 0 ? "\(photos) · \(selected.formatted()) selected" : photos
         let new = folder.newFileCount
-        guard new > 0 else { return photos }
-        return "\(photos) · \(new == 1 ? "1 new file" : "\(new) new files"), reload with ⌥⌘R"
+        guard new > 0 else { return head }
+        return "\(head) · \(new == 1 ? "1 new file" : "\(new) new files"), reload with ⌥⌘R"
     }
 }
 

@@ -4,6 +4,7 @@ import Commands
 import Library
 import Metadata
 import Observation
+import SwiftUI
 
 /// Lets the model answer `applicationShouldTerminate` without the SwiftUI app owning an AppKit delegate by hand.
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -107,6 +108,7 @@ final class AppModel {
         }
         commands.register("nav.up") { [unowned self] _ in grid.move(.up) }
         commands.register("nav.down") { [unowned self] _ in grid.move(.down) }
+        registerSelection()
         commands.register("view.loupe") { [unowned self] _ in commands.mode = .loupe }
         commands.register("view.grid") { [unowned self] _ in commands.mode = .grid }
         commands.register("view.chrome", title: { [unowned self] in chromeHidden ? "Show Toolbar" : "Hide Toolbar" }) { [unowned self] _ in
@@ -165,7 +167,9 @@ final class AppModel {
         ]
         for (id, action) in cullActions {
             commands.register(CommandID(rawValue: id)) { [unowned self] phase in
-                loupe.cull(action, advance: phase == .performAdvancing, folder: folder)
+                // Grid acts on the whole selection when there is one (G-5); Loupe and Compare on the active photo.
+                loupe.cull(action, advance: phase == .performAdvancing, folder: folder,
+                           targets: commands.mode == .grid ? folder.cullTargets : nil)
             }
         }
         commands.register("edit.undo", isAvailable: { [unowned self] in folder.undoName != nil },
@@ -184,6 +188,51 @@ final class AppModel {
         }
         // Developer hook, like OXYS_REPORT_LAUNCH: open a folder at launch for scripted checks.
         if let path = ProcessInfo.processInfo.environment["OXYS_OPEN"] { open(URL(fileURLWithPath: path)) }
+    }
+
+    // MARK: selection (M-19)
+
+    /// The ⌥⌘A popover is up (so a second press closes it).
+    private var criteriaPopover: NSPopover?
+
+    private func registerSelection() {
+        commands.register("select.all") { [unowned self] _ in folder.selectAll(); announceSelection() }
+        commands.register("select.none", isAvailable: { [unowned self] in !folder.selection.isEmpty }) { [unowned self] _ in
+            folder.selectNone(); announceSelection()
+        }
+        commands.register("select.invert") { [unowned self] _ in folder.invertSelection(); announceSelection() }
+        commands.register("select.deselectActive", isAvailable: { [unowned self] in
+            folder.currentURL.map(folder.selection.contains) == true
+        }) { [unowned self] _ in folder.deselectCurrent(); announceSelection() }
+        commands.register("select.by") { [unowned self] _ in showCriteriaPopover() }
+        for (id, move) in [("select.extendNext", GridGeometry.Move.right), ("select.extendPrevious", .left),
+                           ("select.extendUp", .up), ("select.extendDown", .down)] {
+            commands.register(CommandID(rawValue: id)) { [unowned self] _ in grid.extend(move) }
+        }
+    }
+
+    /// Grid announces its own changes; Loupe has no list, so say it here.
+    private func announceSelection() {
+        guard commands.mode != .grid else { return }
+        let count = folder.selection.count
+        announce(count == 0 ? "Selection cleared" : count == 1 ? "1 photo selected" : "\(count) photos selected")
+    }
+
+    private func showCriteriaPopover() {
+        if let criteriaPopover, criteriaPopover.isShown { criteriaPopover.close(); return }
+        guard let view = NSApp.keyWindow?.contentView else { return }
+        let popover = NSPopover()
+        popover.behavior = .transient
+        let hosting = NSHostingController(rootView: SelectByView { [unowned self, weak popover] criteria in
+            popover?.close()
+            guard let criteria else { return }
+            folder.select(matching: criteria)
+            announce(folder.selection.isEmpty ? "No photos match" : "\(folder.selection.count) photos selected, \(criteria.summary)")
+        })
+        popover.contentViewController = hosting
+        let anchor = NSRect(x: view.bounds.midX - 1, y: view.bounds.maxY - 60, width: 2, height: 2)
+        popover.show(relativeTo: anchor, of: view, preferredEdge: .minY)
+        criteriaPopover = popover
     }
 
     func setInspector(_ on: Bool) {

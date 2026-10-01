@@ -58,6 +58,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     private var direction: GridPrefetch.Direction = .down
     private var firstScreenToken: Perf.Token?
     private var isObserving = false
+    private var shownSelection = Set<URL>()
 
     /// 0 to 4, into `GridGeometry.itemSizes`; remembered between launches.
     private(set) var step: Int = {
@@ -111,6 +112,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         photos = folder.photos
         reindex()
         shownCurrent = folder.currentURL
+        shownSelection = folder.selection.urls
         isObserving = true
         observe()
         // The first layout pass happens once the view is in a window; scroll to the current photo then.
@@ -165,6 +167,13 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         folder.setCurrent(index: geometry.moved(from: from, move, count: photos.count))
     }
 
+    /// `⇧`-arrow: moves the active photo like the plain arrow and selects the range to it (M-19).
+    func extend(_ move: GridGeometry.Move) {
+        guard !photos.isEmpty else { return }
+        let from = folder.currentIndex ?? 0
+        folder.extendSelection(toIndex: geometry.moved(from: from, move, count: photos.count))
+    }
+
     func resize(by delta: Int) {
         let next = GridGeometry.clampedStep(step + delta)
         guard next != step else { return }
@@ -185,6 +194,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         withObservationTracking {
             _ = folder.photos
             _ = folder.currentURL
+            _ = folder.selection
         } onChange: { [weak self] in
             // Runs before the change lands; look at the folder once it has.
             Task { @MainActor in self?.folderChanged() }
@@ -203,9 +213,16 @@ final class GridController: NSObject, NSCollectionViewDataSource {
             collectionView?.reloadData()
             wantedRange = 0..<0
             shownCurrent = folder.currentURL
+            shownSelection = folder.selection.urls
             scrollToCurrent()
             viewportChanged(force: true)
             return
+        }
+        let selection = folder.selection.urls
+        if selection != shownSelection {
+            for url in selection.symmetricDifference(shownSelection) { if let i = indexByURL[url] { refresh(index: i) } }
+            announceSelection(selection.count)
+            shownSelection = selection
         }
         for i in new.indices where new[i].decision != old[i].decision { refresh(index: i) }
         if shownCurrent != folder.currentURL {
@@ -293,16 +310,32 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         let other = key(for: photo, edge: edge == 512 ? 1024 : 512)
         return .init(url: photo.url, image: loader.image(for: primary) ?? loader.image(for: other),
                      failed: loader.isFailed(primary), decision: photo.decision,
-                     isCurrent: photo.url == folder.currentURL, label: label(for: photo))
+                     isCurrent: photo.url == folder.currentURL, isSelected: folder.selection.contains(photo.url),
+                     label: label(for: photo))
     }
 
     private func label(for photo: Photo) -> String {
         [photo.name, photo.decision.isUndecided ? nil : photo.decision.summary].compactMap { $0 }.joined(separator: ", ")
     }
 
-    fileprivate func clicked(_ url: URL, open: Bool) {
-        folder.setCurrent(url)
-        if open { onOpen?() }
+    fileprivate func clicked(_ url: URL, open: Bool, modifiers: NSEvent.ModifierFlags) {
+        if open {
+            folder.setCurrent(url)
+            onOpen?()
+        } else if modifiers.contains(.shift) {
+            folder.click(url, mode: .range)
+        } else if modifiers.contains(.command) {
+            folder.click(url, mode: .toggle)
+        } else {
+            // A plain click makes the photo active and ends any selection, so a cull key cannot reach photos
+            // the photographer no longer sees as chosen (M-19).
+            folder.setCurrent(url)
+            folder.selectNone()
+        }
+    }
+
+    private func announceSelection(_ count: Int) {
+        announce(count == 0 ? "Selection cleared" : count == 1 ? "1 photo selected" : "\(count) photos selected")
     }
 
     private func announce(_ phrase: String) {
@@ -340,11 +373,14 @@ final class GridCellView: NSView {
         let failed: Bool
         let decision: Decision
         let isCurrent: Bool
+        let isSelected: Bool
         let label: String
     }
 
     private let imageLayer = CALayer()
     private let ringLayer = CALayer()
+    private let tintLayer = CALayer()
+    private let checkLayer = CATextLayer()
     private let badges = GridBadgeView()
     private(set) var url: URL?
     private weak var controller: GridController?
@@ -359,9 +395,21 @@ final class GridCellView: NSView {
         imageLayer.magnificationFilter = .trilinear
         imageLayer.minificationFilter = .trilinear
         layer?.addSublayer(imageLayer)
+        tintLayer.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.28).cgColor
+        tintLayer.isHidden = true
+        layer?.addSublayer(tintLayer)
         ringLayer.borderColor = NSColor.controlAccentColor.cgColor
         ringLayer.cornerRadius = 3
         layer?.addSublayer(ringLayer)
+        // A checkmark as well as the tint, so selection never relies on color alone.
+        checkLayer.string = "✓"
+        checkLayer.fontSize = 13
+        checkLayer.alignmentMode = .center
+        checkLayer.foregroundColor = NSColor.white.cgColor
+        checkLayer.backgroundColor = NSColor.controlAccentColor.cgColor
+        checkLayer.cornerRadius = 9
+        checkLayer.isHidden = true
+        layer?.addSublayer(checkLayer)
         addSubview(badges)
         setAccessibilityRole(.cell)
         setAccessibilityElement(true)
@@ -375,6 +423,9 @@ final class GridCellView: NSView {
         CATransaction.setDisableActions(true)
         imageLayer.frame = bounds
         ringLayer.frame = bounds
+        tintLayer.frame = bounds
+        checkLayer.frame = NSRect(x: bounds.width - 24, y: bounds.height - 24, width: 18, height: 18)
+        checkLayer.contentsScale = window?.backingScaleFactor ?? 2
         CATransaction.commit()
         badges.frame = NSRect(x: 0, y: 0, width: bounds.width, height: GridBadgeView.height)
     }
@@ -394,21 +445,23 @@ final class GridCellView: NSView {
         imageLayer.contentsScale = window?.backingScaleFactor ?? 2
         imageLayer.opacity = content.decision.isReject ? 0.35 : 1
         ringLayer.borderWidth = content.isCurrent ? 3 : 0
+        tintLayer.isHidden = !content.isSelected
+        checkLayer.isHidden = !content.isSelected
         CATransaction.commit()
         badges.decision = content.failed ? nil : content.decision
         badges.failed = content.failed
         setAccessibilityLabel(content.failed ? "\(content.label), no preview" : content.label)
-        setAccessibilitySelected(content.isCurrent)
+        setAccessibilitySelected(content.isCurrent || content.isSelected)
     }
 
     override func mouseDown(with event: NSEvent) {
         guard let url else { return }
-        controller?.clicked(url, open: event.clickCount >= 2)
+        controller?.clicked(url, open: event.clickCount >= 2, modifiers: event.modifierFlags)
     }
 
     override func accessibilityPerformPress() -> Bool {
         guard let url else { return false }
-        controller?.clicked(url, open: true)
+        controller?.clicked(url, open: true, modifiers: [])
         return true
     }
 }
