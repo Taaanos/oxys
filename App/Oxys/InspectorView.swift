@@ -4,12 +4,11 @@ import Metadata
 import SwiftUI
 
 /// The inspector sidebar (M-18, `⌥⌘I`): Histogram, EXIF and Sidecar for the active photo, in Grid and in Loupe.
-/// Every row can be focused with `⇥` (once focus is inside; "Move Focus to Inspector" gets it there), selected
-/// with the pointer, and copied with `⌘C`. `Esc` hands the keyboard back to the image.
+/// "Move Focus to Inspector" (`⌃⌘I`) or a click on a row activates it: `⇥`/`⇧⇥` and `↑`/`↓` walk the rows, `⌘C`
+/// copies the focused one, `Esc` hands the keyboard back to the image. The text can also be selected with the pointer.
 struct InspectorView: View {
     let model: AppModel
 
-    @FocusState private var focus: String?
     /// Modification time of the sidecar file, read off the main thread when the photo or its decision changes.
     @State private var lastWrite: Date?
     @State private var exif: ExifInfo?
@@ -49,18 +48,14 @@ struct InspectorView: View {
             guard let file = photo.flatMap({ folder.sidecarTarget(for: $0) }) else { return }
             lastWrite = await Task.detached { (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate }.value
         }
-        .onChange(of: focus) {
-            model.inspectorHasFocus = focus != nil
-            model.inspectorValue = focus.flatMap { id in rows.first { $0.id == id }?.copyText }
-        }
-        .onChange(of: model.inspectorFocusRequest) { focus = rows.first?.id }
-        .onAppear { if model.inspectorFocusRequest > 0 { focus = rows.first?.id } }
-        .onDisappear { model.inspectorHasFocus = false; model.inspectorValue = nil }
+        .onChange(of: rows) { model.inspectorRows = rows.map { ($0.id, $0.label, $0.value) } }
+        .onAppear { model.inspectorRows = rows.map { ($0.id, $0.label, $0.value) } }
+        .onDisappear { model.deactivateInspector(); model.inspectorRows = [] }
     }
 
     // MARK: rows
 
-    private struct Row: Identifiable {
+    private struct Row: Identifiable, Equatable {
         let id: String
         let label: String
         let value: String
@@ -135,7 +130,8 @@ struct InspectorView: View {
     }
 
     private func row(_ row: Row) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let focused = model.inspectorActive && model.inspectorFocusID == row.id
+        return VStack(alignment: .leading, spacing: 0) {
             Text(row.label).font(.caption).foregroundStyle(.secondary)
             Text(row.value)
                 .font(.callout.monospacedDigit())
@@ -146,12 +142,12 @@ struct InspectorView: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(focus == row.id ? Color.accentColor.opacity(0.25) : .clear, in: RoundedRectangle(cornerRadius: 4))
-        .overlay { if focus == row.id { RoundedRectangle(cornerRadius: 4).stroke(Color.accentColor, lineWidth: 2) } }
+        .background(focused ? Color.accentColor.opacity(0.25) : .clear, in: RoundedRectangle(cornerRadius: 4))
+        .overlay { if focused { RoundedRectangle(cornerRadius: 4).stroke(Color.accentColor, lineWidth: 2) } }
         .contentShape(Rectangle())
-        .focusable()
-        .focused($focus, equals: row.id)
+        .onTapGesture { model.activateInspector(at: row.id) }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(row.label), \(row.value)")
+        .accessibilityAddTraits(focused ? .isSelected : [])
     }
 }

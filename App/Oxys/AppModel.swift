@@ -25,12 +25,53 @@ final class AppModel {
     private(set) var chromeHidden = false
     /// The inspector sidebar (⌥⌘I), remembered across launches. Hidden along with the toolbar by `⇥` (M-13).
     private(set) var showInspector = UserDefaults.standard.bool(forKey: "showInspector")
-    /// Bumped by "Move Focus to Inspector"; the inspector moves its keyboard focus to its first row.
-    private(set) var inspectorFocusRequest = 0
-    /// What the inspector's focused row holds, or nil when focus is elsewhere. While it is set, `⌘C` copies it
-    /// and bare keys go to the inspector (see `CommandCenter.route`).
-    var inspectorValue: String?
-    var inspectorHasFocus = false
+    /// True after "Move Focus to Inspector" until `Esc`: `⇥`, `⇧⇥`, `↑` and `↓` walk the inspector's rows and
+    /// `⌘C` copies the focused one. Driven by our own key handling, not SwiftUI focus, which cannot take the
+    /// keyboard from the image view.
+    private(set) var inspectorActive = false
+    private(set) var inspectorFocusID: String?
+    /// The inspector's rows in order, kept up to date by the view.
+    var inspectorRows: [(id: String, label: String, value: String)] = []
+    var inspectorValue: String? {
+        guard inspectorActive, let id = inspectorFocusID else { return nil }
+        return inspectorRows.first { $0.id == id }?.value
+    }
+
+    func activateInspector(at id: String? = nil) {
+        inspectorActive = true
+        inspectorFocusID = id ?? inspectorFocusID.flatMap { id in inspectorRows.contains { $0.id == id } ? id : nil } ?? inspectorRows.first?.id
+        if id == nil, let row = inspectorRows.first(where: { $0.id == inspectorFocusID }) { announce("\(row.label), \(row.value)") }
+    }
+
+    func deactivateInspector() { inspectorActive = false }
+
+    /// Keys while the inspector is active; true when consumed.
+    func inspectorKey(code: UInt16, shift: Bool) -> Bool {
+        guard inspectorActive else { return false }
+        switch code {
+        case PhysicalKey.escape.rawValue: deactivateInspector()
+        case PhysicalKey.tab.rawValue: moveInspectorFocus(shift ? -1 : 1, wraps: true)
+        case PhysicalKey.downArrow.rawValue: moveInspectorFocus(1, wraps: false)
+        case PhysicalKey.upArrow.rawValue: moveInspectorFocus(-1, wraps: false)
+        default: return false
+        }
+        return true
+    }
+
+    private func moveInspectorFocus(_ step: Int, wraps: Bool) {
+        let rows = inspectorRows
+        guard !rows.isEmpty else { return }
+        let current = inspectorFocusID.flatMap { id in rows.firstIndex { $0.id == id } }
+        var next = current.map { $0 + step } ?? (step > 0 ? 0 : rows.count - 1)
+        next = wraps ? (next + rows.count) % rows.count : min(max(next, 0), rows.count - 1)
+        inspectorFocusID = rows[next].id
+        announce("\(rows[next].label), \(rows[next].value)")
+    }
+
+    private func announce(_ phrase: String) {
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
+                             userInfo: [.announcement: phrase, .priority: NSAccessibilityPriorityLevel.high.rawValue])
+    }
     @ObservationIgnored private var pointerMonitor: Any?
     private(set) var recentFolders: [URL] = NSDocumentController.shared.recentDocumentURLs
 
@@ -84,12 +125,12 @@ final class AppModel {
             setInspector(!showInspector)
         }
         commands.register("info.inspectorFocus", isAvailable: { [unowned self] in showInspector && !chromeHidden }) { [unowned self] _ in
-            inspectorFocusRequest += 1
+            activateInspector()
         }
-        commands.register("info.fieldNext", isAvailable: { [unowned self] in loupe.showExif && !inspectorHasFocus }) { [unowned self] _ in
+        commands.register("info.fieldNext", isAvailable: { [unowned self] in loupe.showExif && !inspectorActive }) { [unowned self] _ in
             loupe.moveExifFocus(1)
         }
-        commands.register("info.fieldPrevious", isAvailable: { [unowned self] in loupe.showExif && !inspectorHasFocus }) { [unowned self] _ in
+        commands.register("info.fieldPrevious", isAvailable: { [unowned self] in loupe.showExif && !inspectorActive }) { [unowned self] _ in
             loupe.moveExifFocus(-1)
         }
         commands.register("info.copy", isAvailable: { [unowned self] in inspectorValue != nil || (loupe.showExif && loupe.exif != nil) }) { [unowned self] _ in
@@ -126,7 +167,7 @@ final class AppModel {
                           title: { [unowned self] in folder.redoName.map { "Redo \($0)" } ?? "Redo" }) { [unowned self] _ in
             loupe.redo(folder: folder)
         }
-        commands.inspectorHasFocus = { [unowned self] in inspectorHasFocus }
+        commands.inspectorKey = { [unowned self] code, shift in inspectorKey(code: code, shift: shift) }
         commands.start()
         // Decisions are written as they are made; this waits for the last ones to land before the process exits.
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [folder] _ in
@@ -139,7 +180,7 @@ final class AppModel {
     func setInspector(_ on: Bool) {
         showInspector = on
         UserDefaults.standard.set(on, forKey: "showInspector")
-        if on { inspectorFocusRequest += 1 }
+        if !on { deactivateInspector() }
     }
 
     private func copyToPasteboard(_ text: String) {
