@@ -13,6 +13,7 @@ public final class LoupeView: NSView {
     private let gpu = LoupeGPU.shared
     private var image: PreparedImage?
     private var pendingToken: Perf.Token?
+    private var lastDrawableSize = CGSize.zero
 
     private var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
 
@@ -51,6 +52,18 @@ public final class LoupeView: NSView {
         render()
     }
 
+    /// Fullscreen transitions and window zooming resize the view without a live resize, and `layout()` can run
+    /// before the final size is known; render at every size change so the last frame is never a stretched one.
+    public override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        render()
+    }
+
+    public override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
+        render()
+    }
+
     public override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
         render()
@@ -73,9 +86,13 @@ public final class LoupeView: NSView {
         let layer = metalLayer
         layer.contentsScale = scale
         if layer.drawableSize != pixelSize { layer.drawableSize = pixelSize }
+        layer.contentsGravity = .topLeft
         layer.colorspace = image?.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)
         // During a live resize the new frame must reach the screen in the same transaction as the layout.
-        layer.presentsWithTransaction = inLiveResize
+        // The same goes for any resize (fullscreen, zoom): present with the layout, never a frame later.
+        let resized = layer.drawableSize != lastDrawableSize
+        lastDrawableSize = layer.drawableSize
+        layer.presentsWithTransaction = inLiveResize || resized
 
         guard let drawable = layer.nextDrawable(), let buffer = gpu.queue.makeCommandBuffer() else { return }
         let pass = MTLRenderPassDescriptor()
