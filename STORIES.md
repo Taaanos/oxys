@@ -60,7 +60,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-03 | Loupe canvas | M-02 | built, needs visual check |
 | M-04 | Image pipeline: prefetch, cancellation, caches | M-03, F-02 | done |
 | M-05 | Command table, keymap and menu bar | F-05 | done (menu bar and live key checks pending, see the story) |
-| M-06 | Cull decisions and feedback | M-03, M-05 | built, needs live check (keys, badge timing, VoiceOver not exercised) |
+| M-06 | Cull decisions and feedback | M-03, M-05 | done (VoiceOver speech, badge timing as a number and the text-field menu-equivalent check pending) |
 | M-07 | Read existing sidecars | M-01, F-04 | todo |
 | M-08 | Write sidecars safely | M-06, M-07 | todo |
 | M-09 | Undo and redo | M-08 | todo |
@@ -594,7 +594,8 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Feedback: an on-canvas badge (stars, or a reject mark, plus a label chip with its letter inside a rounded square; "No rating" after `0`; with `⇧` it also names the photo it is about) that times out after 1.2 s, and the info strip shows the same glyphs. VoiceOver gets one phrase through an announcement ("3 stars, red label"; with `⇧`, prefixed by the file name) and the strip's accessibility label carries the decision.
 - New signpost `cull-feedback`: begins at the key handler and ends on the first display-link tick after the badge state is set. This is the next display frame, not a measured present, so treat it as a lower bound.
 - Checked: unit tests for every rule above, the `⇧` twins, keypad, auto-repeat, Grid exclusion, and decisions surviving the re-sort (`Library` 26, `Commands` 37); Release build with no warnings.
-- **Not checked live** (this session cannot send keys or read the window): the three acceptance criteria (badge within 16 ms, `⇧3` rates and advances, label shown by letter/shape), the menu items and their key display, and VoiceOver speech. Look at the `⇧` + bare menu-equivalent interplay: AppKit might fire the bare-key equivalent for `⇧3`.
+- **Checked live (by the user):** the badge appears at once, `⇧3` rates and shows the next frame, the label reads by its letter, the menu items show their keys, and `⇧X` rejects once and advances (no double fire from the bare-key menu equivalent, because the key monitor consumes the event first).
+- **Not checked:** VoiceOver speech; the badge timing as a number (the signpost ends at the next display tick, a lower bound); the bare-key menu equivalent with a text field focused (M-13 adds the first field; AppKit tries menu equivalents before the field editor, so `3` or `X` typed there could rate or reject the photo underneath).
 
 ### M-07 · Read existing sidecars
 
