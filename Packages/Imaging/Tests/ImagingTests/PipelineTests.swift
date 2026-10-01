@@ -1,0 +1,199 @@
+import CoreGraphics
+import Foundation
+import ImageIO
+import Testing
+@testable import Imaging
+
+private func key(_ n: Int, modified: Date = Date(timeIntervalSince1970: 0)) -> FrameKey {
+    FrameKey(url: URL(fileURLWithPath: "/photos/\(n).arw"), modified: modified, isRaw: true)
+}
+
+// MARK: - ByteBudgetCache
+
+@Test func cacheEvictsLeastRecentlyUsed() {
+    var cache = ByteBudgetCache<Int, String>(budget: 30)
+    cache.insert("a", cost: 10, for: 1)
+    cache.insert("b", cost: 10, for: 2)
+    cache.insert("c", cost: 10, for: 3)
+    _ = cache.value(for: 1)             // 1 is now newest; 2 is oldest
+    cache.insert("d", cost: 10, for: 4)
+    #expect(!cache.contains(2))
+    #expect(cache.contains(1) && cache.contains(3) && cache.contains(4))
+    #expect(cache.totalCost == 30)
+}
+
+@Test func cacheNeverExceedsBudgetAndRefusesOversizedEntries() {
+    var cache = ByteBudgetCache<Int, Int>(budget: 100)
+    for i in 0..<1000 { cache.insert(i, cost: 7 + i % 13, for: i) }
+    #expect(cache.totalCost <= 100)
+    cache.insert(-1, cost: 101, for: -1)
+    #expect(!cache.contains(-1))
+    cache.budget = 20
+    #expect(cache.totalCost <= 20)
+    cache.insert(5, cost: 10, for: 5)
+    cache.insert(6, cost: 10, for: 5)   // replacing a key does not double count
+    #expect(cache.count <= 2)
+}
+
+// MARK: - PrefetchPlan
+
+@Test func prefetchFavorsDirectionOfTravel() {
+    let plan = PrefetchPlan()
+    let forward = plan.indices(current: 10, count: 100, direction: .forward, slow: false)
+    #expect(forward.first == 11)
+    #expect(Set(forward) == [11, 12, 13, 14, 9, 8])
+    let backward = plan.indices(current: 10, count: 100, direction: .backward, slow: false)
+    #expect(backward.first == 9)
+    #expect(Set(backward) == [9, 8, 7, 6, 11, 12])
+}
+
+@Test func prefetchClampsToTheFolderAndWidensWhenSlow() {
+    let plan = PrefetchPlan()
+    #expect(Set(plan.indices(current: 0, count: 3, direction: .forward, slow: false)) == [1, 2])
+    #expect(plan.indices(current: 0, count: 0, direction: .forward, slow: false).isEmpty)
+    #expect(plan.indices(current: 50, count: 100, direction: .forward, slow: true).count == 12)
+}
+
+// MARK: - FramePipeline
+
+private actor Recorder {
+    var loaded: [Int] = []
+    var started: [Int] = []
+    var cancelled: [Int] = []
+    func started(_ n: Int) { started.append(n) }
+    func loaded(_ n: Int) { loaded.append(n) }
+    func cancelled(_ n: Int) { cancelled.append(n) }
+}
+
+private func number(_ key: FrameKey) -> Int { Int(key.url.deletingPathExtension().lastPathComponent)! }
+
+@Test func pipelineServesRepeatsFromCacheAndPrefetchesNeighbors() async throws {
+    let recorder = Recorder()
+    let pipeline = FramePipeline<Int>(budget: 1_000) { key in
+        await recorder.loaded(number(key))
+        return LoadedFrame(frame: number(key), cost: 10)
+    }
+    let first = try await pipeline.frame(for: key(5), prefetch: [key(6), key(7)])
+    #expect(first == 5)
+    // Prefetch runs in the background; wait for it.
+    for _ in 0..<200 where !(await pipeline.isCached(key(7))) { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(await pipeline.isCached(key(6)))
+    #expect(await pipeline.isCached(key(7)))
+    let again = try await pipeline.frame(for: key(6), prefetch: [])
+    #expect(again == 6)
+    let counts = await recorder.loaded.reduce(into: [Int: Int]()) { $0[$1, default: 0] += 1 }
+    #expect(counts.values.allSatisfy { $0 == 1 })
+}
+
+@Test func newerRequestCancelsStaleOnesBeforeTheyDecode() async throws {
+    let recorder = Recorder()
+    let pipeline = FramePipeline<Int>(budget: 10_000) { key in
+        let n = number(key)
+        await recorder.started(n)
+        do {
+            try await Task.sleep(for: .milliseconds(n == 99 ? 5 : 400))   // a slow read
+            try Task.checkCancellation()
+        } catch { await recorder.cancelled(n); throw error }
+        await recorder.loaded(n)
+        return LoadedFrame(frame: n, cost: 10)
+    }
+    let stale = Task { try await pipeline.frame(for: key(1), prefetch: []) }
+    try await Task.sleep(for: .milliseconds(50))
+    let newest = try await pipeline.frame(for: key(99), prefetch: [])
+    #expect(newest == 99)
+    #expect(try await stale.value == nil)        // superseded, so it reports nothing to show
+    let loaded = await recorder.loaded
+    #expect(!loaded.contains(1))
+    #expect(await recorder.cancelled.contains(1))
+    #expect(!(await pipeline.isCached(key(1))))
+}
+
+@Test func pipelineStaysWithinItsBudget() async throws {
+    let pipeline = FramePipeline<Int>(budget: 100) { key in LoadedFrame(frame: number(key), cost: 30) }
+    for n in 0..<200 { _ = try await pipeline.frame(for: key(n), prefetch: [key(n + 1), key(n + 2)]) }
+    #expect(await pipeline.cachedBytes <= 100)
+}
+
+@Test func aChangedModificationDateMisses() async throws {
+    let recorder = Recorder()
+    let pipeline = FramePipeline<Int>(budget: 1_000) { key in
+        await recorder.loaded(number(key))
+        return LoadedFrame(frame: number(key), cost: 10)
+    }
+    _ = try await pipeline.frame(for: key(1), prefetch: [])
+    _ = try await pipeline.frame(for: key(1, modified: Date(timeIntervalSince1970: 100)), prefetch: [])
+    #expect(await recorder.loaded.count == 2)
+}
+
+@Test func failuresAreReportedNotCached() async throws {
+    struct Boom: Error {}
+    let pipeline = FramePipeline<Int>(budget: 1_000) { _ in throw Boom() }
+    await #expect(throws: Boom.self) { _ = try await pipeline.frame(for: key(1), prefetch: []) }
+    #expect(!(await pipeline.isCached(key(1))))
+}
+
+// MARK: - DiskThumbnailCache
+
+private func tempDirectory() -> URL {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("oxys-cache-test-\(UUID().uuidString)")
+    try! FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return url
+}
+
+private func solidImage(_ width: Int, _ height: Int) -> CGImage {
+    let space = CGColorSpace(name: CGColorSpace.sRGB)!
+    let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+    context.setFillColor(CGColor(red: 0.2, green: 0.6, blue: 0.9, alpha: 1))
+    context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+    return context.makeImage()!
+}
+
+@Test func diskCacheRoundTripsAndKeysOnSizeAndDate() throws {
+    let dir = tempDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let cache = DiskThumbnailCache(directory: dir.appendingPathComponent("t"))
+    let date = Date(timeIntervalSince1970: 1_000)
+    cache.store(solidImage(64, 40), orientation: .right, path: "/p/a.arw", size: 123, modified: date, longEdge: 64)
+    let hit = try #require(cache.thumbnail(path: "/p/a.arw", size: 123, modified: date, longEdge: 64))
+    #expect(hit.image.width == 64 && hit.image.height == 40)
+    #expect(hit.orientation == .right)
+    #expect(cache.thumbnail(path: "/p/a.arw", size: 124, modified: date, longEdge: 64) == nil)
+    #expect(cache.thumbnail(path: "/p/a.arw", size: 123, modified: date.addingTimeInterval(1), longEdge: 64) == nil)
+    #expect(cache.thumbnail(path: "/p/a.arw", size: 123, modified: date, longEdge: 128) == nil)
+}
+
+@Test func diskCacheTrimsLeastRecentlyUsedFirst() throws {
+    let dir = tempDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let cache = DiskThumbnailCache(directory: dir.appendingPathComponent("t"), byteCap: 1)
+    let date = Date(timeIntervalSince1970: 1_000)
+    for n in 0..<3 {
+        cache.store(solidImage(32, 32), orientation: .up, path: "/p/\(n).arw", size: n, modified: date, longEdge: 32)
+        let file = cache.fileURL(path: "/p/\(n).arw", size: n, modified: date, longEdge: 32)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: Double(n - 10))], ofItemAtPath: file.path)
+    }
+    #expect(cache.totalBytes > 0)
+    // Touch the oldest by reading it, then trim to one file's worth.
+    _ = cache.thumbnail(path: "/p/0.arw", size: 0, modified: date, longEdge: 32)
+    let one = try #require(try FileManager.default.attributesOfItem(
+        atPath: cache.fileURL(path: "/p/0.arw", size: 0, modified: date, longEdge: 32).path)[.size] as? Int)
+    let capped = DiskThumbnailCache(directory: cache.directory, byteCap: one + one / 2)
+    capped.trim()
+    #expect(capped.thumbnail(path: "/p/0.arw", size: 0, modified: date, longEdge: 32) != nil)   // recently used
+    #expect(capped.thumbnail(path: "/p/1.arw", size: 1, modified: date, longEdge: 32) == nil)
+    #expect(capped.thumbnail(path: "/p/2.arw", size: 2, modified: date, longEdge: 32) == nil)
+}
+
+@Test func diskCacheNeverWritesIntoThePhotoFolder() throws {
+    let photos = tempDirectory(), caches = tempDirectory()
+    defer { try? FileManager.default.removeItem(at: photos); try? FileManager.default.removeItem(at: caches) }
+    try Data([1, 2, 3]).write(to: photos.appendingPathComponent("a.arw"))
+    let before = try FileManager.default.contentsOfDirectory(atPath: photos.path)
+    let cache = DiskThumbnailCache(directory: caches.appendingPathComponent("t"))
+    cache.store(solidImage(16, 16), orientation: .up, path: photos.appendingPathComponent("a.arw").path, size: 3,
+                modified: .now, longEdge: 16)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: photos.path) == before)
+    #expect(!cache.directory.path.hasPrefix(photos.path))
+    #expect(DiskThumbnailCache.standardDirectory(bundleID: "dev.oxys.Oxys").path.contains("/Library/Caches/dev.oxys.Oxys/"))
+}

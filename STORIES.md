@@ -58,7 +58,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-01 | Open a folder | F-01 | done (5,000-file timing measured warm on APFS clones; cold SSD, SD and a live UI click-through pending) |
 | M-02 | Embedded preview reader | F-03, M-01 | done (orientation checked by eye on the two rotated corpus files; no Preview.app color comparison, no Adobe RGB sample, no CR3/ORF file in the corpus) |
 | M-03 | Loupe canvas | M-02 | built, needs visual check |
-| M-04 | Image pipeline: prefetch, cancellation, caches | M-03, F-02 | todo |
+| M-04 | Image pipeline: prefetch, cancellation, caches | M-03, F-02 | in progress |
 | M-05 | Command table, keymap and menu bar | F-05 | todo |
 | M-06 | Cull decisions and feedback | M-03, M-05 | todo |
 | M-07 | Read existing sidecars | M-01, F-04 | todo |
@@ -513,6 +513,17 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 1. Disk cache location: see G-7.
 2. Disk cache size cap. *Proposed:* 2 GB, least recently used first out.
 3. Prefetch window. *Proposed:* 4 ahead and 2 behind in the direction of travel, widened automatically when reads are slow (SD cards, shares).
+
+**Built (decisions and results)**
+- Open question 1 (G-7) **decided** as proposed: `~/Library/Caches/<bundle id>/thumbnails/`. Question 2 **decided**: 2 GB cap, least recently used out (file modification date is touched on every hit; trimmed every 64 writes). Question 3 **decided**: 4 ahead, 2 behind in the direction of travel (two ahead for each one behind, nearest first), doubled while the smoothed frame load time is over 150 ms.
+- Memory budget: 2 GB, or a quarter of the RAM when that is less (G-3: 2 GB on an 8 GB M1 is too much). The `prefetchBudgetMB` default overrides it and applies live; Settings has a stepper for it until M-22 builds the real pane.
+- `Imaging`: `FramePipeline<Frame>` (actor; the loader closure knows nothing about Metal), `ByteBudgetCache` (LRU by byte cost), `PrefetchPlan`, `DiskThumbnailCache`, `FrameKey` (path, size, modification date). A request that is neither the target nor in the new prefetch window is cancelled when a newer one arrives; the loader checks cancellation before the read, before the decode and before the upload. A cancelled request never fills the cache. Prefetch runs at utility priority, two at a time.
+- The app side: `FrameLoader` (open, decode up to 8192 px, upload) and `LoupeController.load`. A frame reaches the canvas only if the task is not cancelled and the cursor is still on that photo, checked with no suspension before `show`. On a cache miss the 512 px disk thumbnail is shown at once if it exists, and the full preview replaces it; `key-to-frame` still ends at the full frame, so it measures what the story's targets measure. The thumbnail is written the first time a file is loaded (background priority).
+- Textures: Core Graphics now draws straight into a shared `MTLBuffer` and the GPU copies it into the mipmapped texture, which drops the CPU staging copy. A fully copy-free texture is not possible with a mip chain (buffer-backed textures cannot have mips).
+- New signpost `frame-load` (read, decode and upload of one frame). `OXYS_FRAME_LOG=<file>` logs `cursor / displayed / kind` per frame for the held-key audit.
+- Unit tests: LRU and budget, prefetch plan, repeats served from cache, stale cancellation, budget under 200 frames, changed file misses, failures not cached, disk round trip and key, LRU trim, nothing written into the photo folder.
+- Also fixed (M-03 bug found by you): exiting fullscreen left the image stretched; see the M-03 fix commit. Not verified live here.
+- **Not checked:** all four acceptance criteria are still open, because they need the app running against the bench sets with real key repeat (p95 from `scripts/perf-record.sh`, the `OXYS_FRAME_LOG` audit, memory while scrubbing 1,000 frames). The cache-directory criterion is covered by a unit test only. Status stays `in progress` until those are run.
 
 ### M-05 · Command table, keymap and menu bar
 

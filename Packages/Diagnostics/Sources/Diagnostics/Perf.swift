@@ -9,6 +9,8 @@ public enum PerfInterval: String, CaseIterable, Sendable {
     case previewRead = "preview-read"
     /// Decoding image bytes (embedded JPEG or a developed RAW) into pixels.
     case decode = "decode"
+    /// Reading, decoding and uploading one frame in the image pipeline (M-04): the cold cost of a frame.
+    case frameLoad = "frame-load"
     /// Handing decoded pixels to the GPU.
     case textureUpload = "texture-upload"
     /// Writing a sidecar (temp file, fsync, rename).
@@ -24,6 +26,7 @@ public enum PerfInterval: String, CaseIterable, Sendable {
         case .keyToFrame: "key-to-frame"
         case .previewRead: "preview-read"
         case .decode: "decode"
+        case .frameLoad: "frame-load"
         case .textureUpload: "texture-upload"
         case .sidecarWrite: "sidecar-write"
         case .folderScan: "folder-scan"

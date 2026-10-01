@@ -11,6 +11,8 @@ public struct PreparedImage: @unchecked Sendable {
     public let colorSpace: CGColorSpace
     /// Upright size in pixels (width and height swapped for rotated orientations).
     public let displaySize: CGSize
+    /// Memory the texture holds, mip chain included (a third more than level 0). What the frame cache counts.
+    public let byteCost: Int
 }
 
 /// The Metal device, queue and pipeline, shared by every Loupe view and usable from any thread.
@@ -65,24 +67,28 @@ public final class LoupeGPU: @unchecked Sendable {
         descriptor.storageMode = .shared
         guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
 
+        // Core Graphics draws straight into a shared buffer (unified memory, no staging copy on the CPU); the GPU
+        // then copies it into the mipmapped texture and builds the chain.
         let bytesPerRow = width * 4
+        guard let staging = device.makeBuffer(length: bytesPerRow * height, options: .storageModeShared) else { return nil }
         let bitmapInfo = CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue
-        guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
-                                      bytesPerRow: bytesPerRow, space: colorSpace, bitmapInfo: bitmapInfo),
-              let pixels = context.data
+        guard let context = CGContext(data: staging.contents(), width: width, height: height, bitsPerComponent: 8,
+                                      bytesPerRow: bytesPerRow, space: colorSpace, bitmapInfo: bitmapInfo)
         else { return nil }
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-        texture.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: pixels,
-                        bytesPerRow: bytesPerRow)
 
         guard let buffer = queue.makeCommandBuffer(), let blit = buffer.makeBlitCommandEncoder() else { return nil }
+        blit.copy(from: staging, sourceOffset: 0, sourceBytesPerRow: bytesPerRow, sourceBytesPerImage: bytesPerRow * height,
+                  sourceSize: MTLSize(width: width, height: height, depth: 1), to: texture, destinationSlice: 0,
+                  destinationLevel: 0, destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
         blit.generateMipmaps(for: texture)
         blit.endEncoding()
         buffer.commit()
         buffer.waitUntilCompleted()
 
         let size = orientation.swapsAxes ? CGSize(width: height, height: width) : CGSize(width: width, height: height)
-        return PreparedImage(texture: texture, orientation: orientation, colorSpace: colorSpace, displaySize: size)
+        return PreparedImage(texture: texture, orientation: orientation, colorSpace: colorSpace, displaySize: size,
+                             byteCost: width * height * 4 * 4 / 3)
     }
 
     // One quad as a triangle strip (top-left, top-right, bottom-left, bottom-right). The CPU gives the rect in
