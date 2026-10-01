@@ -52,7 +52,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | F-02 | Test corpus and performance harness | F-01 | done (real-shoot and SD/SMB measurements pending) |
 | F-03 | Spike: locating embedded previews | F-01 | done (ORF, real RW2 and Nikon maker-note previews open) |
 | F-04 | Spike: XMP interoperability | none | done (ART tested; RawTherapee, `name.ext.xmp` and the preference wording still open; Lightroom deferred to M-25) |
-| F-05 | Spike: keyboard routing | F-01 | todo |
+| F-05 | Spike: keyboard routing | F-01 | done (router and layouts tested; live input-source and menu double-fire check pending, see `docs/spikes/keyboard-routing.md`) |
 | F-06 | Spike: honest RAW decode | F-01 | todo |
 | **Phase 1** | **MVP** | | |
 | M-01 | Open a folder | F-01 | todo |
@@ -317,20 +317,26 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Auto-repeat for `←` / `→` arrives at the system repeat rate; see G-12 for keys that should ignore it.
 - Bare keys are ignored while a text field is first responder, and `Esc` returns focus to the canvas.
 
-**Acceptance criteria**
-- [ ] With a Greek or Russian layout active, `X`, `1`–`5`, `[`, `]`, `\`, `=`, `−` and `?` trigger the right commands.
-- [ ] `⌘` shortcuts (`⌘A`, `⌘R`, `⌘Z`) work on the same layouts.
-- [ ] Holding `Z` for half a second and releasing returns to the previous state; tapping toggles.
-- [ ] Typing in a search field never triggers a cull command.
-- [ ] A short write-up of the chosen routing design and its limits.
+**Acceptance criteria** (`[~]` = passes in router and layout tests; live check in the spike window still to run)
+- [~] With a Greek or Russian layout active, `X`, `1`–`5`, `[`, `]`, `\`, `=`, `−` and `?` trigger the right commands.
+- [~] `⌘` shortcuts (`⌘A`, `⌘R`, `⌘Z`) work on the same layouts.
+- [~] Holding `Z` for half a second and releasing returns to the previous state; tapping toggles.
+- [~] Typing in a search field never triggers a cull command.
+- [x] A short write-up of the chosen routing design and its limits.
 
 **Implementation notes**
 - A likely design: a local key-down/key-up event monitor looks up `(keyCode, modifiers, mode)` in the keymap and swallows the events it handles. Menu items carry the same shortcut for display and mouse use; `NSMenuItem.allowsAutomaticKeyEquivalentLocalization` covers the `⌘` shortcuts.
 - The hold threshold can be the first auto-repeat event or a fixed time; try both.
 
+**Findings that shape later stories** (details in `docs/spikes/keyboard-routing.md`)
+- The router lives in `Packages/Commands` (`KeyRouter`, `Keymap`, `KeyLayout`): M-05 builds the command table and keymap file on top of it, with bindings as `.position` or `.character` and a behavior (`once`, `repeating`, `toggleOrHold`) per key.
+- The monitor must return `nil` for consumed events; menu items show shortcuts for display and mouse use only.
+- Hold means "toggle again on release", so a command bound `toggleOrHold` has to handle both `perform` and `releaseHold`.
+- Layout lookups (`TIS…`) are main-thread only.
+
 **Open questions**
-1. Punctuation keys (`[`, `]`, `\`, `=`, `?`) sit in different places on ISO, JIS and non-US layouts. Do we bind by US key position or by the character the user's Latin layout produces? *Proposed:* position for letters and digits (works everywhere), the character on the Latin layout for punctuation; the cheat sheet always shows what to press on the current keyboard.
-2. Hold threshold. *Proposed:* 250 ms, tunable through a hidden default.
+1. Punctuation keys (`[`, `]`, `\`, `=`, `?`) sit in different places on ISO, JIS and non-US layouts. Do we bind by US key position or by the character the user's Latin layout produces? **Decided:** position for letters and digits (works everywhere), the character on the Latin layout for punctuation; the cheat sheet always shows what to press on the current keyboard.
+2. Hold threshold. **Decided:** 250 ms, tunable through the hidden default `keyHoldThresholdSeconds`; measured on event timestamps at key-up, no timers.
 
 ### F-06 · Spike: honest RAW decode
 
