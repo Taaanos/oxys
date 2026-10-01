@@ -3,7 +3,9 @@ import Foundation
 /// A rule for "select by rating, label or reject" (⌥⌘A). Both parts must match; `nil` means any.
 public struct SelectionCriteria: Sendable, Hashable {
     public enum Rating: Sendable, Hashable {
+        case exactly(Int)
         case atLeast(Int)
+        case atMost(Int)
         case unrated
         case rejected
     }
@@ -26,7 +28,9 @@ public struct SelectionCriteria: Sendable, Hashable {
     public func matches(_ decision: Decision) -> Bool {
         switch rating {
         case nil: break
+        case .exactly(let n): if decision.isReject || decision.stars != n { return false }
         case .atLeast(let n): if decision.stars < n || decision.isReject { return false }
+        case .atMost(let n): if decision.stars > n || decision.isReject { return false }
         case .unrated: if decision.rating != 0 { return false }
         case .rejected: if !decision.isReject { return false }
         }
@@ -43,6 +47,8 @@ public struct SelectionCriteria: Sendable, Hashable {
         var parts: [String] = []
         switch rating {
         case nil: break
+        case .exactly(let n): parts.append(n == 1 ? "1 star" : "\(n) stars")
+        case .atMost(let n): parts.append(n == 1 ? "1 star or fewer" : "\(n) stars or fewer")
         case .atLeast(let n): parts.append(n == 1 ? "1 star or more" : "\(n) stars or more")
         case .unrated: parts.append("unrated")
         case .rejected: parts.append("rejected")
