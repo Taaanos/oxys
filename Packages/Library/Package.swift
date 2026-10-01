@@ -10,9 +10,10 @@ let package = Package(
     dependencies: [
         .package(path: "../Metadata"),
         .package(path: "../Diagnostics"),
+        .package(path: "../Sidecar"),
     ],
     targets: [
-        .target(name: "Library", dependencies: ["Metadata", "Diagnostics"]),
+        .target(name: "Library", dependencies: ["Metadata", "Diagnostics", "Sidecar"]),
         // M-01 tool: times a folder scan and the capture-time pass.
         .executableTarget(name: "ScanBench", dependencies: ["Library"]),
         .testTarget(name: "LibraryTests", dependencies: ["Library"]),

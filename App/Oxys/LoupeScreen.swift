@@ -46,6 +46,12 @@ private struct InfoStrip: View {
             HStack(spacing: 12) {
                 Text(photo.name).font(.callout.monospaced())
                 if let decision, !decision.isUndecided { DecisionGlyphs(decision: decision) }
+                if let note = photo.sidecar.notes.first {
+                    Label(note, systemImage: photo.sidecar.problem == nil ? "info.circle" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(photo.sidecar.problem == nil ? Color.secondary : Color.orange)
+                        .lineLimit(1)
+                        .help(photo.sidecar.notes.joined(separator: "\n"))
+                }
                 if let pixels {
                     Text("Preview \(max(pixels.width, pixels.height)) px").foregroundStyle(.secondary)
                 }
@@ -57,7 +63,7 @@ private struct InfoStrip: View {
             .background(.black.opacity(0.45))
             .environment(\.colorScheme, .dark)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel([photo.name, decision?.summary].compactMap { $0 }.joined(separator: ", "))
+            .accessibilityLabel(([photo.name, decision?.summary].compactMap { $0 } + photo.sidecar.notes).joined(separator: ", "))
         }
     }
 }

@@ -11,6 +11,14 @@ public enum PhotoFormat: String, Sendable, CaseIterable {
         }
     }
 
+    /// Formats whose files can carry XMP inside (Lightroom writes there instead of a sidecar, G-8).
+    public var hasEmbeddedXMP: Bool {
+        switch self {
+        case .jpeg, .heic, .tiff, .dng: true
+        default: false
+        }
+    }
+
     /// The format for a file extension in any case, or nil when Oxys does not handle it.
     public init?(pathExtension: String) {
         switch pathExtension.lowercased() {
@@ -44,6 +52,8 @@ public struct Photo: Sendable, Identifiable, Hashable {
     public var preview: PreviewInfo?
     /// Stars, reject and label. In memory until M-08 saves it.
     public var decision: Decision = .none
+    /// Where the decision was read from, and anything the inspector should say about it (M-07).
+    public var sidecar: SidecarInfo = SidecarInfo()
 
     public var id: URL { url }
     public var name: String { url.lastPathComponent }

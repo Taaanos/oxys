@@ -1,5 +1,7 @@
 import Foundation
+import Diagnostics
 import Observation
+import Sidecar
 
 /// The open folder: its photos, in order, and whether it is still loading capture times.
 @MainActor @Observable
@@ -16,6 +18,10 @@ public final class FolderModel {
     public private(set) var photos: [Photo] = []
     public private(set) var content: Content = .none
     public private(set) var isReadingCaptureTimes = false
+    public private(set) var isReadingSidecars = false
+
+    /// The configured naming style (PRD "Sidecar naming"). Reads fall back to the other style.
+    public var sidecarNaming: SidecarNaming = .stem
 
     /// The photo Loupe shows. Tracked by URL so the capture-time re-sort cannot change which frame is current.
     public private(set) var currentURL: URL?
@@ -49,7 +55,10 @@ public final class FolderModel {
                 photos = result.photos
                 currentURL = photos.first?.url
                 content = .photos
+                // Both passes start now and run off the main thread; neither holds up the first image.
+                let sidecars = Task { await self.readSidecars(generation: mine) }
                 await readCaptureTimes(generation: mine)
+                await sidecars.value
             }
         }
     }
@@ -66,6 +75,51 @@ public final class FolderModel {
         updated.sort(by: Photo.isOrderedBefore)
         photos = updated
         isReadingCaptureTimes = false
+    }
+
+    /// Reads every sidecar (or embedded rating) with a few files in flight and applies the results chunk by chunk,
+    /// so stars fill in while the photographer already works. A decision made meanwhile is never overwritten.
+    private func readSidecars(generation mine: Int) async {
+        guard let folder, !photos.isEmpty else { return }
+        isReadingSidecars = true
+        defer { if mine == generation { isReadingSidecars = false } }
+        let token = Perf.begin(.sidecarRead)
+        defer { Perf.end(token) }
+        let targets = photos.map { (url: $0.url, embedded: $0.format.hasEmbeddedXMP) }
+        let naming = sidecarNaming
+        let chunkSize = 64
+        let chunks = stride(from: 0, to: targets.count, by: chunkSize).map { Array(targets[$0..<min($0 + chunkSize, targets.count)]) }
+        let index = await Task.detached { SidecarIndex(folder: folder) }.value
+        await withTaskGroup(of: [(URL, SidecarReadResult)].self) { group in
+            var next = 0
+            func addNext() {
+                guard next < chunks.count else { return }
+                let chunk = chunks[next]
+                next += 1
+                group.addTask {
+                    chunk.map { ($0.url, SidecarReader.read(photo: $0.url, embeddedFallback: $0.embedded, index: index, naming: naming)) }
+                }
+            }
+            for _ in 0..<min(4, chunks.count) { addNext() }
+            while let results = await group.next() {
+                guard mine == generation, !Task.isCancelled else { group.cancelAll(); return }
+                applySidecarResults(results)
+                addNext()
+            }
+        }
+    }
+
+    private func applySidecarResults(_ results: [(URL, SidecarReadResult)]) {
+        // The list may have been re-sorted by capture time since the chunk started, so look photos up by URL.
+        var positions: [URL: Int] = [:]
+        positions.reserveCapacity(photos.count)
+        for (i, photo) in photos.enumerated() { positions[photo.url] = i }
+        for (url, result) in results {
+            guard let i = positions[url] else { continue }
+            let (info, decision) = SidecarInfo.resolve(result)
+            photos[i].sidecar = info
+            if let decision, photos[i].decision.isUndecided { photos[i].decision = decision }
+        }
     }
 
     public var currentIndex: Int? {

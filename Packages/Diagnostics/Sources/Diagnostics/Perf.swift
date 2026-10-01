@@ -21,6 +21,8 @@ public enum PerfInterval: String, CaseIterable, Sendable {
     case captureTimes = "capture-times"
     /// A cull key press → the next display frame after the badge was set (M-06; 16 ms at 60 Hz).
     case cullFeedback = "cull-feedback"
+    /// Reading every existing sidecar in a folder, in the background after the list is shown (M-07).
+    case sidecarRead = "sidecar-read"
 
     /// Signpost names must be static strings, so the raw value is repeated here.
     var signpostName: StaticString {
@@ -34,6 +36,7 @@ public enum PerfInterval: String, CaseIterable, Sendable {
         case .folderScan: "folder-scan"
         case .captureTimes: "capture-times"
         case .cullFeedback: "cull-feedback"
+        case .sidecarRead: "sidecar-read"
         }
     }
 }

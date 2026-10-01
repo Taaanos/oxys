@@ -61,7 +61,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-04 | Image pipeline: prefetch, cancellation, caches | M-03, F-02 | done |
 | M-05 | Command table, keymap and menu bar | F-05 | done (menu bar and live key checks pending, see the story) |
 | M-06 | Cull decisions and feedback | M-03, M-05 | done (VoiceOver speech, badge timing as a number and the text-field menu-equivalent check pending) |
-| M-07 | Read existing sidecars | M-01, F-04 | todo |
+| M-07 | Read existing sidecars | M-01, F-04 | done (ART and hand-written fixtures; no Lightroom or RawTherapee fixtures until M-25; live UI check pending) |
 | M-08 | Write sidecars safely | M-06, M-07 | todo |
 | M-09 | Undo and redo | M-08 | todo |
 | M-10 | React to outside sidecar changes | M-08 | todo |
@@ -618,6 +618,22 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 1. Both `name.xmp` and `name.ext.xmp` exist: which wins? *Proposed:* the configured style; the inspector mentions the other file.
 2. A label we don't know, such as a custom Lightroom label "Select"? *Proposed:* show "Other: Select" and leave it untouched unless the user sets a new label.
 3. Read ratings embedded in JPEG, DNG, TIFF and HEIC files, where Lightroom writes them? *Proposed:* yes, read-only, as a fallback when no sidecar exists. It's cheap with ImageIO and makes the Lightroom-to-app direction work for those formats (G-8).
+
+**Status:** done (live UI check pending)
+
+**Decisions**
+- All three proposals accepted. Q1: the configured style wins (`FolderModel.sidecarNaming`, default `name.xmp`; the Settings control arrives with its story) and `SidecarInfo.alsoPresent` names the other file. Q2: an unknown label leaves `Decision.label` empty, is kept in `SidecarInfo.unknownLabel` and shown as "Other label: Select". Q3: JPEG, HEIC, TIFF and DNG fall back to embedded `xmp:Rating`/`xmp:Label` through ImageIO when no sidecar exists (`SidecarInfo.isEmbedded`).
+- `XMPReader` parses with `XMLParser` and resolves namespaces itself: Foundation's namespace mode reports attributes by qualified name and never calls `didStartMappingPrefix`, so attribute namespaces could not be checked. It matches the XMP namespace URI (so `xap:` and any prefix work), attributes and child elements, any number of `rdf:Description` blocks, with or without the xpacket wrapper. A file with no `rdf:RDF` or broken XML is malformed. A rating outside -1 to 5 is clamped; a non-integer rating is ignored. A missing rating reads as 0 stars.
+- Sidecars are found with one directory listing per folder (`SidecarIndex`, case-insensitive lookup), not a `stat` per photo. `.arp` and other files are never matched.
+- A malformed sidecar gives no decision, sets `SidecarInfo.problem` and keeps `file`, so M-08 can refuse to overwrite it. A sidecar over 8 MB counts as malformed.
+- Reads run in chunks of 64 with 4 in flight, off the main thread, beside the capture-time pass, and apply chunk by chunk. A decision made before the read finishes is kept (a photo with no decision is the only one filled in; resetting a photo to 0 stars within that window is indistinguishable and would be filled in).
+- Until the inspector exists, the info strip shows the first note (problem, other label, embedded source, second file) with all of them in its tooltip and VoiceOver label.
+- New signpost `sidecar-read`.
+
+**Checked**
+- Unit tests (`Sidecar` 8, `Library` 30): every F-04 fixture (ART 1.26.7 four files) plus hand-written ones for attribute, child-element, `xap:`, multi-`Description`, xpacket-wrapped, reject, custom label, foreign namespace and truncated forms; both naming styles and the both-exist case; malformed handling; a decision surviving the read; 5,000 sidecars read serially in 0.21 s (so far off the first-image path).
+- Release build with no warnings.
+- **Not checked:** the info strip note by eye; embedded-rating fallback against a real Lightroom-written JPEG/DNG (no such file in the corpus); Lightroom and RawTherapee fixtures (M-25).
 
 ### M-08 · Write sidecars safely
 
