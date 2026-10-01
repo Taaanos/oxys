@@ -30,6 +30,9 @@ public final class FolderModel {
     /// disk cannot be patched safely, also mark the photo's `sidecar.problem`.
     public private(set) var lastWriteFailure: String?
 
+    /// What ⌘Z and ⇧⌘Z step through. Cleared when another folder opens (M-09/Q3).
+    public private(set) var undoStack = UndoStack()
+
     private var generation = 0
     private var loading: Task<Void, Never>?
     @ObservationIgnored private var writer: SidecarWriteQueue!
@@ -45,7 +48,13 @@ public final class FolderModel {
 
     private func handle(_ outcome: SidecarWriteOutcome) {
         switch outcome {
-        case .written: break
+        case .written(let url):
+            // A redo can write a sidecar an undo just removed: the photo knows its file again.
+            for index in photos.indices where photos[index].sidecar.file == nil && primaryURL(for: photos[index]) == url {
+                photos[index].sidecar.file = url
+            }
+        case .removed(let url):
+            for index in photos.indices where photos[index].sidecar.file == url { photos[index].sidecar.file = nil }
         case .refused(let url, let reason):
             lastWriteFailure = "Not saved to \(url.lastPathComponent): \(reason)"
             for index in photos.indices where photos[index].sidecar.file == url { photos[index].sidecar.problem = reason }
@@ -63,6 +72,7 @@ public final class FolderModel {
         folder = url
         photos = []
         currentURL = nil
+        undoStack.removeAll()
         content = .opening(url)
         isReadingCaptureTimes = false
 
@@ -193,19 +203,74 @@ public final class FolderModel {
     /// when the photo is not in the folder.
     @discardableResult
     public func apply(_ action: CullAction, to url: URL? = nil) -> Decision? {
-        guard let url = url ?? currentURL, let index = photos.firstIndex(where: { $0.url == url }) else { return nil }
-        let decision = action.applied(to: photos[index].decision)
-        if decision != photos[index].decision {
-            let labelChanged = decision.label != photos[index].decision.label
+        guard let url = url ?? currentURL else { return nil }
+        return apply(action, toAll: [url])
+    }
+
+    /// Applies a cull key to several photos as one undo step (G-5). Returns the first photo's new decision, or
+    /// nil when none of them is in the folder.
+    @discardableResult
+    public func apply(_ action: CullAction, toAll urls: [URL]) -> Decision? {
+        var changes: [DecisionChange] = []
+        var first: Decision?
+        var name = ""
+        for url in urls {
+            guard let index = photos.firstIndex(where: { $0.url == url }) else { continue }
+            let before = photos[index].decision
+            let decision = action.applied(to: before)
+            first = first ?? decision
+            guard decision != before else { continue }
+            let unknownBefore = photos[index].sidecar.unknownLabel
+            if decision.label != before.label { photos[index].sidecar.unknownLabel = nil }
             photos[index].decision = decision
-            if labelChanged { photos[index].sidecar.unknownLabel = nil }
+            changes.append(DecisionChange(url: url, before: before, after: decision,
+                                          unknownLabelBefore: unknownBefore, unknownLabelAfter: photos[index].sidecar.unknownLabel))
+            if name.isEmpty { name = action.undoName(from: before, to: decision) }
             persist(at: index)
         }
-        return decision
+        undoStack.record(UndoStep(name: name, changes: changes))
+        return first
+    }
+
+    // MARK: undo and redo
+
+    public var undoName: String? { undoStack.undoName }
+    public var redoName: String? { undoStack.redoName }
+
+    /// Takes back the last action, saves the restored decisions, and moves to the photo it changed so the
+    /// photographer sees it (M-09/Q2). Returns that photo's URL, or nil when there was nothing to undo.
+    @discardableResult
+    public func undo() -> URL? {
+        guard let step = undoStack.popUndo() else { return nil }
+        return restore(step, forward: false)
+    }
+
+    @discardableResult
+    public func redo() -> URL? {
+        guard let step = undoStack.popRedo() else { return nil }
+        return restore(step, forward: true)
+    }
+
+    private func restore(_ step: UndoStep, forward: Bool) -> URL? {
+        var shown: URL?
+        for change in step.changes {
+            guard let index = photos.firstIndex(where: { $0.url == change.url }) else { continue }
+            let decision = forward ? change.after : change.before
+            photos[index].decision = decision
+            photos[index].sidecar.unknownLabel = forward ? change.unknownLabelAfter : change.unknownLabelBefore
+            persist(at: index, restoring: true)
+            shown = shown ?? change.url
+        }
+        if let shown { currentURL = shown }
+        return shown
+    }
+
+    private func primaryURL(for photo: Photo) -> URL? {
+        folder?.appendingPathComponent(sidecarNaming.fileName(for: photo.name))
     }
 
     /// Queues the photo's decision for its sidecar. Never blocks: the write happens off the main thread.
-    private func persist(at index: Int) {
+    private func persist(at index: Int, restoring: Bool = false) {
         guard let folder else { return }
         let photo = photos[index]
         // M-08/Q3: a sidecar we could not parse is never overwritten; the decision stays in memory.
@@ -216,7 +281,9 @@ public final class FolderModel {
         let label: SidecarEdit.LabelChange = photo.decision.label.map { .set($0.name) }
             ?? (photo.sidecar.unknownLabel != nil ? .keep : .remove)
         writer.submit(SidecarEdit(rating: photo.decision.rating, label: label),
-                      to: SidecarTarget(primary: primary, fallback: fallback))
+                      to: SidecarTarget(primary: primary, fallback: fallback),
+                      // Back to "nothing decided": a sidecar we created for this photo goes away again (M-09/Q1).
+                      removeIfCreatedByUs: restoring && photo.decision.isUndecided && photo.sidecar.unknownLabel == nil)
         if photo.sidecar.file == nil, photo.sidecar.isRead { photos[index].sidecar.file = primary }
     }
 }

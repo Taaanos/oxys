@@ -63,7 +63,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-06 | Cull decisions and feedback | M-03, M-05 | done (VoiceOver speech, badge timing as a number and the text-field menu-equivalent check pending) |
 | M-07 | Read existing sidecars | M-01, F-04 | done (ART and hand-written fixtures; no Lightroom or RawTherapee fixtures until M-25; live UI check pending) |
 | M-08 | Write sidecars safely | M-06, M-07 | done (Lightroom and RawTherapee walking-skeleton check pending) |
-| M-09 | Undo and redo | M-08 | todo |
+| M-09 | Undo and redo | M-08 | done (live ⌘Z click-through pending) |
 | M-10 | React to outside sidecar changes | M-08 | todo |
 | M-11 | Write failures and read-only folders | M-08 | todo |
 | M-12 | Grid view | M-04, M-06 | todo |
@@ -695,13 +695,27 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Undo brings the affected photo on screen if it isn't there.
 
 **Acceptance criteria**
-- [ ] `⇧3`, then `⌘Z`: the previous rating is back in the UI and in the sidecar; `⇧⌘Z` applies it again.
-- [ ] Unit tests cover undo stacks mixing all action types.
+- [x] `⇧3`, then `⌘Z`: the previous rating is back in the UI and in the sidecar; `⇧⌘Z` applies it again.
+- [x] Unit tests cover undo stacks mixing all action types.
 
 **Open questions**
 1. Undoing the decision that created a sidecar: delete the file, or keep it with rating 0? *Proposed:* delete it only if its content is still exactly what we created; otherwise patch it.
 2. Undo after an apply-and-advance: also move back? *Proposed:* yes, undo navigates to the photo it changes.
 3. Undo history lifetime? *Proposed:* per folder, cleared when another folder opens.
+
+**Status:** done (live check pending: ⌘Z by hand with the Edit menu open)
+
+**Decisions**
+- Q1 to Q3 accepted. `SidecarWriteQueue` remembers the exact bytes of each sidecar it created; an undo that returns a photo to "nothing decided" submits with `removeIfCreatedByUs`, and the file is deleted only while its bytes still match. Any other file (an existing one, or ours after another program touched it) is patched. The check runs on the write queue, so it is ordered with the writes around it; a do-then-undo that has not been written yet leaves no file at all. `.removed(url)` is a new `SidecarWriteOutcome`.
+- The history is `UndoStack` in `Library` (pure values, 10,000 steps), owned by `FolderModel` and cleared in `open`. It is not an `NSUndoManager`: the stack is unit-tested without AppKit and the Edit menu titles come from it. Revisit if text fields (rename, search) need the system manager.
+- One step is a list of per-photo changes (before, after, and the unknown label a color change drops), so `apply(_:toAll:)` is already the one-step group of G-5 for Grid. A key that changes nothing records nothing. A new action empties the redo history.
+- Undo and redo move to the first photo they change, so the undo of `⇧3` also goes back one frame (Q2), and show the badge and announce "Undid Set Rating. IMG_0001, 2 stars".
+- Edit menu: `edit.undo` (`⌘Z`) and `edit.redo` (`⇧⌘Z`) in the command table replace the system Undo and Redo items; titles carry the action name; the items are disabled when there is nothing to undo.
+
+**Checked**
+- Unit tests (`Library` 49): rating and sidecar round trip, delete-on-undo and re-create on redo, a changed file patched instead of deleted, a pre-existing file never deleted, group is one step, a mixed history of seven actions across two photos undone and redone step by step against snapshots, redo ends on a new action, history cleared on open, menu names.
+- Release build with no warnings from our code.
+- **Not checked:** the shortcut and menu in the running app by eye.
 
 ### M-10 · React to outside sidecar changes
 

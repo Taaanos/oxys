@@ -26,6 +26,8 @@ final class CommandCenter {
     @ObservationIgnored private var router: KeyRouter
     @ObservationIgnored private var handlers: [CommandID: Handler] = [:]
     @ObservationIgnored private var states: [CommandID: @MainActor () -> Bool] = [:]
+    @ObservationIgnored private var availability: [CommandID: @MainActor () -> Bool] = [:]
+    @ObservationIgnored private var titles: [CommandID: @MainActor () -> String] = [:]
     @ObservationIgnored private var monitor: Any?
     @ObservationIgnored private var observers: [Any] = []
     @ObservationIgnored private static let log = Logger(subsystem: "dev.oxys.Oxys", category: "commands")
@@ -49,17 +51,25 @@ final class CommandCenter {
 
     // MARK: registration
 
-    /// Connects a command to its handler. `isOn` supplies the checkmark of a toggle.
-    func register(_ id: CommandID, isOn: (@MainActor () -> Bool)? = nil, _ handler: @escaping Handler) {
+    /// Connects a command to its handler. `isOn` supplies the checkmark of a toggle, `isAvailable` an extra
+    /// condition for enabling it (nothing to undo), `title` a menu title that follows state ("Undo Reject").
+    func register(_ id: CommandID, isOn: (@MainActor () -> Bool)? = nil, isAvailable: (@MainActor () -> Bool)? = nil,
+                  title: (@MainActor () -> String)? = nil, _ handler: @escaping Handler) {
         handlers[id] = handler
         states[id] = isOn
+        availability[id] = isAvailable
+        titles[id] = title
     }
 
     // MARK: menu bar
 
     var context: CommandContext { CommandContext(mode: mode, hasPhotos: folder.content == .photos) }
 
-    func isEnabled(_ command: Command) -> Bool { handlers[command.id] != nil && command.isEnabled(in: context) }
+    func isEnabled(_ command: Command) -> Bool {
+        handlers[command.id] != nil && command.isEnabled(in: context) && (availability[command.id]?() ?? true)
+    }
+
+    func title(for command: Command) -> String { titles[command.id]?() ?? command.title }
 
     func isOn(_ command: Command) -> Bool { states[command.id]?() ?? false }
 

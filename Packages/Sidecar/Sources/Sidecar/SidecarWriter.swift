@@ -16,6 +16,8 @@ public struct SidecarTarget: Sendable, Hashable {
 
 public enum SidecarWriteOutcome: Sendable, Hashable {
     case written(URL)
+    /// An undo took back the creation of a sidecar and the file we created was deleted (M-09/Q1).
+    case removed(URL)
     /// The existing file could not be parsed or patched safely, so it was left untouched (M-08/Q3).
     case refused(URL, reason: String)
     case failed(URL, reason: String)
@@ -28,26 +30,38 @@ public enum SidecarWriter {
     public static let tempMarker = ".oxys-tmp-"
 
     public static func write(_ edit: SidecarEdit, to target: SidecarTarget, now: Date = Date()) -> SidecarWriteOutcome {
+        writeReturningBytes(edit, to: target, now: now).outcome
+    }
+
+    /// The file a target resolves to: the primary, or the fallback when only that one exists.
+    static func resolve(_ target: SidecarTarget) -> URL {
         let fm = FileManager.default
-        var url = target.primary
-        if !fm.fileExists(atPath: url.path), let fallback = target.fallback, fm.fileExists(atPath: fallback.path) { url = fallback }
+        if !fm.fileExists(atPath: target.primary.path), let fallback = target.fallback, fm.fileExists(atPath: fallback.path) {
+            return fallback
+        }
+        return target.primary
+    }
+
+    /// Like `write`, also giving the bytes the file holds afterwards (nil when nothing was written).
+    static func writeReturningBytes(_ edit: SidecarEdit, to target: SidecarTarget, now: Date) -> (outcome: SidecarWriteOutcome, bytes: Data?) {
+        let url = resolve(target)
         let token = Perf.begin(.sidecarWrite)
         defer { Perf.end(token) }
         do {
             let existing: Data?
             do { existing = try Data(contentsOf: url) } catch CocoaError.fileReadNoSuchFile { existing = nil }
             if let existing {
-                guard existing.count <= SidecarReader.maxBytes else { return .refused(url, reason: "File is too large to be a sidecar") }
-                do { _ = try XMPReader.parse(existing) } catch let error as XMPParseError { return .refused(url, reason: error.message) }
+                guard existing.count <= SidecarReader.maxBytes else { return (.refused(url, reason: "File is too large to be a sidecar"), nil) }
+                do { _ = try XMPReader.parse(existing) } catch let error as XMPParseError { return (.refused(url, reason: error.message), nil) }
             }
             let patched: Data
             do { patched = try XMPPatcher.patch(existing, edit: edit, date: now) }
-            catch let error as XMPPatchError { return .refused(url, reason: error.message) }
-            if patched == existing { return .written(url) }
+            catch let error as XMPPatchError { return (.refused(url, reason: error.message), nil) }
+            if patched == existing { return (.written(url), patched) }
             try atomicWrite(patched, to: url)
-            return .written(url)
+            return (.written(url), patched)
         } catch {
-            return .failed(url, reason: error.localizedDescription)
+            return (.failed(url, reason: error.localizedDescription), nil)
         }
     }
 

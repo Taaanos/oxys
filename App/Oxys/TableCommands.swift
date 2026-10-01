@@ -15,7 +15,7 @@ struct TableCommands: Commands {
             TableItems(center: center, menu: .file)
             OpenRecentMenu(model: model)
         }
-        CommandGroup(after: .pasteboard) { TableItems(center: center, menu: .edit) }
+        CommandGroup(replacing: .undoRedo) { TableItems(center: center, menu: .edit) }
         CommandGroup(after: .toolbar) { TableItems(center: center, menu: .view) }
         if center.table.hasItems(in: .photo) {
             CommandMenu("Photo") { TableItems(center: center, menu: .photo) }
@@ -49,7 +49,7 @@ private struct TableItems: View {
         let enabled = center.isEnabled(command)
         switch command.kind {
         case .action:
-            Button(command.title) { center.perform(command.id) }
+            Button(center.title(for: command)) { center.perform(command.id) }
                 .keyboardShortcut(shortcut)
                 .disabled(!enabled)
         case .toggle, .toggleOrHold:

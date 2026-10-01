@@ -28,6 +28,12 @@ public struct CommandTable: Sendable {
         Command("file.open", "Open Folder…", menu: .init(.file),
                 keys: [Shortcut(.position(.o), [.command])]),
 
+        // Undo and redo (M-09). The titles in the menu gain the action's name ("Undo Set Rating").
+        Command("edit.undo", "Undo", menu: .init(.edit, group: 0), requires: .photos,
+                keys: [Shortcut(.position(.z), [.command])]),
+        Command("edit.redo", "Redo", menu: .init(.edit, group: 0), requires: .photos,
+                keys: [Shortcut(.position(.z), [.command, .shift])]),
+
         Command("nav.next", "Next Photo", menu: .init(.photo, group: 0), requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.rightArrow))]),
         Command("nav.previous", "Previous Photo", menu: .init(.photo, group: 0), requires: .photos, repeats: true,

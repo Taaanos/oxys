@@ -172,10 +172,34 @@ final class LoupeController {
             Perf.end(token)
             return
         }
+        confirm(decision, photoName: advance ? photo.name : nil, phrase: advance ? "\(photo.name), \(decision.summary)" : decision.summary, token: token)
+        if advance { navigate(.next, folder: folder) }
+    }
+
+    /// ⌘Z and ⇧⌘Z. The restored decision is saved like any other; the photo it belongs to is shown, so the
+    /// photographer sees what changed (M-09/Q2).
+    func undo(folder: FolderModel) {
+        guard let name = folder.undoName else { return }
+        restored("Undid \(name)", url: folder.undo(), folder: folder)
+    }
+
+    func redo(folder: FolderModel) {
+        guard let name = folder.redoName else { return }
+        restored("Redid \(name)", url: folder.redo(), folder: folder)
+    }
+
+    private func restored(_ verb: String, url: URL?, folder: FolderModel) {
+        guard let url, let photo = folder.photos.first(where: { $0.url == url }) else { return }
+        let token = Perf.begin(.cullFeedback)
+        // The current photo changed under the canvas; the view's load task follows `currentURL`.
+        confirm(photo.decision, photoName: photo.name, phrase: "\(verb). \(photo.name), \(photo.decision.summary)", token: token)
+    }
+
+    private func confirm(_ decision: Decision, photoName: String?, phrase: String, token: Perf.Token) {
         badgeCount += 1
-        badge = Badge(id: badgeCount, decision: decision, photoName: advance ? photo.name : nil)
+        badge = Badge(id: badgeCount, decision: decision, photoName: photoName)
         endAtNextDisplayFrame(token)
-        announce(advance ? "\(photo.name), \(decision.summary)" : decision.summary)
+        announce(phrase)
         let id = badgeCount
         badgeTimeout?.cancel()
         badgeTimeout = Task { [weak self] in
@@ -183,7 +207,6 @@ final class LoupeController {
             guard !Task.isCancelled, let self, badge?.id == id else { return }
             badge = nil
         }
-        if advance { navigate(.next, folder: folder) }
     }
 
     private func announce(_ phrase: String) {

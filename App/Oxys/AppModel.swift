@@ -31,6 +31,14 @@ final class AppModel {
                 loupe.cull(action, advance: phase == .performAdvancing, folder: folder)
             }
         }
+        commands.register("edit.undo", isAvailable: { [unowned self] in folder.undoName != nil },
+                          title: { [unowned self] in folder.undoName.map { "Undo \($0)" } ?? "Undo" }) { [unowned self] _ in
+            loupe.undo(folder: folder)
+        }
+        commands.register("edit.redo", isAvailable: { [unowned self] in folder.redoName != nil },
+                          title: { [unowned self] in folder.redoName.map { "Redo \($0)" } ?? "Redo" }) { [unowned self] _ in
+            loupe.redo(folder: folder)
+        }
         commands.start()
         // Decisions are written as they are made; this waits for the last ones to land before the process exits.
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [folder] _ in
