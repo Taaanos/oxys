@@ -22,6 +22,17 @@ public enum PhotoFormat: String, Sendable, CaseIterable {
     }
 }
 
+/// The image Loupe shows for a photo, as read from the file (M-02). Upright pixel size, orientation applied.
+public struct PreviewInfo: Sendable, Hashable {
+    public let pixelWidth: Int
+    public let pixelHeight: Int
+
+    public init(pixelWidth: Int, pixelHeight: Int) {
+        self.pixelWidth = pixelWidth
+        self.pixelHeight = pixelHeight
+    }
+}
+
 public struct Photo: Sendable, Identifiable, Hashable {
     public let url: URL
     public let format: PhotoFormat
@@ -29,6 +40,8 @@ public struct Photo: Sendable, Identifiable, Hashable {
     public let modificationDate: Date
     /// From EXIF `DateTimeOriginal`. Nil until the background read finishes, and for frames that have none.
     public var captureTime: Date?
+    /// Set once the preview has been opened; nil until then, and for files that have none.
+    public var preview: PreviewInfo?
 
     public var id: URL { url }
     public var name: String { url.lastPathComponent }

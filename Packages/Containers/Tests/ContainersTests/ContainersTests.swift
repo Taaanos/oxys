@@ -219,3 +219,21 @@ private struct TIFFBuilder {
     let moov = box("moov", box("trak", box("mdia", box("minf", box("stbl", stsz + co64)))))
     #expect(CR3PreviewLocator.locate(in: ftyp + moov) == nil)
 }
+
+// MARK: - JPEG Exif interoperability
+
+@Test func jpegHeaderReadsInteropIndexFromItsOwnExif() throws {
+    // Little-endian TIFF: IFD0 {ExifIFD → 26}, Exif IFD {InteropIFD → 44}, Interop IFD {index "R03"}.
+    func le16(_ v: UInt16) -> Data { Data([UInt8(v & 0xFF), UInt8(v >> 8)]) }
+    func le32(_ v: UInt32) -> Data { le16(UInt16(v & 0xFFFF)) + le16(UInt16(v >> 16)) }
+    var tiff = Data("II".utf8) + le16(42) + le32(8)
+    tiff += le16(1) + le16(0x8769) + le16(4) + le32(1) + le32(26) + le32(0)          // IFD0 at 8, 18 bytes
+    tiff += le16(1) + le16(0xA005) + le16(4) + le32(1) + le32(44) + le32(0)          // Exif IFD at 26
+    tiff += le16(1) + le16(0x0001) + le16(2) + le32(4) + Data("R03\0".utf8) + le32(0) // Interop IFD at 44
+    let body = Data("Exif\0\0".utf8) + tiff
+    var jpeg = Data([0xFF, 0xD8, 0xFF, 0xE1, UInt8((body.count + 2) >> 8), UInt8((body.count + 2) & 0xFF)]) + body
+    jpeg += Data([0xFF, 0xC0, 0, 11, 8, 0, 8, 0, 8, 1, 1, 0x11, 0, 0xFF, 0xDA, 0, 8, 1, 1, 0, 0, 63, 0, 0xFF, 0xD9])
+    let header = try #require(JPEGHeader.parse(ByteReader(data: jpeg), at: 0))
+    #expect(header.exifInteropIndex == "R03")
+    #expect(header.width == 8)
+}

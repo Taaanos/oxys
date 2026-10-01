@@ -14,6 +14,8 @@ public struct JPEGHeader: Sendable, Equatable {
     /// An APP1 Exif segment is present, and the orientation it carries (nil if it has none).
     public var hasExif: Bool
     public var exifOrientation: UInt16?
+    /// The Exif `InteroperabilityIndex` (`R98` sRGB, `R03` Adobe RGB), when the JPEG's own Exif has one.
+    public var exifInteropIndex: String?
     /// Adobe APP14 marker; some previews use it to flag their color transform.
     public var hasAdobeMarker: Bool
 
@@ -22,7 +24,7 @@ public struct JPEGHeader: Sendable, Equatable {
     public static func parse(_ reader: ByteReader, at offset: Int) -> JPEGHeader? {
         guard reader.u8(offset) == 0xFF, reader.u8(offset + 1) == 0xD8 else { return nil }
         var header = JPEGHeader(width: 0, height: 0, componentCount: 0, sofMarker: 0, hasICCProfile: false,
-                                hasExif: false, exifOrientation: nil, hasAdobeMarker: false)
+                                hasExif: false, exifOrientation: nil, exifInteropIndex: nil, hasAdobeMarker: false)
         var pos = offset + 2
         var sawFrame = false
         while let prefix = reader.u8(pos), prefix == 0xFF {
@@ -44,6 +46,7 @@ public struct JPEGHeader: Sendable, Equatable {
                 if be.bytes(body, 6) == Data("Exif\0\0".utf8) {
                     header.hasExif = true
                     header.exifOrientation = exifOrientation(be, tiffStart: body + 6)
+                    header.exifInteropIndex = exifInteropIndex(be, tiffStart: body + 6)
                 }
             case 0xE2:
                 if be.bytes(body, 12) == Data("ICC_PROFILE\0".utf8) { header.hasICCProfile = true }
@@ -72,5 +75,29 @@ public struct JPEGHeader: Sendable, Equatable {
             if r.u16(e) == 0x0112 { return r.u16(e + 8) }
         }
         return nil
+    }
+
+    /// IFD0 → Exif IFD (0x8769) → Interoperability IFD (0xA005) → tag 0x0001, a 4-byte ASCII value stored inline.
+    private static func exifInteropIndex(_ reader: ByteReader, tiffStart: Int) -> String? {
+        var r = reader
+        switch r.u16(tiffStart) {
+        case 0x4949: r.order = .little
+        case 0x4D4D: r.order = .big
+        default: return nil
+        }
+        func find(_ tag: UInt16, inIFD ifd: Int) -> Int? {
+            guard let n = r.u16(tiffStart + ifd) else { return nil }
+            for i in 0..<Int(n) {
+                let e = tiffStart + ifd + 2 + i * 12
+                if r.u16(e) == tag { return e + 8 }
+            }
+            return nil
+        }
+        guard let ifd0 = r.u32(tiffStart + 4).map(Int.init),
+              let exifField = find(0x8769, inIFD: ifd0), let exif = r.u32(exifField).map(Int.init),
+              let interopField = find(0xA005, inIFD: exif), let interop = r.u32(interopField).map(Int.init),
+              let valueField = find(0x0001, inIFD: interop),
+              let bytes = r.bytes(valueField, 3) else { return nil }
+        return String(decoding: bytes, as: UTF8.self)
     }
 }

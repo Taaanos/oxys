@@ -60,4 +60,10 @@ public final class FolderModel {
         photos = updated
         isReadingCaptureTimes = false
     }
+
+    /// Records what the preview reader found for `url`. Ignored if the photo is no longer in the folder.
+    public func setPreview(_ info: PreviewInfo, for url: URL) {
+        guard let index = photos.firstIndex(where: { $0.url == url }) else { return }
+        photos[index].preview = info
+    }
 }

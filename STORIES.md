@@ -56,7 +56,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | F-06 | Spike: honest RAW decode | F-01 | done |
 | **Phase 1** | **MVP** | | |
 | M-01 | Open a folder | F-01 | done (5,000-file timing measured warm on APFS clones; cold SSD, SD and a live UI click-through pending) |
-| M-02 | Embedded preview reader | F-03, M-01 | todo |
+| M-02 | Embedded preview reader | F-03, M-01 | done (orientation checked by eye on the two rotated corpus files; no Preview.app color comparison, no Adobe RGB sample, no CR3/ORF file in the corpus) |
 | M-03 | Loupe canvas | M-02 | todo |
 | M-04 | Image pipeline: prefetch, cancellation, caches | M-03, F-02 | todo |
 | M-05 | Command table, keymap and menu bar | F-05 | todo |
@@ -433,12 +433,24 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Files with no embedded preview get a clear placeholder and message.
 
 **Acceptance criteria**
-- [ ] Every corpus file shows with the correct orientation, and colors match Preview.app (spot-check sRGB and Adobe RGB samples).
-- [ ] Unit tests cover each container type against fixtures.
-- [ ] A truncated or corrupt file shows an error tile and never crashes the app.
+- [~] Every corpus file shows with the correct orientation, and colors match Preview.app (spot-check sRGB and Adobe RGB samples). *Orientation: `PreviewCheck` renders all 13 corpus photos; the two rotated ones (A7C II ARW, iPhone DNG) come out upright. Colors: not compared with Preview.app, and the corpus has no Adobe RGB sample (see below).*
+- [x] Unit tests cover each container type against fixtures. *Locators per container were already tested in F-03 (TIFF, CR3, RAF, synthetic); M-02 adds reader tests on synthetic TIFF containers and standalone JPEGs.*
+- [x] A truncated or corrupt file shows an error tile and never crashes the app. *A test cuts a container at 40 points and decodes each; the stand-in view shows the tile. The tile was not seen live.*
 
 **Open questions**
 1. "Smallest adequate" for Grid: adequate for the current cell size, or one fixed size? *Proposed:* the smallest embedded image at least as large as the biggest Grid cell in pixels; otherwise downscale the next larger one and keep it in the disk cache (M-04).
+
+**Built (decisions and results)**
+- `Imaging.PreviewSource`: `open(url, isRaw:)` maps the file and runs `Containers`' locator (headers only); `decodeLoupe(maxPixelSize:)` and `decodeGrid(longEdge:)` return a `DecodedPreview` (pixels plus the EXIF orientation still to apply, so Metal can do the rotation in M-03). Nothing is cached here; M-04 owns that. Errors are `PreviewError`: `unreadable`, `noPreview`, `corrupt`.
+- Open question 1 **decided** as proposed. Grid takes the smallest embedded image whose long edge reaches the requested size and ImageIO scales it down to exactly that edge; never upscaled. Writing the downscaled result to the disk cache is M-04's.
+- Orientation: the preview JPEG's own Exif, else its container tag, else IFD0's (DNG reduced previews). Color: an embedded ICC profile is left to ImageIO; without one, Exif `InteroperabilityIndex` `R03` assigns Adobe RGB and everything else sRGB, using the interop value from the JPEG's own Exif (new `JPEGHeader.exifInteropIndex`) or the container's. The `R03` path is covered by unit tests only, since no corpus camera writes it.
+- Sniffing, as left open in M-01: a file whose extension says JPEG, HEIC or TIFF is still treated as a RAW when its container holds a JPEG with a long edge of 512 px or more (the raw.pixls `.tiff` DNG, PEF and NEF files). `Photo.format` still follows the extension. The Coolscan NEF, whose only image is uncompressed RGB, shows as a plain TIFF original (320×218).
+- JPEG, HEIC and TIFF originals are their own Loupe preview. For Grid, ImageIO's embedded thumbnail is used when it is large enough, else the full image is scaled.
+- `Library.PreviewInfo` (upright pixel size) is stored on `Photo.preview` through `FolderModel.setPreview`. The window's stand-in (`PreviewStandIn`) loads the first photo's preview off the main thread, shows it or an error tile, and fills `Photo.preview`. M-03 replaces the view.
+- Signposts: `preview-read` around open and `decode` around each decode. Not yet measured in the app.
+- `PreviewCheck <out-dir> <files...>` in `Packages/Imaging` writes upright Loupe and Grid PNGs and prints what was found, for checking by eye.
+- Known limit: files are memory-mapped, so a file truncated by another process (a card pulled mid-read) can fault the process (SIGBUS). A truncated file already on disk is handled.
+
 
 ### M-03 · Loupe canvas
 

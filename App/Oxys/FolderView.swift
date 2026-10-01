@@ -2,7 +2,7 @@ import Library
 import SwiftUI
 
 /// The window's content: the empty state until a folder is open, then the folder.
-/// Until Loupe exists (M-03) an opened folder lands on a stand-in naming the first photo.
+/// Until Loupe exists (M-03) an opened folder lands on a stand-in showing the first photo's preview.
 struct FolderView: View {
     let model: AppModel
 
@@ -21,7 +21,7 @@ struct FolderView: View {
             case .failed(let reason):
                 EmptyStateView(message: "Couldn't open this folder: \(reason)")
             case .photos:
-                LoupeStandIn(photo: folder.photos.first)
+                PreviewStandIn(folder: folder, photo: folder.photos.first)
             }
         }
         .navigationTitle(folder.folder?.lastPathComponent ?? "Oxys")
@@ -33,18 +33,5 @@ struct FolderView: View {
         guard case .photos = folder.content else { return "" }
         let count = folder.photos.count
         return count == 1 ? "1 photo" : "\(count.formatted()) photos"
-    }
-}
-
-/// Replaced by the Loupe canvas in M-03.
-private struct LoupeStandIn: View {
-    let photo: Photo?
-
-    var body: some View {
-        Text(photo?.name ?? "")
-            .font(.title2.monospaced())
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .accessibilityLabel(photo?.name ?? "")
     }
 }
