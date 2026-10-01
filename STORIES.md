@@ -58,7 +58,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-01 | Open a folder | F-01 | done (5,000-file timing measured warm on APFS clones; cold SSD, SD and a live UI click-through pending) |
 | M-02 | Embedded preview reader | F-03, M-01 | done (orientation checked by eye on the two rotated corpus files; no Preview.app color comparison, no Adobe RGB sample, no CR3/ORF file in the corpus) |
 | M-03 | Loupe canvas | M-02 | built, needs visual check |
-| M-04 | Image pipeline: prefetch, cancellation, caches | M-03, F-02 | in progress |
+| M-04 | Image pipeline: prefetch, cancellation, caches | M-03, F-02 | done |
 | M-05 | Command table, keymap and menu bar | F-05 | todo |
 | M-06 | Cull decisions and feedback | M-03, M-05 | todo |
 | M-07 | Read existing sidecars | M-01, F-04 | todo |
@@ -523,7 +523,8 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - New signpost `frame-load` (read, decode and upload of one frame). `OXYS_FRAME_LOG=<file>` logs `cursor / displayed / kind` per frame for the held-key audit.
 - Unit tests: LRU and budget, prefetch plan, repeats served from cache, stale cancellation, budget under 200 frames, changed file misses, failures not cached, disk round trip and key, LRU trim, nothing written into the photo folder.
 - Also fixed (M-03 bug found by you): exiting fullscreen left the image stretched; see the M-03 fix commit. Not verified live here.
-- **Not checked:** all four acceptance criteria are still open, because they need the app running against the bench sets with real key repeat (p95 from `scripts/perf-record.sh`, the `OXYS_FRAME_LOG` audit, memory while scrubbing 1,000 frames). The cache-directory criterion is covered by a unit test only. Status stays `in progress` until those are run.
+- **Checked live** (24 MP bench set, a held `→`, Release build): the `OXYS_FRAME_LOG` audit over 526 frames shows no line where the displayed photo differs from the cursor, and frames were skipped as intended (about every fifth) while the key was held. Resident memory read about 270 MB. Navigation felt fast to the user. Note for measuring: launch the binary directly and attach `xctrace` to it (`--attach`); `xctrace --launch` starts the app without key focus, so the keys do nothing.
+- **Deferred (by the user):** the p95 numbers (under 50 ms prefetched, under 100 ms cold), memory over a 1,000-frame scrub against the budget, and the fullscreen-exit fix are not measured. `perf-record.sh --report` on the attached trace did not return, so the trace needs another look when this is picked up (M-26 is the natural place for the full performance pass).
 
 ### M-05 · Command table, keymap and menu bar
 
