@@ -14,7 +14,7 @@ struct OxysApp: App {
         }
         .defaultSize(width: 1100, height: 720)
         .commands {
-            FolderCommands(model: model)
+            TableCommands(center: model.commands, model: model)
             if KeySpikeSetup.enabled { KeySpikeCommands() }
         }
 

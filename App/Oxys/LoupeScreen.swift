@@ -18,7 +18,6 @@ struct LoupeScreen: View {
         }
         .background(Color(white: LoupeView.canvasGray))
         .task(id: folder.currentURL) { await loupe.load(folder.currentPhoto, in: folder) }
-        .onAppear { loupe.start(folder: folder) }
         .onChange(of: folder.folder) { loupe.reset() }
     }
 }

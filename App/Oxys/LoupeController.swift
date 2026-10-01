@@ -9,7 +9,7 @@ import Observation
 import Synchronization
 
 /// Drives Loupe: loads the current photo off the main thread, hands it to the canvas, and routes the
-/// navigation keys through the image pipeline (M-04). M-05 replaces the keymap here with the command table.
+/// navigation commands (from the command table, M-05) through the image pipeline (M-04).
 @MainActor @Observable
 final class LoupeController {
     /// The photo on screen and the error (if any) that replaced its image. Updated together with the frame,
@@ -20,15 +20,6 @@ final class LoupeController {
 
     @ObservationIgnored weak var canvas: LoupeView?
     @ObservationIgnored private var pendingFrameToken: Perf.Token?
-    @ObservationIgnored private var router = KeyRouter(keymap: LoupeController.keymap)
-    @ObservationIgnored private var monitor: Any?
-
-    static let keymap = Keymap([
-        .init(.position(.rightArrow), command: "nav.next", behavior: .repeating),
-        .init(.position(.leftArrow), command: "nav.previous", behavior: .repeating),
-        .init(.position(.home), command: "nav.first"),
-        .init(.position(.end), command: "nav.last"),
-    ])
 
     // MARK: loading
 
@@ -145,42 +136,7 @@ final class LoupeController {
         return pendingFrameToken
     }
 
-    // MARK: keys
-
-    /// Installs the key monitor. `folder` is read at each key press.
-    func start(folder: FolderModel) {
-        guard monitor == nil else { return }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
-            // Local monitors run on the main thread, but the closure type is not isolated.
-            nonisolated(unsafe) let event = event
-            let consumed = MainActor.assumeIsolated { self?.route(event, folder: folder) == true }
-            return consumed ? nil : event
-        }
-    }
-
-    private func route(_ event: NSEvent, folder: FolderModel) -> Bool {
-        guard folder.content == .photos, event.window?.isKeyWindow == true,
-              let input = KeyInput(event: event, layout: KeyLayout.asciiCapable())
-        else { return false }
-        let focus: KeyFocus = if let tv = event.window?.firstResponder as? NSTextView, tv.isEditable || tv.isFieldEditor {
-            .textInput
-        } else { .canvas }
-        let result = router.handle(input, mode: .loupe, focus: focus)
-        for case .perform(let id) in result.actions {
-            if let step = Self.step(for: id) { navigate(step, folder: folder) }
-        }
-        return result.consumed
-    }
-
-    static func step(for id: CommandID) -> FolderModel.Step? {
-        switch id.rawValue {
-        case "nav.next": .next
-        case "nav.previous": .previous
-        case "nav.first": .first
-        case "nav.last": .last
-        default: nil
-        }
-    }
+    // MARK: navigation
 
     /// The menu items and the keys both come here. The key-to-frame interval starts now and ends when the
     /// canvas has presented the frame; a move that changes nothing (at either end) ends it at once.

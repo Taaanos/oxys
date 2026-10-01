@@ -59,7 +59,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-02 | Embedded preview reader | F-03, M-01 | done (orientation checked by eye on the two rotated corpus files; no Preview.app color comparison, no Adobe RGB sample, no CR3/ORF file in the corpus) |
 | M-03 | Loupe canvas | M-02 | built, needs visual check |
 | M-04 | Image pipeline: prefetch, cancellation, caches | M-03, F-02 | done |
-| M-05 | Command table, keymap and menu bar | F-05 | todo |
+| M-05 | Command table, keymap and menu bar | F-05 | done (menu bar and live key checks pending, see the story) |
 | M-06 | Cull decisions and feedback | M-03, M-05 | todo |
 | M-07 | Read existing sidecars | M-01, F-04 | todo |
 | M-08 | Write sidecars safely | M-06, M-07 | todo |
@@ -549,6 +549,15 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 **Open questions**
 1. Keymap file location and format. *Proposed:* `~/Library/Application Support/<app>/Keymap.json`, storing only the overrides, with a schema version.
 2. Show bare-key shortcuts in menus ("Reject   X")? *Proposed:* yes; AppKit displays key equivalents without modifiers.
+
+**Built (decisions and results)**
+- Question 1 **decided** as proposed, with the folder named `Oxys` (not the bundle ID, which is still a placeholder): `~/Library/Application Support/Oxys/Keymap.json`, `{"version": 1, "bindings": {"<command>": [{"position": "rightArrow"} | {"character": "[", "modifiers": [...]}]}}`. A command listed there loses its default keys and gets exactly the listed ones (`[]` unbinds); a key claimed there is taken from another command's default; two user claims on one key keep the first by command name. Bad entries are skipped and logged (`os.Logger`, category `commands`); a file that does not parse or has another version leaves the defaults. There is no UI for these problems yet. Question 2 **decided** as proposed.
+- `Commands`: `Command` (id, title, `MenuPlacement`, modes, `Requirements`, kind, `repeats`, default keys), `CommandTable` (`standard` holds the entries; `groups(in:)` gives a menu's divider-separated groups), `Keymap.resolve(table:userFile:)`, `PhysicalKey.name`. The Default preset is the table's own default keys, so adding a command is one table entry: it gets a menu item and a key, and the app registers its handler. A command's modes and behavior (`once` / `repeating` / `toggleOrHold`) apply to all its keys, including the user's.
+- App: `CommandCenter` owns the keymap, router, the single key monitor and the handlers, and answers enabled / checked / shortcut for the menu bar. `TableCommands` generates the menus; Edit, View, Window and Help items are added to the system's menus, Photo and Filter appear once they have items, and the old Go menu is gone (navigation lives in Photo). Items are disabled, never hidden (no handler, wrong mode, or no photos). Menu shortcuts are the command's first key, printed from the current layout and refreshed on an input-source change.
+- Registered now: `file.open` (⌘O), `nav.next`, `nav.previous`, `nav.first`, `nav.last`. `LoupeController` lost its own keymap and monitor. The monitor now runs for the whole app, so ⌘O works with no folder open; it ignores events for panels (Open, alerts) and when the window is not key. Held keys revert when the window or app resigns.
+- Numeric keypad digits are not aliased to the digit row; revisit in M-06 when the rating keys arrive.
+- Checked: package tests (table, menu groups, enablement, repeat policy, override, unbind, steal, character keys, bad entries, conflicts, unreadable and newer files, key names; 34 in `Commands`), Release build with no warnings.
+- **Not checked live** (this session cannot read the menu bar or send keys): the menu bar contents and shortcut display, a relaunch with an edited `Keymap.json`, and bare keys with a text field focused (there is no text field in the app yet; M-13 adds the first). Risk to look at then: AppKit may fire a bare-key menu equivalent before a field editor sees the key.
 
 ### M-06 · Cull decisions and feedback
 

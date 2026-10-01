@@ -51,3 +51,13 @@ public enum PhysicalKey: UInt16, CaseIterable, Sendable {
         }
     }
 }
+
+extension PhysicalKey {
+    /// The case name, used in keymap files (`"rightArrow"`, `"digit3"`).
+    public var name: String { String(describing: self) }
+
+    public init?(name: String) {
+        guard let key = Self.allCases.first(where: { $0.name == name }) else { return nil }
+        self = key
+    }
+}

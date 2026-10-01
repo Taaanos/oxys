@@ -1,4 +1,5 @@
 import AppKit
+import Commands
 import Library
 import Observation
 
@@ -7,9 +8,17 @@ import Observation
 final class AppModel {
     let folder = FolderModel()
     let loupe = LoupeController()
+    let commands: CommandCenter
     private(set) var recentFolders: [URL] = NSDocumentController.shared.recentDocumentURLs
 
     init() {
+        commands = CommandCenter(folder: folder)
+        commands.register("file.open") { [unowned self] _ in chooseFolder() }
+        for (id, step) in [("nav.next", FolderModel.Step.next), ("nav.previous", .previous),
+                           ("nav.first", .first), ("nav.last", .last)] {
+            commands.register(CommandID(rawValue: id)) { [unowned self] _ in loupe.navigate(step, folder: folder) }
+        }
+        commands.start()
         // Developer hook, like OXYS_REPORT_LAUNCH: open a folder at launch for scripted checks.
         if let path = ProcessInfo.processInfo.environment["OXYS_OPEN"] { open(URL(fileURLWithPath: path)) }
     }
