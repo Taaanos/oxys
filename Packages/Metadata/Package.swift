@@ -9,6 +9,8 @@ let package = Package(
     ],
     targets: [
         .target(name: "Metadata"),
+        // M-16 tool: prints EXIF per file and compares it with a reference extractor (PREVIEW_ORACLE).
+        .executableTarget(name: "ExifCheck", dependencies: ["Metadata"]),
         .testTarget(name: "MetadataTests", dependencies: ["Metadata"]),
     ]
 )

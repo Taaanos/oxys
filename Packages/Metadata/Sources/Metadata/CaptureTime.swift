@@ -1,15 +1,13 @@
 import Foundation
 import ImageIO
 
-/// Reads when a photo was taken without decoding any pixels (M-01). M-16 builds the full EXIF reader on the same parts.
+/// Reads when a photo was taken without decoding any pixels (M-01). `ExifReader` (M-16) reads the same properties.
 public enum CaptureTime {
     /// `DateTimeOriginal` plus sub-seconds and the UTC offset when the camera recorded one.
     /// Without an offset the wall-clock time is read in the Mac's current time zone, which is what a photographer expects
     /// for a shoot taken where they live. Returns nil when the file has no usable date.
     public static func read(from url: URL) -> Date? {
-        let options = [kCGImageSourceShouldCache: false] as CFDictionary
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, options),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, options) as? [CFString: Any],
+        guard let properties = ExifReader.properties(of: url),
               let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any],
               let original = exif[kCGImagePropertyExifDateTimeOriginal] as? String
         else { return nil }

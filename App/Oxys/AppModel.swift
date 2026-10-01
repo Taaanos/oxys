@@ -2,6 +2,7 @@ import Canvas
 import AppKit
 import Commands
 import Library
+import Metadata
 import Observation
 
 /// Lets the model answer `applicationShouldTerminate` without the SwiftUI app owning an AppKit delegate by hand.
@@ -64,6 +65,21 @@ final class AppModel {
         commands.register("zoom.out") { [unowned self] _ in loupe.stepZoom(.out) }
         commands.register("zoom.sticky", isOn: { [unowned self] in loupe.stickyZoom }) { [unowned self] _ in
             loupe.stickyZoom.toggle()
+        }
+        commands.register("info.exif", isOn: { [unowned self] in loupe.showExif }) { [unowned self] _ in
+            loupe.showExif.toggle()
+        }
+        commands.register("info.fieldNext", isAvailable: { [unowned self] in loupe.showExif }) { [unowned self] _ in
+            loupe.moveExifFocus(1)
+        }
+        commands.register("info.fieldPrevious", isAvailable: { [unowned self] in loupe.showExif }) { [unowned self] _ in
+            loupe.moveExifFocus(-1)
+        }
+        commands.register("info.copy", isAvailable: { [unowned self] in loupe.showExif && loupe.exif != nil }) { [unowned self] _ in
+            loupe.copyExif()
+        }
+        commands.register("info.maps", isAvailable: { [unowned self] in loupe.exif?.gps != nil }) { [unowned self] _ in
+            loupe.showInMaps()
         }
         let pans: [(String, PanDirection, Bool)] = [
             ("pan.left", .left, false), ("pan.right", .right, false), ("pan.up", .up, false), ("pan.down", .down, false),

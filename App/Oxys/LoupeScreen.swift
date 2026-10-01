@@ -1,5 +1,6 @@
 import Canvas
 import Library
+import Metadata
 import SwiftUI
 
 /// Loupe: the canvas, an info strip along the bottom, and an error tile for a file that cannot be previewed.
@@ -17,6 +18,9 @@ struct LoupeScreen: View {
                 ErrorTile(name: loupe.shown?.name ?? "", message: failure)
             }
             if let badge = loupe.badge { CullBadge(badge: badge) }
+            if loupe.showExif, let exif = loupe.exif, loupe.failure == nil {
+                ExifPanel(info: exif, focused: Bindable(loupe).focusedExifField)
+            }
             InfoStrip(photo: loupe.shown, decision: loupe.shown.flatMap { folder.decision(for: $0.url) }, pixels: loupe.shownPixels, zoom: loupe.zoomInfo)
         }
         .background(Color(white: LoupeView.canvasGray))
@@ -43,6 +47,38 @@ private struct LoupeCanvas: NSViewRepresentable {
     }
 
     func updateNSView(_ view: LoupeView, context: Context) {}
+}
+
+/// The EXIF values at the top left on a backing plate. A click or `↑`/`↓` focuses a value; `⌘C` copies it.
+private struct ExifPanel: View {
+    let info: ExifInfo
+    @Binding var focused: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(info.fields) { field in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(field.label).foregroundStyle(.secondary).frame(width: 110, alignment: .leading)
+                    Text(field.value).textSelection(.enabled)
+                }
+                .font(.callout.monospacedDigit())
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1)
+                .background(focused == field.label ? Color.accentColor.opacity(0.6) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                .contentShape(Rectangle())
+                .onTapGesture { focused = focused == field.label ? nil : field.label }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(field.label), \(field.value)")
+                .accessibilityAddTraits(focused == field.label ? .isSelected : [])
+            }
+        }
+        .padding(10)
+        .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
+        .foregroundStyle(.white)
+        .environment(\.colorScheme, .dark)
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
 }
 
 /// Filename, the decision (stars, label, reject) and the size of the preview shown.

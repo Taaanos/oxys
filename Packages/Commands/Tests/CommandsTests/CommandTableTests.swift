@@ -170,7 +170,7 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
         router.handle(KeyInput(keyCode: key.rawValue, timestamp: t, character: character), mode: mode, focus: .canvas).actions
     }
     #expect(press(.downArrow, .grid, at: 0) == [.perform("nav.down")])
-    #expect(press(.downArrow, .loupe, at: 1).isEmpty)
+    #expect(press(.downArrow, .loupe, at: 1) == [.perform("info.fieldNext")])   // M-16: Loupe's ↓ walks the EXIF values
     #expect(press(.return, .grid, at: 2) == [.perform("view.loupe")])
     #expect(press(.space, .grid, at: 3) == [.perform("view.loupe")])
     #expect(press(.return, .loupe, at: 4).isEmpty)
@@ -264,4 +264,16 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     // ⌥Z is sticky zoom, not Z's toggle.
     #expect(actions(.z, [.option], t: 11) == [.perform("zoom.sticky")])
     #expect(actions(.z, [], t: 12) == [.perform("zoom.toggle")])
+}
+
+@Test func exifKeysLiveInLoupeOnly() {
+    var router = KeyRouter(keymap: resolve(nil).keymap)
+    func press(_ key: PhysicalKey, _ mode: ViewMode, _ mods: KeyModifiers = [], at t: Double) -> [RoutedAction] {
+        router.handle(KeyInput(keyCode: key.rawValue, modifiers: mods, timestamp: t), mode: mode, focus: .canvas).actions
+    }
+    #expect(press(.i, .loupe, at: 0) == [.perform("info.exif")])
+    #expect(press(.i, .grid, at: 1).isEmpty)
+    #expect(press(.upArrow, .loupe, at: 2) == [.perform("info.fieldPrevious")])
+    #expect(press(.c, .loupe, [.command], at: 3) == [.perform("info.copy")])
+    #expect(press(.c, .grid, [.command], at: 4).isEmpty)
 }

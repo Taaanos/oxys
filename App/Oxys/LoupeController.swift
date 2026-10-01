@@ -5,6 +5,7 @@ import CoreImage
 import Diagnostics
 import Imaging
 import Library
+import Metadata
 import Observation
 import Synchronization
 
@@ -19,6 +20,16 @@ final class LoupeController {
     private(set) var failure: String?
     /// Zoom level of the frame on screen, for the info strip; nil when there is no frame.
     private(set) var zoomInfo: ZoomInfo?
+
+    /// EXIF of the photo on screen (M-16), formatted; nil while it is being read and for a file without any.
+    private(set) var exif: ExifInfo?
+    /// The EXIF panel's visibility, remembered across launches. M-18's `I` cycle absorbs it.
+    var showExif = UserDefaults.standard.object(forKey: "showExif") as? Bool ?? false {
+        didSet { UserDefaults.standard.set(showExif, forKey: "showExif") }
+    }
+    /// Label of the focused value, set by `↑`/`↓` or a click; `⌘C` copies it.
+    var focusedExifField: String?
+    @ObservationIgnored private let exifCache = ExifCache()
 
     /// Sticky zoom (M-15): zoom and spot carry over to the next photo. On by default; `⌥Z` toggles it.
     var stickyZoom = UserDefaults.standard.object(forKey: "stickyZoom") as? Bool ?? true {
@@ -69,6 +80,7 @@ final class LoupeController {
         isActive = active
         if !active {
             shown = nil
+            exif = nil
             shownPixels = nil
             failure = nil
             canvas?.show(nil)
@@ -126,10 +138,11 @@ final class LoupeController {
         let direction: PrefetchPlan.Direction = if let index, let last = lastIndex, index < last { .backward } else { .forward }
         lastIndex = index
         let slow = await pipeline.isSlow
-        let neighbors = index.map {
+        let neighborIndices = index.map {
             plan.indices(current: $0, count: folder.photos.count, direction: direction, slow: slow)
-                .map { FrameLoader.key(for: folder.photos[$0]) }
         } ?? []
+        let neighbors = neighborIndices.map { FrameLoader.key(for: folder.photos[$0]) }
+        warmExif([photo.url] + neighborIndices.map { folder.photos[$0].url })
 
         let pipeline = pipeline, thumbnails = thumbnails
         let finished = Mutex(false)
@@ -144,6 +157,7 @@ final class LoupeController {
             if let stand, !finished.withLock({ $0 }), isCurrent(photo, in: folder) {
                 let same = shown?.url == photo.url
                 shown = photo
+                updateExif(for: photo)
                 shownPixels = nil
                 failure = nil
                 canvas.setAccessibilityLabel(photo.name)
@@ -168,6 +182,7 @@ final class LoupeController {
         let token = takeToken()
         let same = shown?.url == photo.url && failure == nil
         shown = photo
+        updateExif(for: photo)
         folder.setPreview(PreviewInfo(pixelWidth: frame.width, pixelHeight: frame.height), for: photo.url)
         shownPixels = (frame.width, frame.height)
         lastPreviewLongSide = CGFloat(max(frame.width, frame.height))
@@ -187,6 +202,7 @@ final class LoupeController {
         let token = takeToken()
         let message = (error as? PreviewError)?.localizedDescription ?? error.localizedDescription
         shown = photo
+        updateExif(for: photo)
         shownPixels = nil
         failure = message
         canvas.setAccessibilityLabel("\(photo.name). \(message)")
@@ -197,6 +213,60 @@ final class LoupeController {
     private func takeToken() -> Perf.Token? {
         defer { pendingFrameToken = nil }
         return pendingFrameToken
+    }
+
+    // MARK: EXIF
+
+    /// Shows `photo`'s EXIF: at once when the cache has it (it was read with the prefetch), otherwise after a
+    /// background read. A read that finishes after the photo changed is dropped.
+    private func updateExif(for photo: Photo) {
+        if let hit = exifCache.cached(photo.url) {
+            exif = hit
+            return
+        }
+        exif = nil
+        let cache = exifCache, url = photo.url
+        Task { [weak self] in
+            let info = await Task.detached(priority: .userInitiated) { cache.info(for: url) }.value
+            guard let self, shown?.url == url else { return }
+            exif = info
+        }
+    }
+
+    /// Reads the EXIF of the photos the prefetch is about to load, so stepping to them has the values ready.
+    private func warmExif(_ urls: [URL]) {
+        let cache = exifCache
+        Task.detached(priority: .utility) {
+            for url in urls { _ = cache.info(for: url) }
+        }
+    }
+
+    /// `↑` and `↓` through the values; the first press lands on the first or last one.
+    func moveExifFocus(_ step: Int) {
+        let labels = (exif?.fields ?? []).map(\.label)
+        guard !labels.isEmpty else { return }
+        let current = focusedExifField.flatMap { labels.firstIndex(of: $0) }
+        let next = current.map { min(max($0 + step, 0), labels.count - 1) } ?? (step > 0 ? 0 : labels.count - 1)
+        focusedExifField = labels[next]
+        announce("\(labels[next]), \(exif?.fields[next].value ?? "")")
+    }
+
+    /// The focused value, or every value as "Label: value" lines when none is focused.
+    func copyExif() {
+        guard let fields = exif?.fields, !fields.isEmpty else { return }
+        let text: String
+        if let label = focusedExifField, let field = fields.first(where: { $0.label == label }) {
+            text = field.value
+        } else {
+            text = fields.map { "\($0.label): \($0.value)" }.joined(separator: "\n")
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        announce("Copied")
+    }
+
+    func showInMaps() {
+        if let url = exif?.gps?.mapsURL { NSWorkspace.shared.open(url) }
     }
 
     // MARK: navigation

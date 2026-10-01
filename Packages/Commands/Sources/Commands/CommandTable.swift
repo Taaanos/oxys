@@ -99,6 +99,18 @@ public struct CommandTable: Sendable {
         Command("pan.pageDown", "Pan Down a View", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.downArrow), [.option, .shift])]),
 
+        // EXIF panel (M-16). `I` shows or hides it until M-18's cycle takes the key over. `↑` and `↓` move between
+        // its values, `⌘C` copies the focused one (all of them when none is), and Show in Maps opens the GPS spot.
+        Command("info.exif", "Show EXIF", menu: .init(.view, group: 4), modes: loupe, requires: .photos,
+                kind: .toggle, keys: [Shortcut(.position(.i))]),
+        Command("info.fieldNext", "Next EXIF Value", menu: .init(.view, group: 4), modes: loupe, requires: .photos, repeats: true,
+                keys: [Shortcut(.position(.downArrow))]),
+        Command("info.fieldPrevious", "Previous EXIF Value", menu: .init(.view, group: 4), modes: loupe, requires: .photos, repeats: true,
+                keys: [Shortcut(.position(.upArrow))]),
+        Command("info.copy", "Copy EXIF Value", menu: .init(.view, group: 4), modes: loupe, requires: .photos,
+                keys: [Shortcut(.position(.c), [.command])]),
+        Command("info.maps", "Show in Maps", menu: .init(.view, group: 4), modes: loupe, requires: .photos),
+
         // `⇥` hides the toolbar and panels; the pointer at the top edge, or `⇥` again, brings them back (M-13).
         Command("view.chrome", "Hide Toolbar", menu: .init(.view, group: 2),
                 keys: [Shortcut(.position(.tab))]),

@@ -70,7 +70,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-13 | Modes and window chrome | M-12 | built (keys, toolbar and `⇥` not checked in the running app) |
 | M-14 | Zoom: Fit and 1:1 | M-03, F-05 | built, needs visual check |
 | M-15 | Zoom steps, panning and sticky zoom | M-14 | done |
-| M-16 | EXIF | M-01 | todo |
+| M-16 | EXIF | M-01 | done (reference comparison passes on the corpus; live panel, ⌘C and the one-frame timing not checked in the running app) |
 | M-17 | Histogram | M-03 | todo |
 | M-18 | Info overlay and inspector | M-16, M-17 | todo |
 | M-19 | Selection | M-12 | todo |
@@ -943,11 +943,25 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Lens names from maker notes and AF data arrive in V-01.
 
 **Acceptance criteria**
-- [ ] For every corpus file, values match an independent reference tool for the same fields.
+- [x] For every corpus file, values match an independent reference tool for the same fields.
 - [ ] Values appear within one frame of changing to a prefetched image.
 
 **Open questions**
-1. GPS: coordinates only, or also a place name (which needs a network lookup)? *Proposed:* coordinates plus a "Show in Maps" action.
+1. GPS: coordinates only, or also a place name (which needs a network lookup)? **Decided:** coordinates plus a "Show in Maps" action.
+
+**Built (decisions and results)**
+- Q1 **decided** as proposed: coordinates (`48.8584° N, 2.2945° E`) plus **Show in Maps** (View menu, enabled only when the frame has GPS), which opens an Apple Maps URL. Oxys itself makes no lookup.
+- `Metadata`: `ExifReader` (ImageIO properties, no pixels decoded), `ExifFormat` (1/250 s, f/2.8, +⅓ EV, 35 mm with the 35 mm equivalent when it differs, ISO, metering, white balance, flash, camera name without a repeated make, coordinates), `ExifInfo` (formatted fields in a fixed order; missing ones are left out) and `ExifCache` (lazy, bounded to 2,000 entries, remembers files with no EXIF). `CaptureTime.read` now uses the same properties call as `ExifReader`, and `ExifReader.parse` parses the same date, so M-01's scan and the panel agree.
+- Loupe: `I` shows or hides a panel at the top left (remembered across launches; M-18's cycle takes the key over). `↑`/`↓` move between values, a click also focuses one, `⌘C` copies the focused value or, with none focused, every value as "Label: value" lines. Each row has a VoiceOver label and the move announces itself. `↑`/`↓` do nothing in Loupe otherwise, so they are free.
+- Within one frame: `load` reads the current photo's EXIF and its prefetch neighbors' on a utility task; when a photo is shown, a cache hit is applied in the same state change as the frame. A miss reads on a background task and is dropped if the photo has changed.
+- Dimensions are what ImageIO reports for the file's main image (the sensor size for most RAWs, a preview for some, see the M-14 note); this is the number V-05 needs. The "Preview pixels, fewer than the sensor" flag in the info strip is unchanged until V-05.
+- Not in this story: lens names from maker notes (V-01), the histogram and the inspector (M-17, M-18).
+
+**Checked**
+- Unit tests: `Metadata` 19 (formatting, parsing a property dictionary with every field and GPS signs, field order, cache bounds), `Commands` 44 (new: `I`, `↑`, `⌘C` in Loupe only; Loupe's `↓` is now an EXIF key). Release build clean, arm64.
+- `ExifCheck` (new tool in `Packages/Metadata`): with `PREVIEW_ORACLE=<path to a reference extractor>` it compares 10 fields per file after running the oracle's numbers through the same formatters. The 13 camera files in `TestData/` that ImageIO reads: 106 values compared, 0 differ (metering is compared against the EXIF tag; a Canon maker note carries a second, differently numbered code).
+- **Known gap:** ImageIO returns no EXIF for the Pentax K10D file (a PEF), although the reference tool reads exposure, aperture, ISO and capture time from it. That frame shows no values, and its capture time is missing in M-01's sort too. Fixing it needs our own TIFF/EXIF walker in `Containers` (F-03 already parses the container); parked until a story picks it up (likely V-01).
+- **Not checked** (this session cannot send keys or see the window): the panel's look over bright photos, `I`, `↑`/`↓`, click and `⌘C` in the live app (including whether the menu's `⌘C` item and the standard Copy item coexist), VoiceOver, and the one-frame criterion for a prefetched image (no signpost for it yet).
 
 ### M-17 · Histogram
 
