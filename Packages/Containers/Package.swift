@@ -9,6 +9,8 @@ let package = Package(
     ],
     targets: [
         .target(name: "Containers"),
+        // F-03 spike tool: lists, verifies against a reference extractor, and times embedded previews.
+        .executableTarget(name: "PreviewSpike", dependencies: ["Containers"]),
         .testTarget(name: "ContainersTests", dependencies: ["Containers"]),
     ]
 )

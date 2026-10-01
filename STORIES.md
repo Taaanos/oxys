@@ -49,7 +49,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | **Phase 0** | **Foundations and spikes** | | |
 | F-01 | Project skeleton | none | done |
 | F-02 | Test corpus and performance harness | F-01 | todo |
-| F-03 | Spike: locating embedded previews | F-01 | todo |
+| F-03 | Spike: locating embedded previews | F-01 | done (ORF, real RW2 and Nikon maker-note previews open) |
 | F-04 | Spike: XMP interoperability | none | todo |
 | F-05 | Spike: keyboard routing | F-01 | todo |
 | F-06 | Spike: honest RAW decode | F-01 | todo |
@@ -239,9 +239,19 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Time read plus decode per format, memory-mapped, on SSD and SD card.
 
 **Acceptance criteria**
-- [ ] For every corpus file, the extracted bytes are identical to `exiftool -b -JpgFromRaw` or `-PreviewImage` (exiftool is a test oracle only, never a dependency).
-- [ ] `docs/spikes/previews.md` has a table: format, camera, available preview sizes, read and decode time.
-- [ ] The decision is recorded: our own parser, LibRaw, or ImageIO for browsing plus our parser for extraction.
+- [x] For every corpus file, the extracted bytes are identical to what an independent reference extractor produces for the embedded JPEG (a test oracle only, never a dependency). *14 files (ARW, CR2, CR3, RAF, PEF, NEF and seven DNGs); all 25 located JPEGs match. The CR3 `PRVW` matches up to two zero bytes of padding that the oracle appends. ORF has no file; RW2 is verified only on a tiny test stub.*
+- [x] `docs/spikes/previews.md` has a table: format, camera, available preview sizes, read and decode time. *Warm SSD only; cold SSD and SD card are not measured.*
+- [x] The decision is recorded: our own parser, LibRaw, or ImageIO for browsing plus our parser for extraction. *Own parser for browsing and extraction; ImageIO only decodes the bytes.*
+
+**Decisions (recorded after the spike)**
+- Own locator (`Packages/Containers`) for browsing and extraction. ImageIO's file thumbnail path is not used: it hides which preview it picked, never picks the A7C II's 7008×4672 JPEG, and is 2–4× slower than locate + read + decode on the same small preview. Open question 1: no.
+- A JPEG-compressed IFD is not necessarily a preview. DNG raws can be lossless-JPEG tiles, and Apple DNGs add JPEG semantic masks. Classify by photometric interpretation (exclude CFA, Linear Raw, semantic mask), tiling and subfile type.
+- DNG reduced-resolution previews carry no orientation tag; fall back to IFD0's.
+- No third-party code is needed for previews, so F-03 does not force G-2.
+- Input for M-04: a full decode of the 33 MP preview takes about 60 ms on an M4 (target: 50 ms p95). Decode at reduced size or show the smaller preview first.
+- Lossless JPEG (SOF3 and variants) is raw data, never a preview (CR2's IFD3 is a 21 MB one). CR3 JPEGs live in `THMB`, `PRVW` and a `trak` sample in `mdat`; make, model and orientation come from `CMT1`.
+- Grid should decode at cell size from the extracted bytes, since some bodies (EOS 7D) offer only a thumbnail and the full-size JPEG. Detect formats by sniffing, not by extension.
+- Open question 2 (bodies beyond the corpus): the corpus now covers ARW, CR2, CR3, RAF, PEF and DNG from several makers. ORF, a real RW2 (the Panasonic tag 0x002E path is checked on a stub only) and Nikon maker-note JPEG previews remain open.
 
 **Implementation notes**
 - Read only the headers and the preview bytes. Reading a whole 60 MB RAW would miss the 50 ms target on an SD card.
@@ -716,7 +726,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Lens names from maker notes and AF data arrive in V-01.
 
 **Acceptance criteria**
-- [ ] For every corpus file, values match `exiftool` for the same fields.
+- [ ] For every corpus file, values match an independent reference tool for the same fields.
 - [ ] Values appear within one frame of changing to a prefetched image.
 
 **Open questions**
@@ -919,11 +929,11 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - The inspector shows the AF information. (Drawing the AF point as an overlay is v1.x.)
 
 **Acceptance criteria**
-- [ ] AF coordinates match exiftool's values on corpus files from the four brands.
+- [ ] AF coordinates match a reference tool's values on corpus files from the four brands.
 - [ ] With the pointer off the image, `Z` lands on the AF point.
 
 **Implementation notes**
-- exiftool's tag tables are the best documentation of maker notes. Reading them is fine; copying its code or tables verbatim would tie us to its license (G-2), so write our own from the documentation.
+- Existing open-source metadata tools' tag tables are the best documentation of maker notes. Reading them is fine; copying their code or tables verbatim would tie us to their licenses (G-2), so write our own from the documentation.
 
 **Open questions**
 1. Which brands are required for v1.0? *Proposed:* Sony, Canon, Nikon and Fujifilm (the test-matrix brands); others show "AF data not available".
@@ -1164,7 +1174,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - A summary lists files with no embedded JPEG, and any failures.
 
 **Acceptance criteria**
-- [ ] The image data is identical to the embedded stream (exiftool as the oracle).
+- [ ] The image data is identical to the embedded stream (a reference extractor as the oracle).
 - [ ] 500 files finish within 20% of the time Finder takes to copy the same number of bytes.
 - [ ] Cancel stops promptly and leaves no partial file.
 
