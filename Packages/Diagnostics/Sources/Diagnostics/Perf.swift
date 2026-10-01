@@ -23,6 +23,10 @@ public enum PerfInterval: String, CaseIterable, Sendable {
     case cullFeedback = "cull-feedback"
     /// Reading every existing sidecar in a folder, in the background after the list is shown (M-07).
     case sidecarRead = "sidecar-read"
+    /// Loading one Grid thumbnail: disk cache hit, or decode and store (M-12).
+    case gridThumbnail = "grid-thumbnail"
+    /// Opening a folder → every thumbnail on the first screen of Grid is drawn (M-12; 300 ms for 1,000 files).
+    case gridFirstScreen = "grid-first-screen"
 
     /// Signpost names must be static strings, so the raw value is repeated here.
     var signpostName: StaticString {
@@ -37,6 +41,8 @@ public enum PerfInterval: String, CaseIterable, Sendable {
         case .captureTimes: "capture-times"
         case .cullFeedback: "cull-feedback"
         case .sidecarRead: "sidecar-read"
+        case .gridThumbnail: "grid-thumbnail"
+        case .gridFirstScreen: "grid-first-screen"
         }
     }
 }

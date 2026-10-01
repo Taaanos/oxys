@@ -1,9 +1,10 @@
 import AppKit
+import Commands
 import Library
 import SwiftUI
 
 /// The window's content: the empty state until a folder is open, then the folder.
-/// An opened folder lands in Loupe on its first photo.
+/// An opened folder lands in Grid; Return, Space or a double-click opens the active photo in Loupe.
 struct FolderView: View {
     let model: AppModel
 
@@ -22,7 +23,11 @@ struct FolderView: View {
             case .failed(let reason):
                 EmptyStateView(message: "Couldn't open this folder: \(reason)")
             case .photos:
-                LoupeScreen(model: model)
+                if model.commands.mode == .grid {
+                    GridScreen(controller: model.grid)
+                } else {
+                    LoupeScreen(model: model)
+                }
             }
         }
         .overlay(alignment: .top) {

@@ -398,6 +398,21 @@ public final class FolderModel {
         return true
     }
 
+    /// Makes the photo at `url` the current one (a click in Grid, an arrow key). Ignored for a URL not in the folder.
+    @discardableResult
+    public func setCurrent(_ url: URL) -> Bool {
+        guard url != currentURL, photos.contains(where: { $0.url == url }) else { return false }
+        currentURL = url
+        return true
+    }
+
+    /// Makes the photo at `index` the current one. Ignored outside the list.
+    @discardableResult
+    public func setCurrent(index: Int) -> Bool {
+        guard photos.indices.contains(index) else { return false }
+        return setCurrent(photos[index].url)
+    }
+
     /// Records what the preview reader found for `url`. Ignored if the photo is no longer in the folder.
     public func setPreview(_ info: PreviewInfo, for url: URL) {
         guard let index = photos.firstIndex(where: { $0.url == url }) else { return }

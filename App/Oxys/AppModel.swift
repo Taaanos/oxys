@@ -17,11 +17,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 final class AppModel {
     let folder = FolderModel()
     let loupe = LoupeController()
+    let grid: GridController
     let commands: CommandCenter
     private(set) var recentFolders: [URL] = NSDocumentController.shared.recentDocumentURLs
 
     init() {
         commands = CommandCenter(folder: folder)
+        grid = GridController(folder: folder, loupe: loupe)
+        grid.onOpen = { [unowned self] in commands.mode = .loupe }
         commands.register("file.open") { [unowned self] _ in chooseFolder() }
         commands.register("file.reload") { [unowned self] _ in folder.reload() }
         commands.register("file.saveDecisions", isAvailable: { [unowned self] in folder.unsavedCount > 0 }) { [unowned self] _ in
@@ -34,8 +37,17 @@ final class AppModel {
         }
         for (id, step) in [("nav.next", FolderModel.Step.next), ("nav.previous", .previous),
                            ("nav.first", .first), ("nav.last", .last)] {
-            commands.register(CommandID(rawValue: id)) { [unowned self] _ in loupe.navigate(step, folder: folder) }
+            // Grid has no canvas to time a frame on; Loupe's navigate also starts the key-to-frame interval.
+            commands.register(CommandID(rawValue: id)) { [unowned self] _ in
+                if commands.mode == .grid { folder.move(step) } else { loupe.navigate(step, folder: folder) }
+            }
         }
+        commands.register("nav.up") { [unowned self] _ in grid.move(.up) }
+        commands.register("nav.down") { [unowned self] _ in grid.move(.down) }
+        commands.register("view.loupe") { [unowned self] _ in commands.mode = .loupe }
+        commands.register("view.grid") { [unowned self] _ in commands.mode = .grid }
+        commands.register("grid.smaller") { [unowned self] _ in grid.resize(by: -1) }
+        commands.register("grid.larger") { [unowned self] _ in grid.resize(by: 1) }
         let cullActions: [(String, CullAction)] = [
             ("cull.rate.0", .setRating(0)), ("cull.rate.1", .setRating(1)), ("cull.rate.2", .setRating(2)),
             ("cull.rate.3", .setRating(3)), ("cull.rate.4", .setRating(4)), ("cull.rate.5", .setRating(5)),
@@ -67,6 +79,8 @@ final class AppModel {
     }
 
     func open(_ url: URL) {
+        commands.mode = .grid
+        grid.noteOpening()
         folder.open(url)
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
         recentFolders = NSDocumentController.shared.recentDocumentURLs

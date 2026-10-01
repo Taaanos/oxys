@@ -66,7 +66,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-09 | Undo and redo | M-08 | done (live ⌘Z click-through pending) |
 | M-10 | React to outside sidecar changes | M-08 | done |
 | M-11 | Write failures and read-only folders | M-08 | done (live locked-card and eject checks pending) |
-| M-12 | Grid view | M-04, M-06 | todo |
+| M-12 | Grid view | M-04, M-06 | done (60 fps scroll in Instruments, badge-in-one-frame as a number and VoiceOver pending) |
 | M-13 | Modes and window chrome | M-12 | todo |
 | M-14 | Zoom: Fit and 1:1 | M-03, F-05 | todo |
 | M-15 | Zoom steps, panning and sticky zoom | M-14 | todo |
@@ -806,6 +806,17 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 **Open questions**
 1. Filenames under thumbnails? *Proposed:* off by default; the `I` info levels could apply to Grid as well.
 2. Thumbnail size range. *Proposed:* five steps from about 120 to 480 points.
+
+**Decisions and notes**
+- Questions 1 and 2 **decided** as proposed. No filenames under thumbnails (they are in each cell's VoiceOver label; the `I` levels come later). Sizes 120, 160, 240, 320, 480 pt, default 240, remembered in `gridThumbnailStep`.
+- Pure logic is in `Library.GridGeometry` (columns, visible range, arrow moves, prefetch order, tested). `Imaging.CGImage.upright(_:)` applies EXIF orientation (all eight tested), because Grid draws plain layers. `GridThumbnailLoader` keeps a 256 MB memory cache, four loads at once, the newest wish list wins and cancels the rest; Loupe and Grid share one disk cache (512 px, or 1024 px when a cell is wider than 512 device pixels).
+- The folder model stays the source of truth: `GridController` observes `photos` and `currentURL` and redraws only cells whose decision changed. The active photo is `currentURL` (a ring); selection is M-19. New commands: `nav.up`/`nav.down` (Grid), `view.loupe` (`Return`, `Space`), `view.grid` (`G`), `grid.smaller`/`grid.larger` (`−`/`=`). `G` is only the way back until M-13 adds `E`, `Esc` and the mode picker. Cull keys now work in Grid on the active photo; G-5's whole-selection rule waits for M-19.
+- Opening a folder (⌘O, drop, `OXYS_OPEN`) lands in Grid. New signposts: `grid-thumbnail`, `grid-first-screen` (open to every first-screen thumbnail drawn).
+
+**Checked**
+- Unit tests: `Library` 70, `Imaging` 28, `Commands` 38.
+- 1,000-file folder, Release, via xctrace: `grid-first-screen` 116 ms with a cold disk cache and 122 ms warm (scan included); `grid-thumbnail` p50 5 ms cold, 1 ms warm. Thumbnails render upright with the active ring on the sample corpus.
+- Not yet done: 60 fps scrolling through 10,000 files in Instruments, keys and clicks in the running app, badge timing as a number, VoiceOver.
 
 ### M-13 · Modes and window chrome
 

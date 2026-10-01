@@ -154,13 +154,31 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(!resolve(nil).keymap.bindings.contains { $0.command == "cull.label.purple" })
 }
 
-@Test func cullKeysIgnoreAutoRepeatAndGrid() {
+@Test func cullKeysIgnoreAutoRepeat() {
     var router = KeyRouter(keymap: resolve(nil).keymap)
     let key = PhysicalKey.digit4.rawValue
     #expect(router.handle(KeyInput(keyCode: key, timestamp: 0), mode: .loupe, focus: .canvas).actions == [.perform("cull.rate.4")])
     let repeated = router.handle(KeyInput(keyCode: key, isRepeat: true, timestamp: 0.5), mode: .loupe, focus: .canvas)
     #expect(repeated.consumed && repeated.actions.isEmpty)
-    #expect(!router.handle(KeyInput(keyCode: PhysicalKey.digit5.rawValue, timestamp: 1), mode: .grid, focus: .canvas).consumed)
+    // Grid joins the cull modes in M-12.
+    #expect(router.handle(KeyInput(keyCode: PhysicalKey.digit5.rawValue, timestamp: 1), mode: .grid, focus: .canvas).actions == [.perform("cull.rate.5")])
+}
+
+@Test func gridKeysBelongToGridAndGComesBack() {
+    var router = KeyRouter(keymap: resolve(nil).keymap)
+    func press(_ key: PhysicalKey, _ mode: ViewMode, at t: Double, character: Character? = nil) -> [RoutedAction] {
+        router.handle(KeyInput(keyCode: key.rawValue, timestamp: t, character: character), mode: mode, focus: .canvas).actions
+    }
+    #expect(press(.downArrow, .grid, at: 0) == [.perform("nav.down")])
+    #expect(press(.downArrow, .loupe, at: 1).isEmpty)
+    #expect(press(.return, .grid, at: 2) == [.perform("view.loupe")])
+    #expect(press(.space, .grid, at: 3) == [.perform("view.loupe")])
+    #expect(press(.return, .loupe, at: 4).isEmpty)
+    #expect(press(.g, .loupe, at: 5) == [.perform("view.grid")])
+    #expect(press(.g, .grid, at: 6).isEmpty)
+    #expect(press(.minus, .grid, at: 7, character: "-") == [.perform("grid.smaller")])
+    #expect(press(.equal, .grid, at: 8, character: "=") == [.perform("grid.larger")])
+    #expect(press(.minus, .loupe, at: 9, character: "-").isEmpty)
 }
 
 @Test func menuShowsTheBareKeyNotTheShiftTwin() {

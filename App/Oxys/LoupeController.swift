@@ -30,6 +30,11 @@ final class LoupeController {
     @ObservationIgnored private var badgeTimeout: Task<Void, Never>?
 
     @ObservationIgnored weak var canvas: LoupeView?
+    /// Grid's view, which hosts the announcements and the frame tick while Loupe's canvas is not on screen.
+    @ObservationIgnored weak var fallbackHost: NSView?
+    private var host: NSView? {
+        if let canvas, canvas.window != nil { canvas } else { fallbackHost }
+    }
     @ObservationIgnored private var pendingFrameToken: Perf.Token?
 
     // MARK: loading
@@ -41,8 +46,7 @@ final class LoupeController {
         return min(2 << 30, Int(ProcessInfo.processInfo.physicalMemory / 4))
     }
 
-    @ObservationIgnored private let thumbnails = DiskThumbnailCache(
-        directory: DiskThumbnailCache.standardDirectory(bundleID: Bundle.main.bundleIdentifier ?? "dev.oxys.Oxys"))
+    @ObservationIgnored private let thumbnails = FrameLoader.sharedThumbnails
     @ObservationIgnored private let pipeline: FramePipeline<LoupeFrame>
     @ObservationIgnored private let plan = PrefetchPlan()
     @ObservationIgnored private var lastIndex: Int?
@@ -152,6 +156,11 @@ final class LoupeController {
     /// The menu items and the keys both come here. The key-to-frame interval starts now and ends when the
     /// canvas has presented the frame; a move that changes nothing (at either end) ends it at once.
     func navigate(_ step: FolderModel.Step, folder: FolderModel) {
+        // From Grid (⇧ with a cull key) there is no canvas to present a frame, so no interval to time.
+        guard canvas?.window != nil else {
+            folder.move(step)
+            return
+        }
         let token = Perf.begin(.keyToFrame)
         if folder.move(step) {
             if let stale = pendingFrameToken { Perf.end(stale) }
@@ -210,17 +219,17 @@ final class LoupeController {
     }
 
     private func announce(_ phrase: String) {
-        guard let canvas else { return }
-        NSAccessibility.post(element: canvas, notification: .announcementRequested, userInfo: [
+        guard let host else { return }
+        NSAccessibility.post(element: host, notification: .announcementRequested, userInfo: [
             .announcement: phrase, .priority: NSAccessibilityPriorityLevel.high.rawValue,
         ])
     }
 
     /// Ends the interval on the first display-link tick after the state change, i.e. the next display frame.
     private func endAtNextDisplayFrame(_ token: Perf.Token) {
-        guard let canvas, canvas.window != nil else { Perf.end(token); return }
+        guard let host, host.window != nil else { Perf.end(token); return }
         let ticker = FrameTicker(token)
-        ticker.link = canvas.displayLink(target: ticker, selector: #selector(FrameTicker.tick(_:)))
+        ticker.link = host.displayLink(target: ticker, selector: #selector(FrameTicker.tick(_:)))
         ticker.link?.add(to: .main, forMode: .common)
     }
 }
