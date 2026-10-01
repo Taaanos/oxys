@@ -62,7 +62,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-05 | Command table, keymap and menu bar | F-05 | done (menu bar and live key checks pending, see the story) |
 | M-06 | Cull decisions and feedback | M-03, M-05 | done (VoiceOver speech, badge timing as a number and the text-field menu-equivalent check pending) |
 | M-07 | Read existing sidecars | M-01, F-04 | done (ART and hand-written fixtures; no Lightroom or RawTherapee fixtures until M-25; live UI check pending) |
-| M-08 | Write sidecars safely | M-06, M-07 | todo |
+| M-08 | Write sidecars safely | M-06, M-07 | done (Lightroom and RawTherapee walking-skeleton check pending) |
 | M-09 | Undo and redo | M-08 | todo |
 | M-10 | React to outside sidecar changes | M-08 | todo |
 | M-11 | Write failures and read-only folders | M-08 | todo |
@@ -664,6 +664,23 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 1. Rating 0: write `xmp:Rating="0"` or remove the property? No label: remove the property or write it empty? *Proposed:* follow F-04's findings; until then, write `0` and remove `xmp:Label`.
 2. Also update `xmp:ModifyDate` or add `xmp:CreatorTool`? *Proposed:* no; touch as little as possible.
 3. The existing sidecar is malformed (M-07)? *Proposed:* don't write; keep the decision in memory and say so in a banner and in the inspector.
+
+**Status:** done (walking-skeleton check in Lightroom Classic and RawTherapee pending)
+
+**Decisions**
+- Q1 to Q3 accepted. Rating is always written (`0` included); no label removes `xmp:Label`; `xmp:MetadataDate` is written (local time with offset) and nothing else is touched (no `ModifyDate`, no `CreatorTool`). A malformed sidecar is never written: `FolderModel` skips it, and the writer re-parses just before writing and refuses too (`SidecarWriteOutcome.refused`, which sets `sidecar.problem` and `lastWriteFailure`). The banner and inspector wording arrive with M-11 and the inspector.
+- `XMPPatcher` scans the bytes once (start tags, attribute and element-text ranges, namespace scopes by URI) and edits spans: replaces attribute values and element text, removes an attribute or element with its indentation, and inserts missing attributes on the first `rdf:Description` that has the XMP namespace in scope (declaring it, with a free prefix, when none has; adding a `rdf:Description` when the packet has none). Every duplicate occurrence is patched (the reader is last-wins). UTF-16, a DOCTYPE and unbalanced markup are refused, not guessed at. New sidecars come from `XMPPatcher.template` through the same path.
+- `SidecarWriter`: read, patch, write a hidden `.name.xmp.oxys-tmp-xxxxxxxx` in the same folder, `F_FULLFSYNC`, restore the original's permissions, `rename`. Nothing is written when the patched bytes equal the file. Leftover temp files older than a minute are deleted when a folder is read (G-9).
+- `SidecarWriteQueue`: one serial utility queue, per-sidecar coalescing (a dictionary keyed by target), `submit` never waits on disk, `flush()` runs from `willTerminate`. Signpost `sidecar-write` wraps each write.
+- A decision made before the sidecar read reaches its photo carries a fallback target (the other naming style), so an existing `name.ARW.xmp` is patched instead of a second file created. An unknown label (`Select`) is kept (`LabelChange.keep`) until the user changes the label.
+- Tools: `SidecarStress crashloop` (the child the kill test SIGKILLs) and `SidecarStress stress`; `make sidecar-stress` runs the latter.
+
+**Checked**
+- Unit tests (`Sidecar` 25, `Library` 36): golden-style check over every fixture (output equals input once our three properties are cut out), foreign `crs:` data and untouched bytes, element form, namespace declaration, new description, refusals, permissions kept, read-just-before-write, fallback, stale temps, 1,000 queued decisions, `submit` under 50 ms for 200 calls, and `FolderModel` end to end (create, patch, malformed, custom label, full-name sidecar).
+- Kill test: 25 rounds of SIGKILL against a child writing in a loop; the file is always one whole state and no temp file stays visible after cleanup.
+- `make sidecar-stress`: 1,000 decisions in 60 s across 40 sidecars, 0 wrong, 0 temp files left.
+- Release build with no warnings from our code.
+- **Not checked:** rating 20 frames and reading them in Lightroom Classic and RawTherapee (needs you, G-10); quit while a write is pending, by hand.
 
 ### M-09 · Undo and redo
 

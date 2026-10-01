@@ -25,6 +25,7 @@ make check-arch    # lipo -archs on the built app; must print only "arm64"
 make launch-time   # 5 cold launches; prints launch-to-first-draw
 make corpus        # fetch the pixls files in scripts/corpus.tsv into TestData/, then write TestData/manifest.json
 make bench-folders # TestData/bench/{24mp-1000,hires-1000,scan-5000,grid-10000} (APFS clones)
+make sidecar-stress # 1,000 decisions over 60 s through the write queue, then verify every sidecar
 make perf-selftest # record + report synthetic signposts (pipeline check)
 scripts/perf-record.sh <Oxys.app> [seconds]   # record signposts, print p50/p95 per interval
 ```

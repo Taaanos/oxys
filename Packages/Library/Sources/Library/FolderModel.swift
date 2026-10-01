@@ -26,10 +26,33 @@ public final class FolderModel {
     /// The photo Loupe shows. Tracked by URL so the capture-time re-sort cannot change which frame is current.
     public private(set) var currentURL: URL?
 
+    /// The latest write that could not be completed (M-11 turns this into UI). Refusals, where the sidecar on
+    /// disk cannot be patched safely, also mark the photo's `sidecar.problem`.
+    public private(set) var lastWriteFailure: String?
+
     private var generation = 0
     private var loading: Task<Void, Never>?
+    @ObservationIgnored private var writer: SidecarWriteQueue!
 
-    public init() {}
+    public init(writer: SidecarWriteQueue? = nil) {
+        self.writer = writer ?? SidecarWriteQueue(onOutcome: { [weak self] outcome in
+            Task { @MainActor in self?.handle(outcome) }
+        })
+    }
+
+    /// Blocks until every decision made so far is on disk. Called on quit.
+    public func flushSidecarWrites() { writer.flush() }
+
+    private func handle(_ outcome: SidecarWriteOutcome) {
+        switch outcome {
+        case .written: break
+        case .refused(let url, let reason):
+            lastWriteFailure = "Not saved to \(url.lastPathComponent): \(reason)"
+            for index in photos.indices where photos[index].sidecar.file == url { photos[index].sidecar.problem = reason }
+        case .failed(let url, let reason):
+            lastWriteFailure = "Could not write \(url.lastPathComponent): \(reason)"
+        }
+    }
 
     /// Replaces the open folder. The list is published as soon as the directory is read; capture times follow
     /// and re-sort it once. A newer `open` cancels an older one still reading.
@@ -89,7 +112,11 @@ public final class FolderModel {
         let naming = sidecarNaming
         let chunkSize = 64
         let chunks = stride(from: 0, to: targets.count, by: chunkSize).map { Array(targets[$0..<min($0 + chunkSize, targets.count)]) }
-        let index = await Task.detached { SidecarIndex(folder: folder) }.value
+        let index = await Task.detached {
+            // A crash can leave a hidden temporary file from an atomic write behind (G-9).
+            SidecarWriter.removeStaleTemps(in: folder)
+            return SidecarIndex(folder: folder)
+        }.value
         await withTaskGroup(of: [(URL, SidecarReadResult)].self) { group in
             var next = 0
             func addNext() {
@@ -116,9 +143,14 @@ public final class FolderModel {
         for (i, photo) in photos.enumerated() { positions[photo.url] = i }
         for (url, result) in results {
             guard let i = positions[url] else { continue }
-            let (info, decision) = SidecarInfo.resolve(result)
+            var (info, decision) = SidecarInfo.resolve(result)
+            if let decision, photos[i].decision.isUndecided {
+                photos[i].decision = decision
+            } else if !photos[i].decision.isUndecided {
+                // The photographer already decided: their label, not the file's custom one, is what we keep.
+                info.unknownLabel = nil
+            }
             photos[i].sidecar = info
-            if let decision, photos[i].decision.isUndecided { photos[i].decision = decision }
         }
     }
 
@@ -163,7 +195,28 @@ public final class FolderModel {
     public func apply(_ action: CullAction, to url: URL? = nil) -> Decision? {
         guard let url = url ?? currentURL, let index = photos.firstIndex(where: { $0.url == url }) else { return nil }
         let decision = action.applied(to: photos[index].decision)
-        if decision != photos[index].decision { photos[index].decision = decision }
+        if decision != photos[index].decision {
+            let labelChanged = decision.label != photos[index].decision.label
+            photos[index].decision = decision
+            if labelChanged { photos[index].sidecar.unknownLabel = nil }
+            persist(at: index)
+        }
         return decision
+    }
+
+    /// Queues the photo's decision for its sidecar. Never blocks: the write happens off the main thread.
+    private func persist(at index: Int) {
+        guard let folder else { return }
+        let photo = photos[index]
+        // M-08/Q3: a sidecar we could not parse is never overwritten; the decision stays in memory.
+        guard photo.sidecar.problem == nil else { return }
+        let primary = photo.sidecar.file ?? folder.appendingPathComponent(sidecarNaming.fileName(for: photo.name))
+        // Before the sidecar read reaches this photo an existing file under the other style is not known yet.
+        let fallback = photo.sidecar.isRead ? nil : folder.appendingPathComponent(sidecarNaming.other.fileName(for: photo.name))
+        let label: SidecarEdit.LabelChange = photo.decision.label.map { .set($0.name) }
+            ?? (photo.sidecar.unknownLabel != nil ? .keep : .remove)
+        writer.submit(SidecarEdit(rating: photo.decision.rating, label: label),
+                      to: SidecarTarget(primary: primary, fallback: fallback))
+        if photo.sidecar.file == nil, photo.sidecar.isRead { photos[index].sidecar.file = primary }
     }
 }

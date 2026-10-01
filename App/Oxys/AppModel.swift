@@ -32,6 +32,10 @@ final class AppModel {
             }
         }
         commands.start()
+        // Decisions are written as they are made; this waits for the last ones to land before the process exits.
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [folder] _ in
+            MainActor.assumeIsolated { folder.flushSidecarWrites() }
+        }
         // Developer hook, like OXYS_REPORT_LAUNCH: open a folder at launch for scripted checks.
         if let path = ProcessInfo.processInfo.environment["OXYS_OPEN"] { open(URL(fileURLWithPath: path)) }
     }
