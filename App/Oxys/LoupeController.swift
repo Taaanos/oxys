@@ -17,6 +17,8 @@ final class LoupeController {
     private(set) var shown: Photo?
     private(set) var shownPixels: (width: Int, height: Int)?
     private(set) var failure: String?
+    /// Zoom level of the frame on screen, for the info strip; nil when there is no frame.
+    private(set) var zoomInfo: ZoomInfo?
 
     /// The confirmation over the canvas after a cull key; nil when it has timed out.
     struct Badge: Equatable {
@@ -34,6 +36,7 @@ final class LoupeController {
     /// request again so the new one is never blank; the frame is usually cached, so this is instant.
     @ObservationIgnored weak var canvas: LoupeView? {
         didSet {
+            canvas?.onZoomChange = { [weak self] info in self?.zoomInfo = info }
             guard let canvas, canvas !== oldValue, let last = lastRequest else { return }
             Task { await load(last.photo, in: last.folder) }
         }
@@ -126,11 +129,12 @@ final class LoupeController {
                 FrameLoader.placeholder(for: target, thumbnails: thumbnails)
             }.value
             if let stand, !finished.withLock({ $0 }), isCurrent(photo, in: folder) {
+                let same = shown?.url == photo.url
                 shown = photo
                 shownPixels = nil
                 failure = nil
                 canvas.setAccessibilityLabel(photo.name)
-                canvas.show(stand)
+                canvas.show(stand, sameZoom: same)
                 FrameLog.record(cursor: folder.currentURL, displayed: photo.url, kind: "thumbnail")
             }
         }
@@ -147,12 +151,13 @@ final class LoupeController {
             frame = loaded
         }
         let token = takeToken()
+        let same = shown?.url == photo.url && failure == nil
         shown = photo
         folder.setPreview(PreviewInfo(pixelWidth: frame.width, pixelHeight: frame.height), for: photo.url)
         shownPixels = (frame.width, frame.height)
         failure = nil
         canvas.setAccessibilityLabel("\(photo.name), \(frame.width) by \(frame.height) pixels")
-        canvas.show(frame.image, keyToFrame: token)
+        canvas.show(frame.image, keyToFrame: token, sameZoom: same)
         FrameLog.record(cursor: folder.currentURL, displayed: photo.url, kind: "preview")
     }
 
@@ -195,6 +200,19 @@ final class LoupeController {
         } else {
             Perf.end(token)
         }
+    }
+
+    // MARK: zoom
+
+    /// Zoom commands act on the frame on screen; the `zoom` interval ends when the scaled frame is presented.
+    func setZoom(_ mode: ZoomMode) {
+        guard isActive, let canvas, canvas.window != nil else { return }
+        canvas.setZoom(mode, token: Perf.begin(.zoom))
+    }
+
+    func toggleZoom() {
+        guard isActive, let canvas, canvas.window != nil else { return }
+        canvas.toggleZoom(token: Perf.begin(.zoom))
     }
 
     // MARK: cull

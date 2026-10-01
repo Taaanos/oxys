@@ -17,7 +17,7 @@ struct LoupeScreen: View {
                 ErrorTile(name: loupe.shown?.name ?? "", message: failure)
             }
             if let badge = loupe.badge { CullBadge(badge: badge) }
-            InfoStrip(photo: loupe.shown, decision: loupe.shown.flatMap { folder.decision(for: $0.url) }, pixels: loupe.shownPixels)
+            InfoStrip(photo: loupe.shown, decision: loupe.shown.flatMap { folder.decision(for: $0.url) }, pixels: loupe.shownPixels, zoom: loupe.zoomInfo)
         }
         .background(Color(white: LoupeView.canvasGray))
         .task(id: LoadKey(url: folder.currentURL, active: active)) {
@@ -50,6 +50,17 @@ private struct InfoStrip: View {
     let photo: Photo?
     let decision: Decision?
     let pixels: (width: Int, height: Int)?
+    let zoom: ZoomInfo?
+
+    private var zoomSpoken: String {
+        guard let zoom else { return "" }
+        return (zoom.mode == .fit ? ", fit, \(zoom.percent) percent" : ", actual size")
+            + (previewShort ? ", preview pixels, fewer than the sensor" : "")
+    }
+
+    /// 1:1 of an embedded preview is not 1:1 of the sensor; the full truth badge is V-05. Until the sensor size
+    /// is known (M-16), any RAW zoomed past Fit carries the flag.
+    private var previewShort: Bool { zoom?.mode == .actual && photo?.format.isRaw == true }
 
     var body: some View {
         if let photo {
@@ -65,6 +76,13 @@ private struct InfoStrip: View {
                 if let pixels {
                     Text("Preview \(max(pixels.width, pixels.height)) px").foregroundStyle(.secondary)
                 }
+                if let zoom {
+                    Text(zoom.mode == .fit ? "Fit \(zoom.percent)%" : "1:1").foregroundStyle(.secondary)
+                    if previewShort {
+                        Label("Preview pixels, fewer than the sensor", systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                    }
+                }
                 Spacer()
             }
             .padding(.horizontal, 12)
@@ -73,7 +91,7 @@ private struct InfoStrip: View {
             .background(.black.opacity(0.45))
             .environment(\.colorScheme, .dark)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel(([photo.name, decision?.summary].compactMap { $0 } + photo.sidecar.notes).joined(separator: ", "))
+            .accessibilityLabel(([photo.name, decision?.summary].compactMap { $0 } + photo.sidecar.notes).joined(separator: ", ") + zoomSpoken)
         }
     }
 }

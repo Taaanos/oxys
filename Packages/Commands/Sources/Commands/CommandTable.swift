@@ -64,6 +64,14 @@ public struct CommandTable: Sendable {
         Command("grid.larger", "Larger Thumbnails", menu: .init(.view, group: 1), modes: grid, requires: .photos, repeats: true,
                 keys: [Shortcut(.character("="))]),
 
+        // Zoom (M-14). `Z` toggles Fit and 1:1, and shows 1:1 only while held; `⌘1` and `⌘0` are explicit.
+        Command("zoom.toggle", "Toggle Fit / 1:1", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
+                kind: .toggleOrHold, keys: [Shortcut(.position(.z))]),
+        Command("zoom.actual", "Actual Size (1:1)", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
+                keys: [Shortcut(.position(.digit1), [.command])]),
+        Command("zoom.fit", "Zoom to Fit", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
+                keys: [Shortcut(.position(.digit0), [.command])]),
+
         // `⇥` hides the toolbar and panels; the pointer at the top edge, or `⇥` again, brings them back (M-13).
         Command("view.chrome", "Hide Toolbar", menu: .init(.view, group: 2),
                 keys: [Shortcut(.position(.tab))]),
@@ -99,6 +107,7 @@ public struct CommandTable: Sendable {
     ])
 
     private static let grid: Set<ViewMode> = [.grid]
+    private static let loupe: Set<ViewMode> = [.loupe]
 
     /// Cull keys act on the active photo in every mode. In Grid they will act on the whole selection (G-5, M-19).
     private static let cull: Set<ViewMode> = [.grid, .loupe, .compare]

@@ -1,3 +1,4 @@
+import Canvas
 import AppKit
 import Commands
 import Library
@@ -54,6 +55,11 @@ final class AppModel {
         }
         commands.register("grid.smaller") { [unowned self] _ in grid.resize(by: -1) }
         commands.register("grid.larger") { [unowned self] _ in grid.resize(by: 1) }
+        commands.register("zoom.toggle", isOn: { [unowned self] in loupe.zoomInfo?.mode == .actual }) { [unowned self] _ in
+            loupe.toggleZoom()
+        }
+        commands.register("zoom.actual") { [unowned self] _ in loupe.setZoom(.actual) }
+        commands.register("zoom.fit") { [unowned self] _ in loupe.setZoom(.fit) }
         let cullActions: [(String, CullAction)] = [
             ("cull.rate.0", .setRating(0)), ("cull.rate.1", .setRating(1)), ("cull.rate.2", .setRating(2)),
             ("cull.rate.3", .setRating(3)), ("cull.rate.4", .setRating(4)), ("cull.rate.5", .setRating(5)),

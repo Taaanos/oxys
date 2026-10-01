@@ -27,6 +27,8 @@ public enum PerfInterval: String, CaseIterable, Sendable {
     case gridThumbnail = "grid-thumbnail"
     /// Opening a folder → every thumbnail on the first screen of Grid is drawn (M-12; 300 ms for 1,000 files).
     case gridFirstScreen = "grid-first-screen"
+    /// A zoom command → the zoomed frame is on screen (M-14; one display frame, 16 ms at 60 Hz).
+    case zoom = "zoom"
 
     /// Signpost names must be static strings, so the raw value is repeated here.
     var signpostName: StaticString {
@@ -43,6 +45,7 @@ public enum PerfInterval: String, CaseIterable, Sendable {
         case .sidecarRead: "sidecar-read"
         case .gridThumbnail: "grid-thumbnail"
         case .gridFirstScreen: "grid-first-screen"
+        case .zoom: "zoom"
         }
     }
 }

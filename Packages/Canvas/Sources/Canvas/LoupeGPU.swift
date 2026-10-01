@@ -26,6 +26,8 @@ public final class LoupeGPU: @unchecked Sendable {
     let queue: any MTLCommandQueue
     let pipeline: any MTLRenderPipelineState
     let sampler: any MTLSamplerState
+    /// For 1:1 and beyond: shows the actual pixels, never blended (M-14 open question 1).
+    let nearestSampler: any MTLSamplerState
 
     private init?() {
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue(),
@@ -46,7 +48,14 @@ public final class LoupeGPU: @unchecked Sendable {
         samplerDescriptor.sAddressMode = .clampToEdge
         samplerDescriptor.tAddressMode = .clampToEdge
         guard let sampler = device.makeSamplerState(descriptor: samplerDescriptor) else { return nil }
-        (self.device, self.queue, self.pipeline, self.sampler) = (device, queue, pipeline, sampler)
+        let nearest = MTLSamplerDescriptor()
+        nearest.minFilter = .nearest
+        nearest.magFilter = .nearest
+        nearest.mipFilter = .notMipmapped
+        nearest.sAddressMode = .clampToEdge
+        nearest.tAddressMode = .clampToEdge
+        guard let nearestSampler = device.makeSamplerState(descriptor: nearest) else { return nil }
+        (self.device, self.queue, self.pipeline, self.sampler, self.nearestSampler) = (device, queue, pipeline, sampler, nearestSampler)
     }
 
     /// Uploads `image` with a full mip chain. The pixels are drawn into a BGRA context in the image's own color

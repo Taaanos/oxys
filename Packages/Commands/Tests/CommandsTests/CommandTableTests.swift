@@ -219,3 +219,24 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     }
     #expect(CommandTable.standard["view.chrome"]!.isEnabled(in: .init(mode: .grid, hasPhotos: false)))
 }
+
+@Test func zKeyTogglesAndHoldReleases() {
+    var router = KeyRouter(keymap: resolve(nil).keymap)
+    let z = PhysicalKey.z.rawValue
+    // Tap: down toggles, a quick up does nothing more.
+    #expect(router.handle(KeyInput(keyCode: z, timestamp: 0), mode: .loupe, focus: .canvas).actions == [.perform("zoom.toggle")])
+    #expect(router.handle(KeyInput(keyCode: z, isDown: false, timestamp: 0.05), mode: .loupe, focus: .canvas).actions.isEmpty)
+    // Hold: down toggles, up after the threshold toggles back.
+    #expect(router.handle(KeyInput(keyCode: z, timestamp: 1), mode: .loupe, focus: .canvas).actions == [.perform("zoom.toggle")])
+    #expect(router.handle(KeyInput(keyCode: z, isDown: false, timestamp: 2), mode: .loupe, focus: .canvas).actions == [.releaseHold("zoom.toggle")])
+    // Not in Grid.
+    #expect(router.handle(KeyInput(keyCode: z, timestamp: 3), mode: .grid, focus: .canvas).actions.isEmpty)
+}
+
+@Test func commandDigitsZoomWhilePlainDigitsRate() {
+    var router = KeyRouter(keymap: resolve(nil).keymap)
+    let one = PhysicalKey.digit1.rawValue, zero = PhysicalKey.digit0.rawValue
+    #expect(router.handle(KeyInput(keyCode: one, modifiers: [.command], timestamp: 0), mode: .loupe, focus: .canvas).actions == [.perform("zoom.actual")])
+    #expect(router.handle(KeyInput(keyCode: zero, modifiers: [.command], timestamp: 1), mode: .loupe, focus: .canvas).actions == [.perform("zoom.fit")])
+    #expect(router.handle(KeyInput(keyCode: one, timestamp: 2), mode: .loupe, focus: .canvas).actions == [.perform("cull.rate.1")])
+}

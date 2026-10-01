@@ -15,6 +15,13 @@ public final class LoupeView: NSView {
     private var pendingToken: Perf.Token?
     private var lastDrawableSize = CGSize.zero
 
+    /// Fit or 1:1, and the image point (0...1) at the middle of the view while zoomed in.
+    public private(set) var zoom = ZoomMode.fit
+    private var zoomCenter = CGPoint(x: 0.5, y: 0.5)
+    private var lastInfo: ZoomInfo?
+    /// Called when the zoom level the info strip shows changes.
+    public var onZoomChange: ((ZoomInfo?) -> Void)?
+
     private var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
 
     public override init(frame: NSRect) {
@@ -39,12 +46,98 @@ public final class LoupeView: NSView {
     public override var acceptsFirstResponder: Bool { true }
     public override var isOpaque: Bool { true }
 
-    /// Shows `image`, or the empty canvas for nil. `keyToFrame` ends when the frame is on screen.
-    public func show(_ image: PreparedImage?, keyToFrame token: Perf.Token? = nil) {
+    /// Shows `image`, or the empty canvas for nil. `keyToFrame` ends when the frame is on screen. A different
+    /// photo opens at Fit; the same photo's better frame (`sameZoom`) keeps the zoom and the spot.
+    public func show(_ image: PreparedImage?, keyToFrame token: Perf.Token? = nil, sameZoom: Bool = false) {
         if let stale = pendingToken { Perf.end(stale) }
         pendingToken = token
         self.image = image
+        if !sameZoom || image == nil { resetZoom() }
         render()
+    }
+
+    private func resetZoom() {
+        zoom = .fit
+        zoomCenter = CGPoint(x: 0.5, y: 0.5)
+    }
+
+    /// Switches to `mode` at once, scaling the frame on screen. Zooming in keeps the image point under the
+    /// pointer there, or zooms about the middle when the pointer is not over the image. `token` (a `zoom`
+    /// interval) ends when the result is presented.
+    public func setZoom(_ mode: ZoomMode, token: Perf.Token? = nil) {
+        guard let image, window != nil, mode != zoom else {
+            if let token { Perf.end(token) }
+            return
+        }
+        if let stale = pendingToken { Perf.end(stale) }
+        pendingToken = token
+        let size = drawableSize
+        if mode == .actual {
+            let imageSize = image.displaySize
+            let old = currentRect(image: image, size: size)
+            var anchor: CGPoint?
+            if let p = pointerInPixels(), old.contains(p) { anchor = p }
+            let u = anchor.map { CGPoint(x: ($0.x - old.minX) / old.width, y: ($0.y - old.minY) / old.height) }
+                ?? CGPoint(x: 0.5, y: 0.5)
+            let scale = oneToOneScale
+            let point = anchor ?? CGPoint(x: size.width / 2, y: size.height / 2)
+            zoomCenter = ZoomGeometry.center(keeping: u, under: point, imageSize: imageSize, viewSize: size, scale: scale)
+        } else {
+            zoomCenter = CGPoint(x: 0.5, y: 0.5)
+        }
+        zoom = mode
+        render()
+    }
+
+    public func toggleZoom(token: Perf.Token? = nil) { setZoom(zoom == .fit ? .actual : .fit, token: token) }
+
+    /// Drawable pixels per image pixel at 1:1 on the display the window is on.
+    private var oneToOneScale: CGFloat {
+        guard let screen = window?.screen ?? NSScreen.main,
+              let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
+              let mode = CGDisplayCopyDisplayMode(number)
+        else { return 1 }
+        return ZoomGeometry.oneToOneScale(modePixelWidth: mode.pixelWidth, nativePixelWidth: Self.nativePixelWidth(of: number) ?? mode.pixelWidth)
+    }
+
+    /// The panel's own pixel width: the display's mode flagged native (`kDisplayModeNativeFlag`).
+    private static func nativePixelWidth(of display: CGDirectDisplayID) -> Int? {
+        let options = [kCGDisplayShowDuplicateLowResolutionModes: true] as CFDictionary
+        let modes = CGDisplayCopyAllDisplayModes(display, options) as? [CGDisplayMode] ?? []
+        return modes.first { $0.ioFlags & 0x0200_0000 != 0 }?.pixelWidth
+    }
+
+    private var drawableSize: CGSize {
+        let scale = window?.backingScaleFactor ?? 1
+        return CGSize(width: (bounds.width * scale).rounded(), height: (bounds.height * scale).rounded())
+    }
+
+    /// The pointer in drawable pixels, top-left origin; nil when it is outside the view.
+    private func pointerInPixels() -> CGPoint? {
+        guard let window else { return nil }
+        let p = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        guard bounds.contains(p) else { return nil }
+        let scale = window.backingScaleFactor
+        return CGPoint(x: p.x * scale, y: (bounds.height - p.y) * scale)
+    }
+
+    private func currentRect(image: PreparedImage, size: CGSize) -> CGRect {
+        switch zoom {
+        case .fit: FitGeometry.fitRect(imageSize: image.displaySize, viewSize: size)
+        case .actual:
+            ZoomGeometry.rect(imageSize: image.displaySize, viewSize: size, scale: oneToOneScale, center: zoomCenter)
+        }
+    }
+
+    private func publishZoom(rect: CGRect?) {
+        var info: ZoomInfo?
+        if let image, let rect, image.displaySize.width > 0 {
+            let percent = Int((rect.width / image.displaySize.width / oneToOneScale * 100).rounded())
+            info = ZoomInfo(mode: zoom, percent: percent)
+        }
+        guard info != lastInfo else { return }
+        lastInfo = info
+        onZoomChange?(info)
     }
 
     public override func layout() {
@@ -103,16 +196,18 @@ public final class LoupeView: NSView {
                                                             blue: Self.canvasGray, alpha: 1)
         guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
         if let image {
-            let rect = FitGeometry.fitRect(imageSize: image.displaySize,
-                                           viewSize: CGSize(width: pixelSize.width, height: pixelSize.height))
+            let rect = currentRect(image: image, size: pixelSize)
+            publishZoom(rect: rect)
             var quad = Quad(rect: rect, in: pixelSize, map: OrientationMap(image.orientation))
             encoder.setRenderPipelineState(gpu.pipeline)
             encoder.setVertexBytes(&quad, length: MemoryLayout<Quad>.stride, index: 0)
             encoder.setFragmentTexture(image.texture, index: 0)
-            encoder.setFragmentSamplerState(gpu.sampler, index: 0)
+            let crisp = zoom == .actual && rect.width >= image.displaySize.width
+            encoder.setFragmentSamplerState(crisp ? gpu.nearestSampler : gpu.sampler, index: 0)
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         }
         encoder.endEncoding()
+        if image == nil { publishZoom(rect: nil) }
 
         if let token = pendingToken {
             pendingToken = nil

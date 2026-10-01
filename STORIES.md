@@ -68,7 +68,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-11 | Write failures and read-only folders | M-08 | done (live locked-card and eject checks pending) |
 | M-12 | Grid view | M-04, M-06 | done (60 fps scroll in Instruments, badge-in-one-frame as a number and VoiceOver pending) |
 | M-13 | Modes and window chrome | M-12 | built (keys, toolbar and `⇥` not checked in the running app) |
-| M-14 | Zoom: Fit and 1:1 | M-03, F-05 | todo |
+| M-14 | Zoom: Fit and 1:1 | M-03, F-05 | built, needs visual check |
 | M-15 | Zoom steps, panning and sticky zoom | M-14 | todo |
 | M-16 | EXIF | M-01 | todo |
 | M-17 | Histogram | M-03 | todo |
@@ -876,6 +876,18 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 **Open questions**
 1. At 200% and 400%, nearest-neighbor (see the actual pixels) or smooth? *Proposed:* nearest-neighbor; honesty over prettiness.
 2. In a scaled display mode, an exact pixel-for-pixel view is impossible because the system resamples the whole screen. Is the closest match, with a note in the inspector, acceptable? *Proposed:* yes.
+
+**Built (decisions and results)**
+- Both open questions **decided** as proposed. Nearest-neighbor is used whenever the view is at 1:1 or larger (`LoupeGPU.nearestSampler`); Fit keeps the trilinear mip sampler, including when it upscales a small image. In a scaled mode the 1:1 scale is the closest match (below); the inspector note waits for M-18.
+- `ZoomGeometry` (Canvas, pure, tested): `oneToOneScale` = the mode's framebuffer pixel width over the panel's native pixel width (the display mode flagged `kDisplayModeNativeFlag`), so it is 1 at the default scaling; `rect` places the image from a center point (0...1 in the image), centers an axis smaller than the view, never shows a gap at an edge, and uses whole-pixel origins so 1:1 lands one image pixel on one drawable pixel; `center(keeping:under:)` keeps the image point under the pointer.
+- `Z` is `toggleOrHold` (tap toggles, held past the threshold shows 1:1 only while held); `⌘1` is 1:1 and `⌘0` is Fit, all Loupe-only, in the View menu. Plain digits still rate.
+- Anchor: the pointer when it is over the image, otherwise the middle of the view. Near an image edge the clamp (no gap) wins over the pointer. Back to Fit always recenters. The zoom state is the image point at the view's middle, so M-15 pans by changing it.
+- A different photo opens at Fit (sticky zoom is M-15); the thumbnail stand-in giving way to the preview of the same photo keeps the zoom and spot, because the state is normalized to the image. A zoom command acts on the frame on screen at once, no reload.
+- `zoom` signpost: from the command to the presented frame. Info strip: "Fit 31%" or "1:1" (percent of physical pixels), and for a RAW at 1:1 an orange "Preview pixels, fewer than the sensor". The sensor size is not known yet (M-16), so every RAW at 1:1 is flagged, including a camera whose embedded preview is full size. V-05 replaces it.
+
+**Checked**
+- Unit tests: `Canvas` 12 (new: 1:1 scale at default and scaled modes, whole-pixel placement, pointer stays put, no gap, small image centered, center round trip), `Commands` 42 (new: `Z` tap and hold, `⌘1`/`⌘0` against plain digits). Release build clean, arm64.
+- **Not checked** (this session cannot send keys or see the window): the three acceptance criteria (1-pixel chart on a Retina display, the `zoom` interval under one frame in the signpost report, pointer pinning), the scaled-mode factor on hardware, and that `Z` hold releases correctly in the live app.
 
 ### M-15 · Zoom steps, panning and sticky zoom
 
