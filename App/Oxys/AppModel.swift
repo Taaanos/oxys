@@ -83,6 +83,10 @@ final class AppModel {
                              userInfo: [.announcement: phrase, .priority: NSAccessibilityPriorityLevel.high.rawValue])
     }
     @ObservationIgnored private var pointerMonitor: Any?
+    /// The filter and sort bar (`\`, M-20). Hiding it keeps the filter; the subtitle still says what is shown.
+    private(set) var showFilterBar = false
+    /// Bumped by ⌘F; the bar focuses its search field when it changes.
+    private(set) var findRequest = 0
     private(set) var recentFolders: [URL] = NSDocumentController.shared.recentDocumentURLs
 
     init() {
@@ -109,6 +113,7 @@ final class AppModel {
         commands.register("nav.up") { [unowned self] _ in grid.move(.up) }
         commands.register("nav.down") { [unowned self] _ in grid.move(.down) }
         registerSelection()
+        registerFilter()
         commands.register("view.loupe") { [unowned self] _ in commands.mode = .loupe }
         commands.register("view.grid") { [unowned self] _ in commands.mode = .grid }
         commands.register("view.chrome", title: { [unowned self] in chromeHidden ? "Show Toolbar" : "Hide Toolbar" }) { [unowned self] _ in
@@ -188,6 +193,78 @@ final class AppModel {
         }
         // Developer hook, like OXYS_REPORT_LAUNCH: open a folder at launch for scripted checks.
         if let path = ProcessInfo.processInfo.environment["OXYS_OPEN"] { open(URL(fileURLWithPath: path)) }
+    }
+
+    // MARK: filter and sort (M-20)
+
+    func setFilterBar(_ on: Bool) { showFilterBar = on }
+
+    private func registerFilter() {
+        commands.register("filter.bar", isOn: { [unowned self] in showFilterBar }) { [unowned self] _ in
+            showFilterBar.toggle()
+            if !showFilterBar { NSApp.keyWindow?.makeFirstResponder(nil) }
+        }
+        commands.register("filter.enabled", isOn: { [unowned self] in folder.filter.isOn }) { [unowned self] _ in
+            folder.toggleFilter()
+            announceFilter(folder.filter.isOn ? "Filter on" : "Filter off")
+        }
+        commands.register("filter.find") { [unowned self] _ in
+            showFilterBar = true
+            findRequest += 1
+        }
+        commands.register("filter.clear", isAvailable: { [unowned self] in folder.filter.hasCriteria }) { [unowned self] _ in
+            folder.updateFilter { $0.minStars = 0; $0.labels = []; $0.rejects = .showAll; $0.search = "" }
+            announceFilter("Filter cleared")
+        }
+        for n in 0...5 {
+            commands.register(CommandID(rawValue: "filter.stars.\(n)"), isOn: { [unowned self] in folder.filter.minStars == n }) { [unowned self] _ in
+                setFilter { $0.minStars = n }
+            }
+        }
+        commands.register("filter.label.any", isOn: { [unowned self] in folder.filter.labels.isEmpty }) { [unowned self] _ in
+            setFilter { $0.labels = [] }
+        }
+        for label in ColorLabel.allCases {
+            commands.register(CommandID(rawValue: "filter.label.\(label.rawValue)"),
+                              isOn: { [unowned self] in folder.filter.labels.contains(label) }) { [unowned self] _ in
+                setFilter { if !$0.labels.insert(label).inserted { $0.labels.remove(label) } }
+            }
+        }
+        for (id, mode) in [("showAll", RejectFilter.showAll), ("hide", .hideRejected), ("only", .onlyRejected)] {
+            commands.register(CommandID(rawValue: "filter.rejects.\(id)"), isOn: { [unowned self] in folder.filter.rejects == mode }) { [unowned self] _ in
+                setFilter { $0.rejects = mode }
+            }
+        }
+        commands.register("filter.rejects.cycle") { [unowned self] _ in
+            setFilter {
+                $0.rejects = switch $0.rejects {
+                case .showAll: .hideRejected
+                case .hideRejected: .onlyRejected
+                case .onlyRejected: .showAll
+                }
+            }
+        }
+        commands.register("filter.sort.time", isOn: { [unowned self] in folder.filter.sortKey == .captureTime }) { [unowned self] _ in
+            setFilter { $0.sortKey = .captureTime }
+        }
+        commands.register("filter.sort.name", isOn: { [unowned self] in folder.filter.sortKey == .filename }) { [unowned self] _ in
+            setFilter { $0.sortKey = .filename }
+        }
+        commands.register("filter.sort.reverse", isOn: { [unowned self] in !folder.filter.ascending }) { [unowned self] _ in
+            setFilter { $0.ascending.toggle() }
+        }
+    }
+
+    /// Changes the filter and says what is showing now. Turns filtering on, so a key never seems to do nothing.
+    func setFilter(_ change: (inout PhotoFilter) -> Void) {
+        folder.updateFilter { change(&$0); $0.isOn = true }
+        announceFilter(nil)
+    }
+
+    private func announceFilter(_ lead: String?) {
+        let shown = folder.visible.count, total = folder.photos.count
+        let state = folder.filter.isNarrowing ? "\(shown.formatted()) of \(total.formatted()) shown, \(folder.filter.summary)" : "\(total.formatted()) shown"
+        announce([lead, state].compactMap { $0 }.joined(separator: ". "))
     }
 
     // MARK: selection (M-19)

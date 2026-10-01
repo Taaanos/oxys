@@ -182,10 +182,10 @@ final class LoupeController {
         lastIndex = index
         let slow = await pipeline.isSlow
         let neighborIndices = index.map {
-            plan.indices(current: $0, count: folder.photos.count, direction: direction, slow: slow)
+            plan.indices(current: $0, count: folder.visible.count, direction: direction, slow: slow)
         } ?? []
-        let neighbors = neighborIndices.map { FrameLoader.key(for: folder.photos[$0]) }
-        warmExif([photo.url] + neighborIndices.map { folder.photos[$0].url })
+        let neighbors = neighborIndices.map { FrameLoader.key(for: folder.visible[$0]) }
+        warmExif([photo.url] + neighborIndices.map { folder.visible[$0].url })
 
         let pipeline = pipeline, thumbnails = thumbnails
         let finished = Mutex(false)

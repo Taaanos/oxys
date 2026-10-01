@@ -109,7 +109,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         scrollView = scroll
         loupe.fallbackHost = scroll
 
-        photos = folder.photos
+        photos = folder.visible
         reindex()
         shownCurrent = folder.currentURL
         shownSelection = folder.selection.urls
@@ -192,7 +192,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     private func observe() {
         guard isObserving else { return }
         withObservationTracking {
-            _ = folder.photos
+            _ = folder.visible
             _ = folder.currentURL
             _ = folder.selection
         } onChange: { [weak self] in
@@ -204,7 +204,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     private func folderChanged() {
         guard isObserving else { return }
         defer { observe() }
-        let new = folder.photos
+        let new = folder.visible
         let old = photos
         let sameList = new.count == old.count && zip(new, old).allSatisfy { $0.url == $1.url }
         photos = new

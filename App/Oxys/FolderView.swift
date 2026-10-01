@@ -24,12 +24,15 @@ struct FolderView: View {
                 EmptyStateView(message: "Couldn't open this folder: \(reason)")
             case .photos:
                 let loupeActive = model.commands.mode != .grid
-                ZStack {
-                    LoupeScreen(model: model, active: loupeActive)
-                        .opacity(loupeActive ? 1 : 0)
-                        .allowsHitTesting(loupeActive)
-                        .accessibilityHidden(!loupeActive)
-                    if !loupeActive { GridScreen(controller: model.grid) }
+                VStack(spacing: 0) {
+                    if model.showFilterBar { FilterBar(model: model) }
+                    ZStack {
+                        LoupeScreen(model: model, active: loupeActive)
+                            .opacity(loupeActive ? 1 : 0)
+                            .allowsHitTesting(loupeActive)
+                            .accessibilityHidden(!loupeActive)
+                        if !loupeActive { GridScreen(controller: model.grid) }
+                    }
                 }
             }
         }
@@ -53,8 +56,10 @@ struct FolderView: View {
 
     static func subtitle(_ folder: FolderModel) -> String {
         guard case .photos = folder.content else { return "" }
-        let count = folder.photos.count
-        let photos = count == 1 ? "1 photo" : "\(count.formatted()) photos"
+        let total = folder.photos.count
+        let count = folder.filter.isNarrowing ? folder.visible.count : total
+        let photos = count < total ? "\(count.formatted()) of \(total.formatted()) shown"
+            : total == 1 ? "1 photo" : "\(total.formatted()) photos"
         let selected = folder.selection.count
         let head = selected > 0 ? "\(photos) · \(selected.formatted()) selected" : photos
         let new = folder.newFileCount
@@ -83,9 +88,13 @@ private struct ToolbarItems: CustomizableToolbarContent {
             .disabled(model.folder.content != .photos)
         }
         ToolbarItem(id: "filter") {
-            Button("Filter Bar", systemImage: "line.3.horizontal.decrease.circle") {}
-                .help("Filter bar (arrives with M-20)")
-                .disabled(true)
+            Button("Filter Bar", systemImage: model.folder.filter.isNarrowing
+                   ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle") {
+                model.commands.perform("filter.bar")
+            }
+            .help("Filter bar (\\)")
+            .accessibilityValue(model.showFilterBar ? "Shown" : "Hidden")
+            .disabled(model.folder.content != .photos)
         }
         ToolbarItem(id: "inspector") {
             Button("Inspector", systemImage: "sidebar.trailing") { model.commands.perform("info.inspector") }

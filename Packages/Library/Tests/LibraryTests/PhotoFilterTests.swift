@@ -1,0 +1,89 @@
+import Foundation
+import Testing
+@testable import Library
+
+@Suite struct PhotoFilterTests {
+    private func photo(_ name: String, rating: Int = 0, label: ColorLabel? = nil, at seconds: Double = 0) -> Photo {
+        var p = Photo(url: URL(fileURLWithPath: "/tmp/\(name)"), format: .arw, fileSize: 1,
+                      modificationDate: Date(timeIntervalSince1970: seconds), captureTime: Date(timeIntervalSince1970: seconds))
+        p.decision = Decision(rating: rating, label: label)
+        return p
+    }
+
+    private var sample: [Photo] {
+        [photo("IMG_1.ARW", rating: 3, label: .red, at: 1), photo("IMG_2.ARW", rating: -1, at: 2),
+         photo("IMG_10.ARW", rating: 5, label: .blue, at: 3), photo("Other.ARW", rating: 1, label: .red, at: 4)]
+    }
+
+    @Test func defaultShowsEverythingInOrder() {
+        #expect(PhotoFilter().apply(to: sample).map(\.name) == sample.map(\.name))
+    }
+
+    @Test func minimumStarsExcludesRejects() {
+        var f = PhotoFilter()
+        f.minStars = 3
+        #expect(f.apply(to: sample).map(\.name) == ["IMG_1.ARW", "IMG_10.ARW"])
+        f.minStars = 0
+        #expect(f.apply(to: sample).count == 4)
+    }
+
+    @Test func labelsMatchAnyChosen() {
+        var f = PhotoFilter()
+        f.labels = [.red, .blue]
+        #expect(f.apply(to: sample).map(\.name) == ["IMG_1.ARW", "IMG_10.ARW", "Other.ARW"])
+        f.labels = [.blue]
+        #expect(f.apply(to: sample).map(\.name) == ["IMG_10.ARW"])
+    }
+
+    @Test func rejectModes() {
+        var f = PhotoFilter()
+        f.rejects = .hideRejected
+        #expect(f.apply(to: sample).map(\.name) == ["IMG_1.ARW", "IMG_10.ARW", "Other.ARW"])
+        f.rejects = .onlyRejected
+        #expect(f.apply(to: sample).map(\.name) == ["IMG_2.ARW"])
+    }
+
+    @Test func criteriaCombine() {
+        var f = PhotoFilter()
+        f.minStars = 1
+        f.labels = [.red]
+        f.rejects = .hideRejected
+        #expect(f.apply(to: sample).map(\.name) == ["IMG_1.ARW", "Other.ARW"])
+    }
+
+    @Test func searchIgnoresCaseAndDiacritics() {
+        var f = PhotoFilter()
+        f.search = "img_1"
+        #expect(f.apply(to: sample).map(\.name) == ["IMG_1.ARW", "IMG_10.ARW"])
+        f.search = "  "
+        #expect(f.apply(to: sample).count == 4)
+    }
+
+    @Test func turningItOffKeepsSettings() {
+        var f = PhotoFilter()
+        f.minStars = 4
+        f.isOn = false
+        #expect(f.apply(to: sample).count == 4)
+        #expect(f.minStars == 4)
+        f.isOn = true
+        #expect(f.apply(to: sample).count == 1)
+    }
+
+    @Test func sortsByNameNumericallyAndDescending() {
+        var f = PhotoFilter()
+        f.sortKey = .filename
+        #expect(f.apply(to: sample).map(\.name) == ["IMG_1.ARW", "IMG_2.ARW", "IMG_10.ARW", "Other.ARW"])
+        f.ascending = false
+        #expect(f.apply(to: sample).map(\.name) == ["Other.ARW", "IMG_10.ARW", "IMG_2.ARW", "IMG_1.ARW"])
+        f = PhotoFilter()
+        f.ascending = false
+        #expect(f.apply(to: sample).map(\.name) == ["Other.ARW", "IMG_10.ARW", "IMG_2.ARW", "IMG_1.ARW"])
+    }
+
+    @Test func keptPhotoStaysAfterLeavingTheFilter() {
+        var f = PhotoFilter()
+        f.minStars = 3
+        let kept = sample[3].url // 1 star: does not match
+        #expect(f.apply(to: sample, keeping: kept).map(\.name) == ["IMG_1.ARW", "IMG_10.ARW", "Other.ARW"])
+    }
+}

@@ -74,7 +74,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-17 | Histogram | M-03 | done |
 | M-18 | Info overlay and inspector | M-16, M-17 | built, not checked in the live app |
 | M-19 | Selection | M-12 | built, not checked in the live app |
-| M-20 | Filter and sort bar | M-19 | todo |
+| M-20 | Filter and sort bar | M-19 | built, not checked in the live app |
 | M-21 | Reveal in Finder | M-19 | todo |
 | M-22 | Settings window | M-05 | todo |
 | M-23 | Cheat sheet and menu audit | M-05 and all MVP commands | todo |
@@ -1081,6 +1081,20 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 1. A decision that takes the current photo out of the filter: see G-6.
 2. A default filter on open: none, or hide rejects? *Proposed:* none.
 3. Filters by camera, lens or file type? *Proposed:* not in v1.
+
+**Built (decisions and results)**
+- Q1 follows **G-6** as proposed: `FolderModel.visible` is the filtered, sorted list (Grid, Loupe's neighbours, the arrows, selection and cull targets all use it); `photos` stays the full list in capture order, where decisions and sidecars live. While a filter is narrowing, the current photo is kept in `visible` even after a decision stops it matching, and drops out once you move away. Changing the filter itself does move a hidden current photo to the next shown one (else the previous) and trims the selection to what is shown (M-19/Q1).
+- Q2 **decided** as proposed: no filter on open. The filter and sort settings are not reset when another folder opens (session persistence is V-15).
+- Q3 **decided** as proposed: no camera, lens or file-type filters in v1.
+- `PhotoFilter` (new, `Library`, pure and tested): on/off (`⌘L`), minimum stars (rejects never pass a minimum), any-of labels, rejects (show, hide, only), filename search (case and diacritic insensitive substring), sort key (capture time or filename, Finder-style numeric) and direction. `⌘L` keeps the settings; the search is part of the filter and goes off with it.
+- Commands (Filter menu): `filter.bar` `\`, `filter.enabled` `⌘L`, `filter.find` `⌘F`, `filter.clear`, `filter.stars.0`–`5` on `⌥⌘0`–`⌥⌘5`, `filter.label.red/yellow/green/blue` on `⌥⌘6`–`⌥⌘9` (purple and "any" menu-only), `filter.rejects.showAll/hide/only` plus `filter.rejects.cycle` on `⌥⌘X`, `filter.sort.time/name/reverse` (menu only). Any filter command turns filtering on and announces "312 of 1,204 shown, 3 stars or more".
+- The bar (`FilterBar`) has the on/off switch, five stars, label circles, a rejects menu, sort key and direction, and the search field; `⌘F` shows the bar if hidden and focuses the field, and `Esc` (or Return) hands the keyboard back to the image. Hiding the bar keeps the filter. The toolbar's Filter item is live and filled while a filter narrows.
+- The subtitle reads "312 of 1,204 shown" while narrowing.
+
+**Checked**
+- Unit tests: `PhotoFilterTests` (each criterion, combinations, off keeps settings, numeric name sort, descending, keep-current) and `FilterModelTests` (navigation walks the visible list, G-6 stickiness, hidden current moves and selection is trimmed, sort leaves the catalog alone). All packages pass; Release build clean.
+- **Not checked** (this session cannot send keys or see the window): the one-frame criterion on 5,000 photos (the filter is one linear pass over the array, cached until the photos, filter or, while narrowing, the current photo change; Grid reloads when the list changes), the "Narrow" workflow by keyboard in the live app, the bar layout and VoiceOver.
+
 
 ### M-21 · Reveal in Finder
 

@@ -15,13 +15,34 @@ public final class FolderModel {
     }
 
     public private(set) var folder: URL?
-    public private(set) var photos: [Photo] = []
+    /// Every photo in the folder, in capture-time order. Decisions and sidecars are kept here; what the
+    /// photographer sees and moves through is `visible`.
+    public private(set) var photos: [Photo] = [] { didSet { visibleVersion &+= 1 } }
     public private(set) var content: Content = .none
     public private(set) var isReadingCaptureTimes = false
     public private(set) var isReadingSidecars = false
 
     /// The configured naming style (PRD "Sidecar naming"). Reads fall back to the other style.
     public var sidecarNaming: SidecarNaming = .stem
+
+    /// The filter and sort bar's settings (M-20).
+    public private(set) var filter = PhotoFilter() { didSet { visibleVersion &+= 1 } }
+
+    @ObservationIgnored private var visibleVersion = 0
+    @ObservationIgnored private var visibleCache: (version: Int, keeping: URL?, photos: [Photo])?
+
+    /// The photos that pass the filter, in the chosen order: what Grid shows and what the arrow keys walk. The
+    /// current photo stays in the list after a decision takes it out of the filter, until it stops being
+    /// current, so the view never jumps under the photographer's fingers (G-6).
+    public var visible: [Photo] {
+        let all = photos
+        guard filter.isNarrowing || !filter.isDefaultSort else { return all }
+        let keeping = filter.isNarrowing ? currentURL : nil
+        if let cache = visibleCache, cache.version == visibleVersion, cache.keeping == keeping { return cache.photos }
+        let result = filter.apply(to: all, keeping: keeping)
+        visibleCache = (visibleVersion, keeping, result)
+        return result
+    }
 
     /// The photo Loupe shows. Tracked by URL so the capture-time re-sort cannot change which frame is current.
     public private(set) var currentURL: URL?
@@ -203,7 +224,7 @@ public final class FolderModel {
                 content = .empty(hasSubfolderPhotos: result.subfolderHasPhotos)
             case .success(let result):
                 photos = result.photos
-                currentURL = photos.first?.url
+                currentURL = visible.first?.url
                 content = .photos
                 // Both passes start now and run off the main thread; neither holds up the first image.
                 let sidecars = Task { await self.readSidecars(generation: mine) }
@@ -329,12 +350,13 @@ public final class FolderModel {
     private func remove(_ urls: Set<URL>) {
         let oldIndex = currentIndex ?? 0
         photos.removeAll { urls.contains($0.url) }
-        selection.retain(photos)
+        let shown = visible
+        selection.retain(shown)
         if photos.isEmpty {
             currentURL = nil
             content = .empty(hasSubfolderPhotos: false)
-        } else if let currentURL, urls.contains(currentURL) {
-            self.currentURL = photos[min(oldIndex, photos.count - 1)].url
+        } else if let currentURL, urls.contains(currentURL) || !shown.contains(where: { $0.url == currentURL }) {
+            self.currentURL = shown.isEmpty ? nil : shown[min(oldIndex, shown.count - 1)].url
         }
     }
 
@@ -377,37 +399,38 @@ public final class FolderModel {
 
     public var currentIndex: Int? {
         guard let currentURL else { return nil }
-        return photos.firstIndex { $0.url == currentURL }
+        return visible.firstIndex { $0.url == currentURL }
     }
 
     public func decision(for url: URL) -> Decision? {
         photos.first { $0.url == url }?.decision
     }
 
-    public var currentPhoto: Photo? { currentIndex.map { photos[$0] } }
+    public var currentPhoto: Photo? { currentIndex.map { visible[$0] } }
 
     public enum Step: Sendable { case next, previous, first, last }
 
     /// Moves the current photo. Stops at either end (no wrap-around). Returns whether the photo changed.
     @discardableResult
     public func move(_ step: Step) -> Bool {
-        guard !photos.isEmpty else { return false }
+        let shown = visible
+        guard !shown.isEmpty else { return false }
         let from = currentIndex ?? 0
         let to = switch step {
-        case .next: min(from + 1, photos.count - 1)
+        case .next: min(from + 1, shown.count - 1)
         case .previous: max(from - 1, 0)
         case .first: 0
-        case .last: photos.count - 1
+        case .last: shown.count - 1
         }
         guard to != from || currentURL == nil else { return false }
-        currentURL = photos[to].url
+        currentURL = shown[to].url
         return true
     }
 
     /// Makes the photo at `url` the current one (a click in Grid, an arrow key). Ignored for a URL not in the folder.
     @discardableResult
     public func setCurrent(_ url: URL) -> Bool {
-        guard url != currentURL, photos.contains(where: { $0.url == url }) else { return false }
+        guard url != currentURL, visible.contains(where: { $0.url == url }) else { return false }
         currentURL = url
         return true
     }
@@ -415,8 +438,9 @@ public final class FolderModel {
     /// Makes the photo at `index` the current one. Ignored outside the list.
     @discardableResult
     public func setCurrent(index: Int) -> Bool {
-        guard photos.indices.contains(index) else { return false }
-        return setCurrent(photos[index].url)
+        let shown = visible
+        guard shown.indices.contains(index) else { return false }
+        return setCurrent(shown[index].url)
     }
 
     // MARK: selection (M-19)
@@ -426,13 +450,13 @@ public final class FolderModel {
     /// The photos a cull key acts on in Grid: the selection in screen order, or the current photo alone when
     /// nothing is selected (G-5). Loupe and Compare always use the current photo.
     public var cullTargets: [URL] {
-        selection.isEmpty ? currentURL.map { [$0] } ?? [] : photos.filter { selection.contains($0.url) }.map(\.url)
+        selection.isEmpty ? currentURL.map { [$0] } ?? [] : visible.filter { selection.contains($0.url) }.map(\.url)
     }
 
-    public func selectAll() { selection.selectAll(photos) }
+    public func selectAll() { selection.selectAll(visible) }
     public func selectNone() { selection.removeAll() }
-    public func invertSelection() { selection.invert(photos) }
-    public func select(matching criteria: SelectionCriteria) { selection.select(matching: criteria, in: photos) }
+    public func invertSelection() { selection.invert(visible) }
+    public func select(matching criteria: SelectionCriteria) { selection.select(matching: criteria, in: visible) }
 
     /// `/`: takes the current photo out of the selection.
     public func deselectCurrent() {
@@ -442,20 +466,54 @@ public final class FolderModel {
     /// A click in Grid: `.replace` selects only that photo, `.toggle` (`⌘`) flips it, `.range` (`⇧`) selects
     /// from the last anchor. The clicked photo becomes the current one.
     public func click(_ url: URL, mode: ClickMode) {
-        guard photos.contains(where: { $0.url == url }) else { return }
+        let shown = visible
+        guard shown.contains(where: { $0.url == url }) else { return }
         switch mode {
         case .replace: selection.select(only: url)
         case .toggle: selection.toggle(url)
-        case .range: selection.extend(to: url, from: currentURL, in: photos)
+        case .range: selection.extend(to: url, from: currentURL, in: shown)
         }
         currentURL = url
     }
 
     /// `⇧`-arrow: moves the current photo to `index` and selects the range from the anchor to it.
     public func extendSelection(toIndex index: Int) {
-        guard photos.indices.contains(index) else { return }
-        selection.extend(to: photos[index].url, from: currentURL, in: photos)
-        currentURL = photos[index].url
+        let shown = visible
+        guard shown.indices.contains(index) else { return }
+        selection.extend(to: shown[index].url, from: currentURL, in: shown)
+        currentURL = shown[index].url
+    }
+
+    // MARK: filter and sort (M-20)
+
+    /// Changes the filter or sort. Selected photos the filter now hides are dropped from the selection, so
+    /// what a cull key reaches is what is on screen (M-19/Q1). The current photo, if hidden, moves to the
+    /// nearest shown one at or after it, else the last.
+    public func updateFilter(_ change: (inout PhotoFilter) -> Void) {
+        var next = filter
+        change(&next)
+        guard next != filter else { return }
+        filter = next
+        // Without the keep-current rule: a filter the current photo fails moves the current photo (G-6 is
+        // about decisions, not about the photographer changing the filter).
+        let shown = next.apply(to: photos)
+        selection.retain(shown)
+        if let currentURL, !shown.contains(where: { $0.url == currentURL }) {
+            self.currentURL = nearestShown(to: currentURL, in: shown)
+        } else if currentURL == nil {
+            currentURL = shown.first?.url
+        }
+    }
+
+    /// ⌘L.
+    public func toggleFilter() { updateFilter { $0.isOn.toggle() } }
+
+    /// The shown photo that follows `url` in the full list, else the one before it, else nil.
+    private func nearestShown(to url: URL, in shown: [Photo]) -> URL? {
+        guard let from = photos.firstIndex(where: { $0.url == url }) else { return shown.first?.url }
+        let ids = Set(shown.map(\.url))
+        if let after = photos[from...].first(where: { ids.contains($0.url) }) { return after.url }
+        return photos[..<from].last(where: { ids.contains($0.url) })?.url
     }
 
     /// Records what the preview reader found for `url`. Ignored if the photo is no longer in the folder.
