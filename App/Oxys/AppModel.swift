@@ -223,11 +223,12 @@ final class AppModel {
         guard let view = NSApp.keyWindow?.contentView else { return }
         let popover = NSPopover()
         popover.behavior = .transient
-        let hosting = NSHostingController(rootView: SelectByView(
-            apply: { [unowned self] criteria in
-                if criteria.isEmpty { folder.selectNone() } else { folder.select(matching: criteria) }
-            },
-            done: { [weak popover] in popover?.close() }))
+        let hosting = NSHostingController(rootView: SelectByView { [unowned self, weak popover] criteria in
+            popover?.close()
+            guard let criteria else { return }
+            folder.select(matching: criteria)
+            announce(folder.selection.isEmpty ? "No photos match" : "\(folder.selection.count) photos selected, \(criteria.summary)")
+        })
         popover.contentViewController = hosting
         let anchor = NSRect(x: view.bounds.midX - 1, y: view.bounds.maxY - 60, width: 2, height: 2)
         popover.show(relativeTo: anchor, of: view, preferredEdge: .minY)

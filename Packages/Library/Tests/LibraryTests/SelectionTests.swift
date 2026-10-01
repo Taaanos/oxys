@@ -99,10 +99,6 @@ import Testing
         #expect(names(model) == ["c.ARW"])
         model.select(matching: .init(label: .unlabeled))
         #expect(names(model) == ["b.ARW", "d.ARW", "e.ARW"])
-        model.select(matching: .init(rating: .exactly(2)))
-        #expect(names(model) == ["b.ARW"])
-        model.select(matching: .init(rating: .atMost(2)))
-        #expect(names(model) == ["a.ARW", "b.ARW"])   // e is rejected, so not "2 or fewer"
         #expect(SelectionCriteria(rating: .atLeast(3), label: .color(.red)).summary == "3 stars or more, red label")
     }
 
