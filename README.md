@@ -30,6 +30,6 @@ make test         # runs the unit tests of every package under Packages/
 | Path | What |
 | --- | --- |
 | `App/` | Xcode project and the SwiftUI app target |
-| `Packages/` | One local Swift package per module: Commands, Library, Containers, Imaging, Canvas, Sidecar, Metadata |
+| `Packages/` | One local Swift package per module: Commands, Library, Containers, Imaging, Canvas, Sidecar, Metadata, Diagnostics |
 | `scripts/` | Developer scripts |
 | `docs/` | Spike write-ups and performance reports (added as stories land) |

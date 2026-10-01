@@ -39,6 +39,7 @@ For orientation only. F-01 creates it; stories refine it.
 | `Canvas` | Metal image surface: fit, zoom, pan, overlays (peaking, clipping), histogram | M-03 |
 | `Sidecar` | XMP reading, in-place patching, atomic write queue, file watching | M-07 |
 | `Metadata` | EXIF via ImageIO, value formatting, maker-note fields | M-16 |
+| `Diagnostics` | Signpost intervals, latency statistics, trace report tool | F-02 |
 
 Every module except `App` is a local Swift package, so it can be tested without launching the app.
 
@@ -48,7 +49,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | --- | --- | --- | --- |
 | **Phase 0** | **Foundations and spikes** | | |
 | F-01 | Project skeleton | none | done |
-| F-02 | Test corpus and performance harness | F-01 | todo |
+| F-02 | Test corpus and performance harness | F-01 | done (real-shoot and SD/SMB measurements pending) |
 | F-03 | Spike: locating embedded previews | F-01 | done (ORF, real RW2 and Nikon maker-note previews open) |
 | F-04 | Spike: XMP interoperability | none | todo |
 | F-05 | Spike: keyboard routing | F-01 | todo |
@@ -212,17 +213,26 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - The same folder copied to the internal SSD, a UHS-II SD card and a network share.
 
 **Acceptance criteria**
-- [ ] One command recreates the corpus on a clean machine.
-- [ ] One command prints the latency table for a run.
-- [ ] A manifest lists each file's camera, format, pixel size and embedded preview sizes.
+- [x] One command recreates the corpus on a clean machine (`make corpus`).
+- [x] One command prints the latency table for a run (`scripts/perf-record.sh <Oxys.app> [seconds]`, or `make perf-report TRACE=...`).
+- [x] A manifest lists each file's camera, format, pixel size and embedded preview sizes (`make manifest` → `TestData/manifest.json`).
 
 **Implementation notes**
 - Duplicated files are fine for scan and Grid tests, but not for next-image timings: the OS file cache makes repeated bytes look faster than real. Use real shoots there.
 
 **Open questions**
 1. Slowest supported Mac: see G-3.
-2. Can you provide real 1,000-frame shoots from a 24 MP and a 45–61 MP camera? Which cameras do you have access to? *Proposed:* your own shoots for performance tests, raw.pixls.us for format coverage.
+2. Can you provide real 1,000-frame shoots from a 24 MP and a 45–61 MP camera? Which cameras do you have access to? **Decided:** the 14 files already in `TestData/` are enough for format coverage and for the synthetic folders; no more downloads for now. Real shoots for next-image timings are still needed before M-26 (open).
 3. What kind of network share? *Proposed:* SMB from a NAS.
+
+**Result notes**
+- New package `Packages/Diagnostics` (added to the module table): `PerfInterval` names the five intervals (`key-to-frame`, `preview-read`, `decode`, `texture-upload`, `sidecar-write`), `Perf.begin/end/measure` emit them through one `OSSignposter` (subsystem `dev.oxys.Oxys`, category `Performance`). `LatencyStats` gives nearest-rank p50/p95. Its `PerfTool` executable runs `xctrace export` on the `OSSignpostIntervals` table and prints the table; `PerfTool selftest` emits synthetic intervals, so `make perf-selftest` checks the whole record-and-report path (it reports key-to-frame at about 6 ms for a 4 ms sleep: `usleep` overshoots by 1–2 ms, so those numbers only prove the pipeline, not the harness's accuracy).
+- No app code emits the signposts yet; each later story that touches a performance path (M-02, M-03, M-04, M-08) adds its calls.
+- `scripts/corpus.tsv` lists the 9 raw.pixls.us files in `TestData/` (id, sha256, camera; all CC0 1.0). `make corpus` fetches any that are missing or wrong, verifies the checksum, and rebuilds the manifest. Checked by deleting one file and refetching it (byte-identical). The other 5 files in `TestData/` are the developer's own and are not fetched.
+- The manifest tool is `CorpusManifest` in the Containers package. Pixel size comes from ImageIO and is approximate: for the R6 Mark III CR3 it reports the 4320×2880 preview, and for the K10D PEF nothing.
+- `make bench-folders` builds `TestData/bench/{24mp-1000,hires-1000,scan-5000,grid-10000}` as APFS clones (no extra disk). Their sources are chosen by the manifest's megapixels: 18–36 MP, 40+ MP, and everything. The corpus has only one 40+ MP file (the DJI 48.8 MP DNG), so `hires-1000` is 1,000 clones of it. Clones share bytes, so these folders suit scan and Grid tests only.
+- `scripts/copy-to-volume.sh <folder> <volume>` copies a folder to an SD card or share with rsync and checks the file count.
+- **Still open for this story's scope:** measuring on a UHS-II card and an SMB share needs the hardware; the scripts are ready. A cold-cache pass needs `sudo purge`, which this session cannot run.
 
 ### F-03 · Spike: locating embedded previews
 

@@ -13,7 +13,7 @@ Keyboard-first RAW culler for macOS. Swift 6, arm64 only, macOS 27+, no sandbox.
 ## Layout
 
 - `App/Oxys.xcodeproj` and `App/Oxys/`: the SwiftUI app target (single `Window` scene, AppKit views behind `NSViewRepresentable`).
-- `Packages/<Module>/`: one local Swift package per module (Commands, Library, Containers, Imaging, Canvas, Sidecar, Metadata), each with a Swift Testing target. Put logic in packages so it can be tested without launching the app. Add inter-package dependencies only when a story needs them.
+- `Packages/<Module>/`: one local Swift package per module (Commands, Library, Containers, Imaging, Canvas, Sidecar, Metadata, Diagnostics), each with a Swift Testing target. Put logic in packages so it can be tested without launching the app. Add inter-package dependencies only when a story needs them.
 - `scripts/`: developer scripts. `docs/` (spike write-ups, perf reports) appears as stories produce them. `TestData/` is git-ignored and never holds committed camera files.
 
 ## Commands (run from the repo root)
@@ -23,6 +23,10 @@ make build         # Release build into ./build
 make test          # swift test in every Packages/* directory
 make check-arch    # lipo -archs on the built app; must print only "arm64"
 make launch-time   # 5 cold launches; prints launch-to-first-draw
+make corpus        # fetch the pixls files in scripts/corpus.tsv into TestData/, then write TestData/manifest.json
+make bench-folders # TestData/bench/{24mp-1000,hires-1000,scan-5000,grid-10000} (APFS clones)
+make perf-selftest # record + report synthetic signposts (pipeline check)
+scripts/perf-record.sh <Oxys.app> [seconds]   # record signposts, print p50/p95 per interval
 ```
 
 Package manifests use `swift-tools-version: 6.4` (`.macOS(.v27)` needs it). Bundle ID is the placeholder `dev.oxys.Oxys` (G-1); set the real one before V-17.

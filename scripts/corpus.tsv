@@ -1,0 +1,11 @@
+# raw.pixls.us files (all CC0 1.0). Columns: pixls id, local file name, sha256, camera.
+# Local names replace ':' with '_'. Other files in TestData/ are the developer's own shoots and are never fetched.
+1022	Adobe DNG Converter - Canon EOS 5D Mark III - 16bit 16bit uncompressed (3_2).tiff	95dc76a2f255e623acaa5149b320389f7da7c995da890c3e0d511c0ff681b2e1	Adobe DNG Converter Canon EOS 5D Mark III
+131	Canon - EOS 7D - RAW (3_2).CR2	b5e47c5fcf7332ac03e0134926f17a338a42e68c1fd7f83e16f45f4b767544e8	Canon EOS 7D
+8963	Canon - EOS R6 Mark III - RAW (3_2).CR3	1f533686b2230817dac98266a6cc8ffd960413c109965768b7efc05cc1ca96eb	Canon EOS R6 Mark III
+7823	DJI - FC4382 - 16bit (4_3).tiff	f33ddaf2a7fa70b395abced251faccea11100d2ab7e54ae0a6adbff043d72027	DJI FC4382
+4898	DJI - FC7303 - 16bit (16_9).tiff	fb4f294e12cab7b507fd0b7c07f24e5d13e7c0dd127b534ce12c48d644c9363d	DJI FC7303
+842	Fujifilm - X-M1 - 12bit 12bit uncompressed (3_2).RAF	eef4e9ae629d2d81cef5a234fb853c14c88b3c0c12c39d635a1f9fa2a871bec3	Fujifilm X-M1
+3009	Hasselblad - L1D-20c - 16bit (3_2).tiff	7afecae0db80d832941eeeb3c0eb2dc03f5696637b6e78b3c592e8c002dce4ec	Hasselblad L1D-20c
+4282	Nikon - Nikon COOLSCAN IV ED - uncompressed (4_3).tiff	268d9a98920a9f3ea3ebf6a2b9ff68b956df74ac0e46b980bee69e7ef3ebc172	Nikon Nikon COOLSCAN IV ED
+2239	Pentax - K10D - 12bit 12bit compressed (3_2).tiff	e35ae4154a468be3154f5f462e884ba5941f010d3e8f23d347fbec14809f44d3	Pentax K10D

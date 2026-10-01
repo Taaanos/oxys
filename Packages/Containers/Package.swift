@@ -11,6 +11,8 @@ let package = Package(
         .target(name: "Containers"),
         // F-03 spike tool: lists, verifies against a reference extractor, and times embedded previews.
         .executableTarget(name: "PreviewSpike", dependencies: ["Containers"]),
+        // F-02 tool: JSON manifest of a corpus folder (camera, format, pixel size, embedded preview sizes).
+        .executableTarget(name: "CorpusManifest", dependencies: ["Containers"]),
         .testTarget(name: "ContainersTests", dependencies: ["Containers"]),
     ]
 )
