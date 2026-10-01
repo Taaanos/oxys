@@ -5,6 +5,22 @@ import Imaging
 import Library
 import SwiftUI
 
+/// A scroll view that reports each layout pass and window change, so Grid can notice a viewport that
+/// settled after its first thumbnail request.
+final class GridScrollView: NSScrollView {
+    var onLayout: (() -> Void)?
+
+    override func layout() {
+        super.layout()
+        onLayout?()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil { onLayout?() }
+    }
+}
+
 /// Grid's SwiftUI side: the scroll view the controller builds, nothing more.
 struct GridScreen: NSViewRepresentable {
     let controller: GridController
@@ -76,7 +92,8 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         collection.register(GridItem.self, forItemWithIdentifier: GridItem.identifier)
         collection.setAccessibilityLabel("Photos")
 
-        let scroll = NSScrollView()
+        let scroll = GridScrollView()
+        scroll.onLayout = { [weak self] in self?.viewportChanged() }
         scroll.documentView = collection
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = true
@@ -223,7 +240,10 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         let g = geometry
         let range = g.visibleRange(offset: bounds.minY, height: bounds.height, count: photos.count)
         let edge = edge
-        guard force || range != wantedRange || edge != wantedEdge else { return }
+        // The first pass can run before the view has its size or a window and want nothing; a later layout
+        // then finds the same range. When nothing is loading and something visible is missing, ask again.
+        let starved = loader.isIdle && !range.allSatisfy { loader.isResolved(key(for: photos[$0], edge: edge)) }
+        guard force || starved || range != wantedRange || edge != wantedEdge else { return }
         if range.lowerBound != lastLowerBound { direction = range.lowerBound > lastLowerBound ? .down : .up }
         lastLowerBound = range.lowerBound
         wantedRange = range

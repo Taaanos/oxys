@@ -35,6 +35,8 @@ final class GridThumbnailLoader {
     }
 
     func image(for key: Key) -> CGImage? { cache.value(for: key) }
+    /// Nothing is loading: whatever is still missing on screen will not arrive unless it is asked for again.
+    var isIdle: Bool { inflight.isEmpty }
     func isFailed(_ key: Key) -> Bool { failed.contains(key) }
     func isResolved(_ key: Key) -> Bool { cache.contains(key) || failed.contains(key) }
 
