@@ -7,8 +7,14 @@ let package = Package(
     products: [
         .library(name: "Library", targets: ["Library"]),
     ],
+    dependencies: [
+        .package(path: "../Metadata"),
+        .package(path: "../Diagnostics"),
+    ],
     targets: [
-        .target(name: "Library"),
+        .target(name: "Library", dependencies: ["Metadata", "Diagnostics"]),
+        // M-01 tool: times a folder scan and the capture-time pass.
+        .executableTarget(name: "ScanBench", dependencies: ["Library"]),
         .testTarget(name: "LibraryTests", dependencies: ["Library"]),
     ]
 )

@@ -13,6 +13,10 @@ public enum PerfInterval: String, CaseIterable, Sendable {
     case textureUpload = "texture-upload"
     /// Writing a sidecar (temp file, fsync, rename).
     case sidecarWrite = "sidecar-write"
+    /// Listing a folder's photos (M-01): the list the user sees first.
+    case folderScan = "folder-scan"
+    /// Reading every capture time in a folder, in the background after the list is shown.
+    case captureTimes = "capture-times"
 
     /// Signpost names must be static strings, so the raw value is repeated here.
     var signpostName: StaticString {
@@ -22,6 +26,8 @@ public enum PerfInterval: String, CaseIterable, Sendable {
         case .decode: "decode"
         case .textureUpload: "texture-upload"
         case .sidecarWrite: "sidecar-write"
+        case .folderScan: "folder-scan"
+        case .captureTimes: "capture-times"
         }
     }
 }

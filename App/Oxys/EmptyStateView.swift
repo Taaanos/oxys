@@ -2,25 +2,38 @@ import AppKit
 import SwiftUI
 
 /// The empty state shown before a folder is open. SwiftUI owns the layout,
-/// AppKit owns the pixels. It does nothing yet; M-01 makes it a drop target.
+/// AppKit owns the pixels. Also shows the one-line messages for an opening, empty or unreadable folder.
 struct EmptyStateView: NSViewRepresentable {
+    var message: String
+
     func makeNSView(context: Context) -> EmptyStateNSView {
-        EmptyStateNSView()
+        EmptyStateNSView(message: message)
     }
 
-    func updateNSView(_ nsView: EmptyStateNSView, context: Context) {}
+    func updateNSView(_ nsView: EmptyStateNSView, context: Context) {
+        nsView.message = message
+    }
 }
 
 final class EmptyStateNSView: NSView {
     static let message = "Drop a folder or press ⌘O"
 
+    var message: String {
+        didSet {
+            guard message != oldValue else { return }
+            setAccessibilityLabel(message)
+            needsDisplay = true
+        }
+    }
+
     private var reportedFirstDraw = false
 
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
+    init(message: String = EmptyStateNSView.message) {
+        self.message = message
+        super.init(frame: .zero)
         setAccessibilityElement(true)
         setAccessibilityRole(.staticText)
-        setAccessibilityLabel(Self.message)
+        setAccessibilityLabel(message)
     }
 
     @available(*, unavailable)
@@ -34,7 +47,7 @@ final class EmptyStateNSView: NSView {
             .font: NSFont.systemFont(ofSize: 17),
             .foregroundColor: NSColor.secondaryLabelColor,
         ]
-        let text = NSAttributedString(string: Self.message, attributes: attributes)
+        let text = NSAttributedString(string: message, attributes: attributes)
         let size = text.size()
         text.draw(at: NSPoint(x: (bounds.width - size.width) / 2,
                               y: (bounds.height - size.height) / 2))

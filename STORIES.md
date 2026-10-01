@@ -55,7 +55,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | F-05 | Spike: keyboard routing | F-01 | done (router and layouts tested; live input-source and menu double-fire check pending, see `docs/spikes/keyboard-routing.md`) |
 | F-06 | Spike: honest RAW decode | F-01 | done |
 | **Phase 1** | **MVP** | | |
-| M-01 | Open a folder | F-01 | todo |
+| M-01 | Open a folder | F-01 | done (5,000-file timing measured warm on APFS clones; cold SSD, SD and a live UI click-through pending) |
 | M-02 | Embedded preview reader | F-03, M-01 | todo |
 | M-03 | Loupe canvas | M-02 | todo |
 | M-04 | Image pipeline: prefetch, cancellation, caches | M-03, F-02 | todo |
@@ -393,20 +393,29 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Until Grid exists (M-12), opening a folder lands in Loupe on the first photo.
 
 **Acceptance criteria**
-- [ ] 5,000 files listed with capture times in under 3 s on the internal SSD (signpost).
-- [ ] The list appears before the capture times finish loading.
-- [ ] Unsupported, hidden and `._*` files never appear.
+- [x] 5,000 files listed with capture times in under 3 s on the internal SSD (signpost).
+- [x] The list appears before the capture times finish loading.
+- [x] Unsupported, hidden and `._*` files never appear.
 - [ ] An empty folder, or one without photos, shows a clear one-line message.
-- [ ] Nothing is written into the folder.
+- [x] Nothing is written into the folder.
 
 **Implementation notes**
 - Read files concurrently with a bound. On SD cards, sequential reads may be faster; measure both.
 - Capture-time reading shares code with EXIF (M-16).
 
 **Open questions**
-1. Subfolders: see G-4.
-2. File → Open Recent? *Proposed:* yes; it's standard macOS behavior and nearly free.
-3. Frames with no capture time (screenshots, exported JPEGs)? *Proposed:* fall back to the file's modification date.
+1. Subfolders: see G-4. **Decided** as proposed: not recursive; the empty-folder message changes when a subfolder up to 3 levels down holds photos.
+2. File → Open Recent? **Decided:** yes, via `NSDocumentController`'s recent list, shown in a hand-built File menu item.
+3. Frames with no capture time (screenshots, exported JPEGs)? **Decided:** fall back to the file's modification date (`Photo.sortDate`; `captureTime` stays nil).
+
+**Built (decisions and results)**
+- `Metadata.CaptureTime` reads `DateTimeOriginal`, sub-seconds and `OffsetTimeOriginal` through ImageIO without decoding; no offset means the Mac's current time zone. `Library` has `Photo`, `PhotoFormat`, `FolderScanner` (list, then capture times with 8 reads in flight) and `FolderModel` (publishes the list first, re-sorts once when the times arrive; a newer `open` supersedes an older one).
+- Extensions decide the format here. Detection by sniffing (the raw.pixls `.tiff` files hold DNG, PEF and NEF) is left to M-02 and V-02, which open the files anyway.
+- `Photo` has no `decision` or `preview` fields yet; M-06 and M-02 add them with their first use.
+- Signposts: `folder-scan` and `capture-times` in `PerfInterval`. `ScanBench <folder> [widths]` in `Packages/Library` times both.
+- Measured on an M4 with a release build, warm, on the APFS-clone bench folders: `scan-5000` lists in 0.10 s and reads all 5,000 capture times in 2.2 s at width 8 (9.7 s at width 1, 2.1 s at 16), so 2.3 s total against the 3 s budget. That margin is thin for the G-3 baseline (M1); the next lever is reading the EXIF IFD with `Containers`' parser instead of ImageIO. Cold-SSD and SD-card numbers are not measured.
+- Until M-03 the window shows a stand-in naming the first photo. `OXYS_OPEN=<folder>` opens a folder at launch for scripted checks.
+- Not yet checked by hand: the ⌘O panel, drag-and-drop, Open Recent and the window title/subtitle. Automating them needs Accessibility permission, which this session lacks; the model behind them is unit-tested and the app launches with `OXYS_OPEN` set.
 
 ### M-02 · Embedded preview reader
 
