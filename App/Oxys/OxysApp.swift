@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct OxysApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var model = AppModel()
 
     var body: some Scene {

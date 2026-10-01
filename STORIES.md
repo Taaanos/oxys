@@ -65,7 +65,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-08 | Write sidecars safely | M-06, M-07 | done (Lightroom and RawTherapee walking-skeleton check pending) |
 | M-09 | Undo and redo | M-08 | done (live ⌘Z click-through pending) |
 | M-10 | React to outside sidecar changes | M-08 | done |
-| M-11 | Write failures and read-only folders | M-08 | todo |
+| M-11 | Write failures and read-only folders | M-08 | done (live locked-card and eject checks pending) |
 | M-12 | Grid view | M-04, M-06 | todo |
 | M-13 | Modes and window chrome | M-12 | todo |
 | M-14 | Zoom: Fit and 1:1 | M-03, F-05 | todo |
@@ -772,6 +772,18 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 **Open questions**
 1. What should "pick a place to save them" produce: sidecars only in another folder (the user moves them next to the RAWs later), or copies of the RAWs as well? *Proposed:* sidecars only, with the same names, and the banner explains how to reunite them.
 2. Keep unsaved decisions across a relaunch? *Proposed:* yes, once session state exists (V-15); in the MVP, the quit warning covers it.
+
+**Status:** done (live locked-card and eject checks pending)
+
+**Decisions**
+- Q1 and Q2 accepted. "Save Decisions To…" (⇧⌘S, enabled while something is unsaved, also in the banner) writes sidecars only, with the configured names, through the same patcher, so an existing sidecar in that folder is patched. Once copied, those photos count as saved and their failed writes are forgotten (a folder that becomes writable later is not written to). The banner then says where they went and that the files must be moved next to the photos.
+- Read-only is found on open (`volumeIsReadOnly` or not writable) and again on Retry. Writes are still attempted, so there is one failure path: `SidecarWriteQueue` keeps each `.failed` job (`retryFailed`, `unsavedCount`, `forgetFailure`); a newer decision for the same sidecar replaces it and a retry never overwrites a newer one. Refusals count as unsaved but are not retried.
+- `FolderModel` tracks `SidecarInfo.unsaved` per photo (`unsavedCount`, `banner`, `isBannerDismissed`); the info strip shows "Not saved yet" until the inspector exists. The banner appears once per opened folder (Dismiss hides it), is non-modal, never takes focus, and is announced to VoiceOver. Retry runs from the banner and whenever the app becomes active.
+- Quit: `AppDelegate.applicationShouldTerminate` retries and flushes, and only if something is still unsaved shows the one alert (Save Decisions To…, Cancel, Quit Anyway).
+
+**Checked**
+- Unit tests (`Sidecar` 26, `Library` 63): read-only banner on open, decisions kept and marked unsaved, retry after unlocking, newer decision not overwritten, save to another folder with same names, folder vanishing mid-session.
+- Not yet done by hand: a real locked SD card and ejecting a card mid-session.
 
 ### M-12 · Grid view
 

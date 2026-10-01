@@ -30,6 +30,9 @@ public struct CommandTable: Sendable {
         // The "3 new files, reload" banner's action (M-10).
         Command("file.reload", "Reload Folder", menu: .init(.file), requires: .photos,
                 keys: [Shortcut(.position(.r), [.command, .option])]),
+        // Decisions that could not be written next to the photos go to another folder (M-11).
+        Command("file.saveDecisions", "Save Decisions To…", menu: .init(.file), requires: .photos,
+                keys: [Shortcut(.position(.s), [.command, .shift])]),
 
         // Undo and redo (M-09). The titles in the menu gain the action's name ("Undo Set Rating").
         Command("edit.undo", "Undo", menu: .init(.edit, group: 0), requires: .photos,

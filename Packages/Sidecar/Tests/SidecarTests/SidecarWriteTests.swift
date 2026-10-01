@@ -226,3 +226,24 @@ private let allFixtures = [
         queue.flush()
     }
 }
+
+@Suite struct WriteFailureQueueTests {
+    @Test func aFailedWriteIsKeptAndRetriedLater() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("oxys-q-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { chmod(dir.path, 0o755); try? FileManager.default.removeItem(at: dir) }
+        chmod(dir.path, 0o555)
+        let queue = SidecarWriteQueue()
+        let target = SidecarTarget(primary: dir.appendingPathComponent("a.xmp"))
+        queue.submit(SidecarEdit(rating: 2, label: .remove), to: target)
+        queue.flush()
+        #expect(queue.unsavedCount == 1)
+        #expect(queue.retryFailed() == 1)
+        queue.flush()
+        #expect(queue.unsavedCount == 1)
+        chmod(dir.path, 0o755)
+        queue.retryFailed(); queue.flush()
+        #expect(queue.unsavedCount == 0)
+        #expect(FileManager.default.fileExists(atPath: target.primary.path))
+    }
+}

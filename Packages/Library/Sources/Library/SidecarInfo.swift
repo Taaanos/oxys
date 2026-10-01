@@ -18,6 +18,8 @@ public struct SidecarInfo: Sendable, Hashable {
     /// Set when another program changed the sidecar while a decision of ours was still waiting to be written,
     /// and ours replaced it (M-10/Q2). The inspector shows it; cleared by the next outside change.
     public var overwrittenOutsideChange: String?
+    /// True while this photo's decision exists only in memory because its sidecar could not be written (M-11).
+    public var unsaved = false
     /// True once the sidecar read has finished for this photo, so "no sidecar" can be told from "not read yet".
     public var isRead = false
 
@@ -27,6 +29,7 @@ public struct SidecarInfo: Sendable, Hashable {
     public var notes: [String] {
         var lines: [String] = []
         if let problem, let file { lines.append("Can't read \(file.lastPathComponent): \(problem). It won't be overwritten") }
+        if unsaved { lines.insert("Not saved yet: the decision is kept in memory", at: 0) }
         if let overwrittenOutsideChange { lines.append(overwrittenOutsideChange) }
         if let unknownLabel { lines.append("Other label: \(unknownLabel)") }
         if isEmbedded { lines.append("Rating read from the image file") }

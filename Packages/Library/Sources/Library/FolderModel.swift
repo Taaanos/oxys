@@ -38,6 +38,41 @@ public final class FolderModel {
     public var newFileCount: Int { newFiles.count }
     private var newFiles = Set<String>()
 
+    /// What the banner says (M-11). Failures win over the plain read-only notice.
+    public enum Banner: Equatable, Sendable {
+        case readOnly
+        case writeFailed(String)
+        case savedCopy(URL, count: Int)
+    }
+
+    /// True when the folder (or its volume) cannot be written, found when it opened and again on a retry.
+    public private(set) var isReadOnly = false
+    /// How many photos hold a decision that is only in memory (M-11).
+    public private(set) var unsavedCount = 0
+    /// Set after "Save decisions to…": where the copies went and how many.
+    public private(set) var savedCopy: (folder: URL, count: Int)?
+    public private(set) var isBannerDismissed = false
+
+    public var banner: Banner? {
+        guard !isBannerDismissed else { return nil }
+        if unsavedCount > 0 { return .writeFailed(lastWriteFailure ?? "Could not write sidecars") }
+        if let savedCopy { return .savedCopy(savedCopy.folder, count: savedCopy.count) }
+        return isReadOnly ? .readOnly : nil
+    }
+
+    public func dismissBanner() { isBannerDismissed = true }
+
+    /// True when quitting would lose decisions. Exact right after `flushSidecarWrites()`.
+    public var hasUnsavedDecisions: Bool {
+        writer.unsavedCount > 0 || photos.contains { $0.sidecar.unsaved && $0.sidecar.problem != nil }
+    }
+
+    /// Retries failed writes and waits for them, for the quit prompt: a card that came back saves quietly.
+    public func retryAndFlush() {
+        writer.retryFailed()
+        writer.flush()
+    }
+
     private var generation = 0
     @ObservationIgnored private var watcher: FolderWatcher?
     private var loading: Task<Void, Never>?
@@ -52,20 +87,80 @@ public final class FolderModel {
     /// Blocks until every decision made so far is on disk. Called on quit.
     public func flushSidecarWrites() { writer.flush() }
 
+    private func setUnsaved(_ unsaved: Bool, at index: Int) {
+        guard photos[index].sidecar.unsaved != unsaved else { return }
+        photos[index].sidecar.unsaved = unsaved
+        unsavedCount += unsaved ? 1 : -1
+        if unsavedCount == 0 { lastWriteFailure = nil }
+    }
+
+    /// Indices of the photos a sidecar URL could belong to (either naming style, or the file they read).
+    private func indices(forSidecar url: URL) -> [Int] {
+        let name = url.lastPathComponent.lowercased()
+        return photos.indices.filter { i in
+            photos[i].sidecar.file == url
+                || SidecarNaming.allCases.contains { $0.fileName(for: photos[i].name).lowercased() == name }
+        }
+    }
+
+    /// Tries failed writes again (a card remounted, space freed) and looks at the folder's access once more.
+    public func retryUnsaved() {
+        writer.retryFailed()
+        guard let folder else { return }
+        Task { [weak self] in
+            let readOnly = await Task.detached { Self.isReadOnly(folder) }.value
+            self?.isReadOnly = readOnly
+        }
+    }
+
+    nonisolated static func isReadOnly(_ folder: URL) -> Bool {
+        let values = try? folder.resourceValues(forKeys: [.volumeIsReadOnlyKey])
+        return values?.volumeIsReadOnly == true || !FileManager.default.isWritableFile(atPath: folder.path)
+    }
+
+    /// Writes the sidecars of every unsaved decision into `destination` (same names), so nothing is lost when
+    /// the photo folder cannot take them (M-11/Q1). Returns how many were written; the rest stay unsaved.
+    @discardableResult
+    public func saveUnsaved(to destination: URL) async -> Int {
+        let jobs = photos.filter(\.sidecar.unsaved).map { (url: $0.url, name: $0.name, edit: sidecarEdit(for: $0)) }
+        let naming = sidecarNaming
+        let outcomes = await Task.detached {
+            jobs.map { job -> (URL, Bool) in
+                let target = SidecarTarget(primary: destination.appendingPathComponent(naming.fileName(for: job.name)))
+                if case .written = SidecarWriter.write(job.edit, to: target) { return (job.url, true) }
+                return (job.url, false)
+            }
+        }.value
+        var saved = 0
+        for (url, ok) in outcomes where ok {
+            guard let i = photos.firstIndex(where: { $0.url == url }) else { continue }
+            if let primary = primaryURL(for: photos[i]) { writer.forgetFailure(for: primary) }
+            if let file = photos[i].sidecar.file { writer.forgetFailure(for: file) }
+            setUnsaved(false, at: i)
+            saved += 1
+        }
+        if saved > 0 { savedCopy = (destination, saved); isBannerDismissed = false }
+        return saved
+    }
+
     private func handle(_ outcome: SidecarWriteOutcome) {
         switch outcome {
         case .written(let url):
+            for i in indices(forSidecar: url) { setUnsaved(false, at: i) }
             // A redo can write a sidecar an undo just removed: the photo knows its file again.
             for index in photos.indices where photos[index].sidecar.file == nil && primaryURL(for: photos[index]) == url {
                 photos[index].sidecar.file = url
             }
         case .removed(let url):
+            for i in indices(forSidecar: url) { setUnsaved(false, at: i) }
             for index in photos.indices where photos[index].sidecar.file == url { photos[index].sidecar.file = nil }
         case .refused(let url, let reason):
             lastWriteFailure = "Not saved to \(url.lastPathComponent): \(reason)"
             for index in photos.indices where photos[index].sidecar.file == url { photos[index].sidecar.problem = reason }
+            for i in indices(forSidecar: url) { setUnsaved(true, at: i) }
         case .failed(let url, let reason):
             lastWriteFailure = "Could not write \(url.lastPathComponent): \(reason)"
+            for i in indices(forSidecar: url) { setUnsaved(true, at: i) }
         }
     }
 
@@ -80,6 +175,11 @@ public final class FolderModel {
         currentURL = nil
         undoStack.removeAll()
         newFiles = []
+        isReadOnly = false
+        unsavedCount = 0
+        lastWriteFailure = nil
+        savedCopy = nil
+        isBannerDismissed = false
         watcher?.stop()
         watcher = FolderWatcher(folder: url) { [weak self] names in
             Task { @MainActor in self?.handleChanges(names, generation: mine) }
@@ -88,8 +188,9 @@ public final class FolderModel {
         isReadingCaptureTimes = false
 
         loading = Task { [weak self] in
-            let scanned = await Task.detached { Result { try FolderScanner.scan(url) } }.value
+            let (scanned, readOnly) = await Task.detached { (Result { try FolderScanner.scan(url) }, Self.isReadOnly(url)) }.value
             guard let self, mine == generation else { return }
+            isReadOnly = readOnly
             switch scanned {
             case .failure(let error):
                 content = .failed(error.localizedDescription)
@@ -171,6 +272,7 @@ public final class FolderModel {
                 // The photographer already decided: their label, not the file's custom one, is what we keep.
                 info.unknownLabel = nil
             }
+            info.unsaved = photos[i].sidecar.unsaved
             photos[i].sidecar = info
         }
     }
@@ -251,7 +353,8 @@ public final class FolderModel {
             // A sidecar that cannot be parsed keeps what is on screen; the problem stops further writes (M-08/Q3).
             let fresh = decision ?? (info.problem != nil ? photos[i].decision : .none)
             let target = photos[i].sidecar.file ?? primaryURL(for: photos[i])
-            if let target, writer.hasPendingWrite(for: target) {
+            info.unsaved = photos[i].sidecar.unsaved
+            if photos[i].sidecar.unsaved || target.map(writer.hasPendingWrite(for:)) == true {
                 // Our change is still queued and is the user's latest intent: it stays, and its write patches
                 // our properties onto this fresh file (M-10/Q2).
                 if fresh != photos[i].decision {
@@ -371,18 +474,22 @@ public final class FolderModel {
         folder?.appendingPathComponent(sidecarNaming.fileName(for: photo.name))
     }
 
+    private func sidecarEdit(for photo: Photo) -> SidecarEdit {
+        let label: SidecarEdit.LabelChange = photo.decision.label.map { .set($0.name) }
+            ?? (photo.sidecar.unknownLabel != nil ? .keep : .remove)
+        return SidecarEdit(rating: photo.decision.rating, label: label)
+    }
+
     /// Queues the photo's decision for its sidecar. Never blocks: the write happens off the main thread.
     private func persist(at index: Int, restoring: Bool = false) {
         guard let folder else { return }
         let photo = photos[index]
         // M-08/Q3: a sidecar we could not parse is never overwritten; the decision stays in memory.
-        guard photo.sidecar.problem == nil else { return }
+        guard photo.sidecar.problem == nil else { setUnsaved(true, at: index); return }
         let primary = photo.sidecar.file ?? folder.appendingPathComponent(sidecarNaming.fileName(for: photo.name))
         // Before the sidecar read reaches this photo an existing file under the other style is not known yet.
         let fallback = photo.sidecar.isRead ? nil : folder.appendingPathComponent(sidecarNaming.other.fileName(for: photo.name))
-        let label: SidecarEdit.LabelChange = photo.decision.label.map { .set($0.name) }
-            ?? (photo.sidecar.unknownLabel != nil ? .keep : .remove)
-        writer.submit(SidecarEdit(rating: photo.decision.rating, label: label),
+        writer.submit(sidecarEdit(for: photo),
                       to: SidecarTarget(primary: primary, fallback: fallback),
                       // Back to "nothing decided": a sidecar we created for this photo goes away again (M-09/Q1).
                       removeIfCreatedByUs: restoring && photo.decision.isUndecided && photo.sidecar.unknownLabel == nil)
