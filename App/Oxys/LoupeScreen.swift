@@ -21,6 +21,11 @@ struct LoupeScreen: View {
             if loupe.showExif, let exif = loupe.exif, loupe.failure == nil {
                 ExifPanel(info: exif, focused: Bindable(loupe).focusedExifField)
             }
+            if loupe.showHistogram, let histogram = loupe.histogram, loupe.failure == nil {
+                HistogramView(histogram: histogram)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            }
             InfoStrip(photo: loupe.shown, decision: loupe.shown.flatMap { folder.decision(for: $0.url) }, pixels: loupe.shownPixels, zoom: loupe.zoomInfo)
         }
         .background(Color(white: LoupeView.canvasGray))

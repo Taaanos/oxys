@@ -103,6 +103,9 @@ public struct CommandTable: Sendable {
         // its values, `⌘C` copies the focused one (all of them when none is), and Show in Maps opens the GPS spot.
         Command("info.exif", "Show EXIF", menu: .init(.view, group: 4), modes: loupe, requires: .photos,
                 kind: .toggle, keys: [Shortcut(.position(.i))]),
+        // Histogram (M-17): `⇧I`. Stays on screen with the EXIF panel; M-18 folds both into the info cycle.
+        Command("info.histogram", "Show Histogram", menu: .init(.view, group: 4), modes: loupe, requires: .photos,
+                kind: .toggle, keys: [Shortcut(.position(.i), [.shift])]),
         Command("info.fieldNext", "Next EXIF Value", menu: .init(.view, group: 4), modes: loupe, requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.downArrow))]),
         Command("info.fieldPrevious", "Previous EXIF Value", menu: .init(.view, group: 4), modes: loupe, requires: .photos, repeats: true,

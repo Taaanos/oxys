@@ -272,6 +272,7 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
         router.handle(KeyInput(keyCode: key.rawValue, modifiers: mods, timestamp: t), mode: mode, focus: .canvas).actions
     }
     #expect(press(.i, .loupe, at: 0) == [.perform("info.exif")])
+    #expect(press(.i, .loupe, [.shift], at: 0) == [.perform("info.histogram")])   // M-17
     #expect(press(.i, .grid, at: 1).isEmpty)
     #expect(press(.upArrow, .loupe, at: 2) == [.perform("info.fieldPrevious")])
     #expect(press(.c, .loupe, [.command], at: 3) == [.perform("info.copy")])

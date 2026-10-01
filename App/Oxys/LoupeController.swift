@@ -29,6 +29,12 @@ final class LoupeController {
     }
     /// Label of the focused value, set by `↑`/`↓` or a click; `⌘C` copies it.
     var focusedExifField: String?
+    /// Histogram of the frame on screen (M-17); nil while a stand-in or no frame is shown.
+    private(set) var histogram: Histogram?
+    /// `⇧I`; remembered across launches. M-18's cycle and the inspector reuse the same view.
+    var showHistogram = UserDefaults.standard.object(forKey: "showHistogram") as? Bool ?? false {
+        didSet { UserDefaults.standard.set(showHistogram, forKey: "showHistogram") }
+    }
     @ObservationIgnored private let exifCache = ExifCache()
 
     /// Sticky zoom (M-15): zoom and spot carry over to the next photo. On by default; `⌥Z` toggles it.
@@ -81,6 +87,7 @@ final class LoupeController {
         if !active {
             shown = nil
             exif = nil
+            histogram = nil
             shownPixels = nil
             failure = nil
             canvas?.show(nil)
@@ -158,6 +165,7 @@ final class LoupeController {
                 let same = shown?.url == photo.url
                 shown = photo
                 updateExif(for: photo)
+                histogram = nil
                 shownPixels = nil
                 failure = nil
                 canvas.setAccessibilityLabel(photo.name)
@@ -184,6 +192,7 @@ final class LoupeController {
         shown = photo
         updateExif(for: photo)
         folder.setPreview(PreviewInfo(pixelWidth: frame.width, pixelHeight: frame.height), for: photo.url)
+        histogram = frame.histogram
         shownPixels = (frame.width, frame.height)
         lastPreviewLongSide = CGFloat(max(frame.width, frame.height))
         failure = nil
@@ -203,6 +212,7 @@ final class LoupeController {
         let message = (error as? PreviewError)?.localizedDescription ?? error.localizedDescription
         shown = photo
         updateExif(for: photo)
+        histogram = nil
         shownPixels = nil
         failure = message
         canvas.setAccessibilityLabel("\(photo.name). \(message)")

@@ -71,7 +71,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-14 | Zoom: Fit and 1:1 | M-03, F-05 | built, needs visual check |
 | M-15 | Zoom steps, panning and sticky zoom | M-14 | done |
 | M-16 | EXIF | M-01 | done (reference comparison passes on the corpus; live panel, ⌘C and the one-frame timing not checked in the running app) |
-| M-17 | Histogram | M-03 | todo |
+| M-17 | Histogram | M-03 | done |
 | M-18 | Info overlay and inspector | M-16, M-17 | todo |
 | M-19 | Selection | M-12 | todo |
 | M-20 | Filter and sort bar | M-19 | todo |
@@ -983,6 +983,17 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 **Open questions**
 1. The whole image, or only the visible part when zoomed? The PRD says it "updates live while zooming". *Proposed:* the whole image by default (stable), with a visible-region mode later.
 2. Which luminance and which color space: Rec. 709 weights on the image's encoded values (as most viewers do), or on linear values? *Proposed:* encoded values in the image's own color space; check against FastRawViewer or RawTherapee on the "trust in checks" images.
+
+**Built (decisions and results)**
+- Q1 **decided** as proposed: the whole image. A visible-region mode is not built; the histogram does not change while zooming.
+- Q2 **decided** as proposed: Rec. 709 weights (fixed point, rounded) on the encoded 8-bit values in the image's own RGB color space (a non-RGB image is drawn as sRGB). Comparison against a reference tool on the "trust in checks" images is **not done**.
+- `Imaging`: `Histogram` (256 bins each for R, G, B and luminance, the source label `Preview`/`RAW`, and the clipped shares). The image is first drawn down to at most 1,024 px on its long side, so the cost does not depend on the preview size, and then binned in one loop; this deviates from "MPS or vImage" because a single pass over about a million pixels needs neither. The clipped share at each end is the largest of the three channels' shares in their lowest or highest bin, not a count of pixels with any channel clipped. Scaling leaves flat (clipped) areas alone but blends edges, so the shares can read slightly low.
+- The histogram is computed inside `FrameLoader.load` (new `histogram` signpost), off the main thread, and stored in the cached frame, so a prefetched photo has its histogram ready when it is shown and the histogram never trails the image. While a thumbnail stand-in is up there is no histogram (not a stale one).
+- Loupe: `⇧I` (View menu, `info.histogram`) shows or hides it at the top right; remembered across launches. `HistogramView` is the reusable view (luminance filled, R, G, B as lines on a square-root scale, `◀ n%` and `n% ▶` clip markers, source label); VoiceOver reads the source and both clipped shares. M-18 folds it into the `I` cycle and the inspector.
+
+**Checked**
+- Unit tests: `Imaging` (new: flat gray, separate channels and luminance weights, both ends clipped, per-channel maximum, a ramp with one pixel per bin, scaling keeps flat areas). `Commands` (new: `⇧I`). Release build clean, arm64.
+- **Not checked** (this session cannot send keys or see the window): the panel's look, `⇧I` in the live app, the histogram's cost on a 24 MP preview (read it from the `histogram` signpost with `scripts/perf-record.sh`), key-repeat switching never delaying the image, and agreement with a reference tool.
 
 ### M-18 · Info overlay and inspector
 

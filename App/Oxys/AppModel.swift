@@ -69,6 +69,9 @@ final class AppModel {
         commands.register("info.exif", isOn: { [unowned self] in loupe.showExif }) { [unowned self] _ in
             loupe.showExif.toggle()
         }
+        commands.register("info.histogram", isOn: { [unowned self] in loupe.showHistogram }) { [unowned self] _ in
+            loupe.showHistogram.toggle()
+        }
         commands.register("info.fieldNext", isAvailable: { [unowned self] in loupe.showExif }) { [unowned self] _ in
             loupe.moveExifFocus(1)
         }

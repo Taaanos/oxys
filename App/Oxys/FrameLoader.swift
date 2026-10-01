@@ -1,4 +1,5 @@
 import Canvas
+import Diagnostics
 import Foundation
 import Imaging
 import Library
@@ -8,6 +9,8 @@ nonisolated struct LoupeFrame: Sendable {
     let image: PreparedImage
     let width: Int
     let height: Int
+    /// Computed with the frame, so a prefetched frame has its histogram ready (M-17); nil if it could not be.
+    let histogram: Histogram?
 }
 
 /// The pipeline's work for one photo: map the file, decode the embedded preview, upload it. Checks for
@@ -34,8 +37,11 @@ nonisolated enum FrameLoader {
             guard let gpu = LoupeGPU.shared, let prepared = gpu.prepare(decoded.image, orientation: decoded.orientation)
             else { throw PreviewError.corrupt }
             let size = decoded.sourceDisplaySize
+            let histogram = Perf.measure(.histogram) {
+                Histogram.compute(decoded.image, source: .preview)
+            }
             storeThumbnail(from: source, key: key, into: thumbnails)
-            return LoadedFrame(frame: LoupeFrame(image: prepared, width: size.width, height: size.height),
+            return LoadedFrame(frame: LoupeFrame(image: prepared, width: size.width, height: size.height, histogram: histogram),
                                cost: prepared.byteCost)
         } catch let error as PreviewError {
             throw error
