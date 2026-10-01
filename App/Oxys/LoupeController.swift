@@ -29,16 +29,16 @@ final class LoupeController {
     @ObservationIgnored private var badgeCount = 0
     @ObservationIgnored private var badgeTimeout: Task<Void, Never>?
 
-    /// Set when the canvas is created, which can be after the screen's load task has already run (entering
-    /// Loupe from Grid). A load that found no canvas is replayed then.
+    /// Loupe's screen builds a new canvas each time it is entered from Grid, and its load task can run before
+    /// that (the load then drew on the old canvas or none). Whenever the canvas changes, load the last
+    /// request again so the new one is never blank; the frame is usually cached, so this is instant.
     @ObservationIgnored weak var canvas: LoupeView? {
         didSet {
-            guard canvas != nil, let waiting else { return }
-            self.waiting = nil
-            Task { await load(waiting.photo, in: waiting.folder) }
+            guard let canvas, canvas !== oldValue, let last = lastRequest else { return }
+            Task { await load(last.photo, in: last.folder) }
         }
     }
-    @ObservationIgnored private var waiting: (photo: Photo, folder: FolderModel)?
+    @ObservationIgnored private var lastRequest: (photo: Photo, folder: FolderModel)?
     /// Grid's view, which hosts the announcements and the frame tick while Loupe's canvas is not on screen.
     @ObservationIgnored weak var fallbackHost: NSView?
     private var host: NSView? {
@@ -87,10 +87,8 @@ final class LoupeController {
     /// changes with it. While the full preview loads, its disk thumbnail stands in if there is one.
     func load(_ photo: Photo?, in folder: FolderModel) async {
         guard let photo else { return }
-        guard let canvas else {
-            waiting = (photo, folder)
-            return
-        }
+        lastRequest = (photo, folder)
+        guard let canvas else { return }
         let target = FrameLoader.key(for: photo)
         let index = folder.currentIndex
         let direction: PrefetchPlan.Direction = if let index, let last = lastIndex, index < last { .backward } else { .forward }
