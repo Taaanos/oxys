@@ -27,6 +27,9 @@ public struct CommandTable: Sendable {
     public static let standard = CommandTable([
         Command("file.open", "Open Folder…", menu: .init(.file),
                 keys: [Shortcut(.position(.o), [.command])]),
+        // The "3 new files, reload" banner's action (M-10).
+        Command("file.reload", "Reload Folder", menu: .init(.file), requires: .photos,
+                keys: [Shortcut(.position(.r), [.command, .option])]),
 
         // Undo and redo (M-09). The titles in the menu gain the action's name ("Undo Set Rating").
         Command("edit.undo", "Undo", menu: .init(.edit, group: 0), requires: .photos,

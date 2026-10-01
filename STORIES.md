@@ -64,7 +64,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-07 | Read existing sidecars | M-01, F-04 | done (ART and hand-written fixtures; no Lightroom or RawTherapee fixtures until M-25; live UI check pending) |
 | M-08 | Write sidecars safely | M-06, M-07 | done (Lightroom and RawTherapee walking-skeleton check pending) |
 | M-09 | Undo and redo | M-08 | done (live ⌘Z click-through pending) |
-| M-10 | React to outside sidecar changes | M-08 | todo |
+| M-10 | React to outside sidecar changes | M-08 | done |
 | M-11 | Write failures and read-only folders | M-08 | todo |
 | M-12 | Grid view | M-04, M-06 | todo |
 | M-13 | Modes and window chrome | M-12 | todo |
@@ -736,6 +736,21 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 **Open questions**
 1. Photos added to or removed from the folder while it's open (not a hot folder, which is v1.x)? *Proposed:* removed photos leave the view; added ones are ignored until reopened, with a small "3 new files, reload" banner.
 2. An outside tool changes the rating while our own change to it is still queued: who wins? *Proposed:* ours, since it is the user's latest intent here; the inspector records the overwrite.
+
+**Status:** done (live check pending: edit a sidecar in a text editor with the app open)
+
+**Decisions**
+- Q1 and Q2 accepted. Removed photos leave the list (the current photo moves to its neighbour; an emptied folder shows the empty state). Added photo files are only counted: the window subtitle reads "N new files, reload with ⌥⌘R" and `file.reload` ("Reload Folder", ⌥⌘R, File menu) reopens the folder. A banner view can replace the subtitle later.
+- `FolderWatcher` (`Sidecar`) is a file-level FSEvents stream (200 ms latency, direct children only) that hands over file names. `FolderModel` maps them to photos by sidecar name (both naming styles, case-insensitive) and re-reads just those photos off the main thread with a fresh `SidecarIndex`. A JPEG, DNG, TIFF or HEIC with no sidecar is re-read when the image file itself changes (Lightroom writes there, G-8).
+- Own writes are recognised by `FileSignature` (inode, modification time in ns, size) that `SidecarWriteQueue` records after each write or removal; an event for a file that still has it is ignored. Hidden temp files are ignored by name.
+- Q2: when our change to that photo is still queued or being written (`hasPendingWrite`), the decision on screen stays ours, and the sidecar info gets `overwrittenOutsideChange` ("Replaced a change made outside Oxys (…)") for the inspector. Our write then patches our properties onto the fresh file, so other changes survive (M-08).
+- An outside edit that leaves the file unparseable keeps the decision on screen, sets `sidecar.problem`, and so stops our writes until the file parses again. A deleted sidecar clears the decision.
+- The undo history is not rewritten for outside changes: undoing a step restores its recorded "before" value.
+
+**Checked**
+- Unit tests (`Library` 56, `Sidecar` 25): a real FSEvents round trip updates the decision in under 1 s, own-write signature versus outside edit, Camera Raw settings added by an outside writer between two writes survive with both rating changes, malformed rewrite, removed and new photos, own-write echo not read back.
+- Release build with no warnings from our code.
+- **Not checked:** the text-editor check in the running app by eye; the pending-write overwrite note (no deterministic test).
 
 ### M-11 · Write failures and read-only folders
 

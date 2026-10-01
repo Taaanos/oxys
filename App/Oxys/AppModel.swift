@@ -14,6 +14,7 @@ final class AppModel {
     init() {
         commands = CommandCenter(folder: folder)
         commands.register("file.open") { [unowned self] _ in chooseFolder() }
+        commands.register("file.reload") { [unowned self] _ in folder.reload() }
         for (id, step) in [("nav.next", FolderModel.Step.next), ("nav.previous", .previous),
                            ("nav.first", .first), ("nav.last", .last)] {
             commands.register(CommandID(rawValue: id)) { [unowned self] _ in loupe.navigate(step, folder: folder) }

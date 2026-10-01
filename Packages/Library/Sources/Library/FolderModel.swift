@@ -33,7 +33,13 @@ public final class FolderModel {
     /// What ⌘Z and ⇧⌘Z step through. Cleared when another folder opens (M-09/Q3).
     public private(set) var undoStack = UndoStack()
 
+    /// Photo files that appeared in the open folder after it was read (M-10/Q1). They are not added to the list;
+    /// the subtitle offers a reload.
+    public var newFileCount: Int { newFiles.count }
+    private var newFiles = Set<String>()
+
     private var generation = 0
+    @ObservationIgnored private var watcher: FolderWatcher?
     private var loading: Task<Void, Never>?
     @ObservationIgnored private var writer: SidecarWriteQueue!
 
@@ -73,6 +79,11 @@ public final class FolderModel {
         photos = []
         currentURL = nil
         undoStack.removeAll()
+        newFiles = []
+        watcher?.stop()
+        watcher = FolderWatcher(folder: url) { [weak self] names in
+            Task { @MainActor in self?.handleChanges(names, generation: mine) }
+        }
         content = .opening(url)
         isReadingCaptureTimes = false
 
@@ -160,6 +171,97 @@ public final class FolderModel {
                 // The photographer already decided: their label, not the file's custom one, is what we keep.
                 info.unknownLabel = nil
             }
+            photos[i].sidecar = info
+        }
+    }
+
+    /// Re-reads the open folder (the "reload" of the new-files banner).
+    public func reload() {
+        if let folder { open(folder) }
+    }
+
+    // MARK: outside changes (M-10)
+
+    /// Reacts to files that changed in the open folder: a sidecar rewritten by another program is read again,
+    /// a photo that disappeared leaves the list, a photo that appeared is counted for the banner.
+    func handleChanges(_ names: [String], generation mine: Int? = nil) {
+        guard let folder, mine == nil || mine == generation, content == .photos else { return }
+        var bySidecarName: [String: [URL]] = [:]
+        var known = Set<URL>()
+        for photo in photos {
+            known.insert(photo.url)
+            for style in SidecarNaming.allCases {
+                bySidecarName[style.fileName(for: photo.name).lowercased(), default: []].append(photo.url)
+            }
+        }
+        var reread = Set<URL>()
+        var gone = Set<URL>()
+        for name in names where !name.hasPrefix(".") {
+            let url = folder.appendingPathComponent(name)
+            let ext = url.pathExtension.lowercased()
+            if ext == "xmp" {
+                guard !writer.isOwnWrite(url), let affected = bySidecarName[name.lowercased()] else { continue }
+                reread.formUnion(affected)
+            } else if let format = PhotoFormat(pathExtension: ext) {
+                let exists = FileManager.default.fileExists(atPath: url.path)
+                if let photo = photos.first(where: { $0.url.lastPathComponent == name }) {
+                    if !exists { gone.insert(photo.url) }
+                    else if format.hasEmbeddedXMP, photo.sidecar.file == nil { reread.insert(photo.url) }
+                } else if exists {
+                    newFiles.insert(name)
+                } else {
+                    newFiles.remove(name)
+                }
+            }
+        }
+        if !gone.isEmpty { remove(gone) }
+        reread.subtract(gone)
+        if !reread.isEmpty { reloadSidecars(of: Array(reread), generation: generation) }
+    }
+
+    private func remove(_ urls: Set<URL>) {
+        let oldIndex = currentIndex ?? 0
+        photos.removeAll { urls.contains($0.url) }
+        if photos.isEmpty {
+            currentURL = nil
+            content = .empty(hasSubfolderPhotos: false)
+        } else if let currentURL, urls.contains(currentURL) {
+            self.currentURL = photos[min(oldIndex, photos.count - 1)].url
+        }
+    }
+
+    private func reloadSidecars(of urls: [URL], generation mine: Int) {
+        guard let folder else { return }
+        let naming = sidecarNaming
+        let targets = photos.filter { urls.contains($0.url) }.map { (url: $0.url, embedded: $0.format.hasEmbeddedXMP) }
+        Task { [weak self] in
+            let results = await Task.detached { () -> [(URL, SidecarReadResult)] in
+                let index = SidecarIndex(folder: folder)
+                return targets.map { ($0.url, SidecarReader.read(photo: $0.url, embeddedFallback: $0.embedded, index: index, naming: naming)) }
+            }.value
+            guard let self, mine == generation else { return }
+            applyOutsideChanges(results)
+        }
+    }
+
+    private func applyOutsideChanges(_ results: [(URL, SidecarReadResult)]) {
+        for (url, result) in results {
+            guard let i = photos.firstIndex(where: { $0.url == url }) else { continue }
+            var (info, decision) = SidecarInfo.resolve(result)
+            // A sidecar that cannot be parsed keeps what is on screen; the problem stops further writes (M-08/Q3).
+            let fresh = decision ?? (info.problem != nil ? photos[i].decision : .none)
+            let target = photos[i].sidecar.file ?? primaryURL(for: photos[i])
+            if let target, writer.hasPendingWrite(for: target) {
+                // Our change is still queued and is the user's latest intent: it stays, and its write patches
+                // our properties onto this fresh file (M-10/Q2).
+                if fresh != photos[i].decision {
+                    info.overwrittenOutsideChange = "Replaced a change made outside Oxys (\(fresh.summary))"
+                }
+                info.unknownLabel = photos[i].sidecar.unknownLabel
+                photos[i].sidecar = info
+                continue
+            }
+            photos[i].decision = fresh
             photos[i].sidecar = info
         }
     }

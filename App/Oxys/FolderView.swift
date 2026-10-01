@@ -32,6 +32,9 @@ struct FolderView: View {
     static func subtitle(_ folder: FolderModel) -> String {
         guard case .photos = folder.content else { return "" }
         let count = folder.photos.count
-        return count == 1 ? "1 photo" : "\(count.formatted()) photos"
+        let photos = count == 1 ? "1 photo" : "\(count.formatted()) photos"
+        let new = folder.newFileCount
+        guard new > 0 else { return photos }
+        return "\(photos) · \(new == 1 ? "1 new file" : "\(new) new files"), reload with ⌥⌘R"
     }
 }

@@ -15,6 +15,9 @@ public struct SidecarInfo: Sendable, Hashable {
     public var unknownLabel: String?
     /// True when the decision came from XMP inside the image file (JPEG, DNG, TIFF, HEIC), not a sidecar.
     public var isEmbedded = false
+    /// Set when another program changed the sidecar while a decision of ours was still waiting to be written,
+    /// and ours replaced it (M-10/Q2). The inspector shows it; cleared by the next outside change.
+    public var overwrittenOutsideChange: String?
     /// True once the sidecar read has finished for this photo, so "no sidecar" can be told from "not read yet".
     public var isRead = false
 
@@ -24,6 +27,7 @@ public struct SidecarInfo: Sendable, Hashable {
     public var notes: [String] {
         var lines: [String] = []
         if let problem, let file { lines.append("Can't read \(file.lastPathComponent): \(problem). It won't be overwritten") }
+        if let overwrittenOutsideChange { lines.append(overwrittenOutsideChange) }
         if let unknownLabel { lines.append("Other label: \(unknownLabel)") }
         if isEmbedded { lines.append("Rating read from the image file") }
         if let alsoPresent { lines.append("Also \(alsoPresent.lastPathComponent), not used") }
