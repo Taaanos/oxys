@@ -49,20 +49,24 @@ public struct CommandTable: Sendable {
         Command("nav.last", "Last Photo", menu: .init(.photo, group: 0), requires: .photos,
                 keys: [Shortcut(.position(.end))]),
 
-        // Grid (M-12). Up and down move by a row; Return and Space open the photo in Loupe, G comes back
-        // (M-13 adds E and Esc and the mode picker).
+        // Grid (M-12) and the mode diagram (M-13). Up and down move by a row. Return, Space and E open the
+        // photo in Loupe; G and Esc go back to Grid. Compare (V-08) will join `modes` as it gets its keys.
         Command("nav.up", "Up a Row", menu: .init(.photo, group: 0), modes: grid, requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.upArrow))]),
         Command("nav.down", "Down a Row", menu: .init(.photo, group: 0), modes: grid, requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.downArrow))]),
-        Command("view.loupe", "Open in Loupe", menu: .init(.view, group: 0), modes: grid, requires: .photos,
-                keys: [Shortcut(.position(.return)), Shortcut(.position(.space))]),
+        Command("view.loupe", "Open in Loupe", menu: .init(.view, group: 0), modes: [.grid, .compare], requires: .photos,
+                keys: [Shortcut(.position(.e)), Shortcut(.position(.return)), Shortcut(.position(.space))]),
         Command("view.grid", "Show Grid", menu: .init(.view, group: 0), modes: [.loupe, .compare], requires: .photos,
-                keys: [Shortcut(.position(.g))]),
+                keys: [Shortcut(.position(.g)), Shortcut(.position(.escape))]),
         Command("grid.smaller", "Smaller Thumbnails", menu: .init(.view, group: 1), modes: grid, requires: .photos, repeats: true,
                 keys: [Shortcut(.character("-"))]),
         Command("grid.larger", "Larger Thumbnails", menu: .init(.view, group: 1), modes: grid, requires: .photos, repeats: true,
                 keys: [Shortcut(.character("="))]),
+
+        // `⇥` hides the toolbar and panels; the pointer at the top edge, or `⇥` again, brings them back (M-13).
+        Command("view.chrome", "Hide Toolbar", menu: .init(.view, group: 2),
+                keys: [Shortcut(.position(.tab))]),
 
         // Cull (M-06). Each has a ⇧ twin that also moves to the next photo. Keypad digits mirror the digit row.
         Command("cull.rate.0", "Clear Rating", menu: .init(.photo, group: 1), modes: cull, requires: .photos, shiftAdvances: true,

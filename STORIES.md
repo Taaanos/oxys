@@ -67,7 +67,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-10 | React to outside sidecar changes | M-08 | done |
 | M-11 | Write failures and read-only folders | M-08 | done (live locked-card and eject checks pending) |
 | M-12 | Grid view | M-04, M-06 | done (60 fps scroll in Instruments, badge-in-one-frame as a number and VoiceOver pending) |
-| M-13 | Modes and window chrome | M-12 | todo |
+| M-13 | Modes and window chrome | M-12 | built (keys, toolbar and `⇥` not checked in the running app) |
 | M-14 | Zoom: Fit and 1:1 | M-03, F-05 | todo |
 | M-15 | Zoom steps, panning and sticky zoom | M-14 | todo |
 | M-16 | EXIF | M-01 | todo |
@@ -840,6 +840,16 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 1. Default toolbar items. *Proposed:* a mode picker (Grid, Loupe, Compare), a filter-bar toggle and an inspector toggle; nothing else.
 2. Tapping `Space` in Loupe (holding it and dragging pans, M-15)? *Proposed:* does nothing.
 3. `Esc` in a zoomed Loupe: back to Fit, or to Grid as the PRD says? *Proposed:* to Grid, as the PRD says; `Z` returns to Fit.
+
+**Decisions and notes**
+- Questions 1 to 3 **decided** as proposed. Toolbar: a Grid/Loupe picker plus Filter and Inspector toggles that are disabled until M-20 and M-18 (items are disabled, never hidden); Compare becomes a third segment in V-08. Tapping `Space` in Loupe does nothing; `Esc` in Loupe goes to Grid whatever the zoom.
+- Keys: `view.loupe` is `E`, `Return`, `Space` (Grid, and Compare once it exists); `view.grid` is `G`, `Esc` (Loupe, Compare). `Esc` and `G` in Grid do nothing. G-13 was already in the router: in a text field the first `Esc` returns focus to the canvas, the next goes to Grid. `view.chrome` (`⇥`, title "Hide Toolbar" / "Show Toolbar") works in every mode.
+- Chrome: SwiftUI `toolbar(id:)` makes the toolbar customizable; `⇥` flips `toolbarVisibility`. While hidden, a local `mouseMoved` monitor shows it again when the pointer is within 6 pt of the content top. There are no panels yet; M-18 and M-20 hang off the same `chromeHidden` flag. Full screen and the title/subtitle (folder name, photo count) were already standard.
+- `−` / `=` stay Grid-only until M-15 gives them a Loupe meaning.
+
+**Checked**
+- Unit tests: `Commands` 40 (new: every mode-diagram transition except Compare's entries, `⇥` in every mode). Release build clean, arm64.
+- Not checked in the running app (this session cannot send keys or see the window): the picker, toolbar customization, `⇥` hide/show, pointer-at-top reveal, full screen, and that `Esc` reaches the key monitor before the menu. Risk: the pointer reveal depends on `contentLayoutRect` while the toolbar is hidden.
 
 ### M-14 · Zoom: Fit and 1:1
 

@@ -35,6 +35,8 @@ struct FolderView: View {
                 WriteBanner(banner: banner, unsaved: folder.unsavedCount, model: model)
             }
         }
+        .toolbar(id: "oxys.main") { ToolbarItems(model: model) }
+        .toolbarVisibility(model.chromeHidden ? .hidden : .visible, for: .windowToolbar)
         .navigationTitle(folder.folder?.lastPathComponent ?? "Oxys")
         .navigationSubtitle(Self.subtitle(folder))
         .dropDestination(for: URL.self) { (urls: [URL], _: CGPoint) -> Bool in model.handleDrop(urls) }
@@ -47,6 +49,38 @@ struct FolderView: View {
         let new = folder.newFileCount
         guard new > 0 else { return photos }
         return "\(photos) · \(new == 1 ? "1 new file" : "\(new) new files"), reload with ⌥⌘R"
+    }
+}
+
+/// The toolbar (M-13): a mode picker and two toggles for panels that arrive later. Customizable from the
+/// toolbar's context menu; every item is also a command in the menu bar.
+private struct ToolbarItems: CustomizableToolbarContent {
+    let model: AppModel
+
+    var body: some CustomizableToolbarContent {
+        ToolbarItem(id: "mode") {
+            // Compare (V-08) joins as a third segment.
+            Picker("Mode", selection: Binding(
+                get: { model.commands.mode },
+                set: { model.commands.perform($0 == .grid ? "view.grid" : "view.loupe") })) {
+                Text("Grid").tag(ViewMode.grid)
+                Text("Loupe").tag(ViewMode.loupe)
+            }
+            .pickerStyle(.segmented)
+            .help("Grid (G) or Loupe (E)")
+            .accessibilityLabel("View mode")
+            .disabled(model.folder.content != .photos)
+        }
+        ToolbarItem(id: "filter") {
+            Button("Filter Bar", systemImage: "line.3.horizontal.decrease.circle") {}
+                .help("Filter bar (arrives with M-20)")
+                .disabled(true)
+        }
+        ToolbarItem(id: "inspector") {
+            Button("Inspector", systemImage: "sidebar.trailing") {}
+                .help("Inspector (arrives with M-18)")
+                .disabled(true)
+        }
     }
 }
 

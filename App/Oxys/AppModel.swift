@@ -19,6 +19,9 @@ final class AppModel {
     let loupe = LoupeController()
     let grid: GridController
     let commands: CommandCenter
+    /// `⇥` hides the toolbar (and, later, the panels); the pointer at the top edge brings it back (M-13).
+    private(set) var chromeHidden = false
+    @ObservationIgnored private var pointerMonitor: Any?
     private(set) var recentFolders: [URL] = NSDocumentController.shared.recentDocumentURLs
 
     init() {
@@ -46,6 +49,9 @@ final class AppModel {
         commands.register("nav.down") { [unowned self] _ in grid.move(.down) }
         commands.register("view.loupe") { [unowned self] _ in commands.mode = .loupe }
         commands.register("view.grid") { [unowned self] _ in commands.mode = .grid }
+        commands.register("view.chrome", title: { [unowned self] in chromeHidden ? "Show Toolbar" : "Hide Toolbar" }) { [unowned self] _ in
+            setChromeHidden(!chromeHidden)
+        }
         commands.register("grid.smaller") { [unowned self] _ in grid.resize(by: -1) }
         commands.register("grid.larger") { [unowned self] _ in grid.resize(by: 1) }
         let cullActions: [(String, CullAction)] = [
@@ -76,6 +82,28 @@ final class AppModel {
         }
         // Developer hook, like OXYS_REPORT_LAUNCH: open a folder at launch for scripted checks.
         if let path = ProcessInfo.processInfo.environment["OXYS_OPEN"] { open(URL(fileURLWithPath: path)) }
+    }
+
+    func setChromeHidden(_ hidden: Bool) {
+        chromeHidden = hidden
+        if hidden, pointerMonitor == nil {
+            // The window only reports pointer moves when asked; asking costs one cheap check per move.
+            NSApp.keyWindow?.acceptsMouseMovedEvents = true
+            pointerMonitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
+                nonisolated(unsafe) let event = event
+                MainActor.assumeIsolated { self?.pointerMoved(event) }
+                return event
+            }
+        } else if !hidden, let monitor = pointerMonitor {
+            NSEvent.removeMonitor(monitor)
+            pointerMonitor = nil
+        }
+    }
+
+    private func pointerMoved(_ event: NSEvent) {
+        guard chromeHidden, let window = event.window, window.isKeyWindow,
+              event.locationInWindow.y >= window.contentLayoutRect.maxY - 6 else { return }
+        setChromeHidden(false)
     }
 
     func open(_ url: URL) {

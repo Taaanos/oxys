@@ -174,6 +174,7 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(press(.return, .grid, at: 2) == [.perform("view.loupe")])
     #expect(press(.space, .grid, at: 3) == [.perform("view.loupe")])
     #expect(press(.return, .loupe, at: 4).isEmpty)
+    #expect(press(.space, .loupe, at: 4.5).isEmpty)  // M-13/Q2: tapping Space in Loupe does nothing
     #expect(press(.g, .loupe, at: 5) == [.perform("view.grid")])
     #expect(press(.g, .grid, at: 6).isEmpty)
     #expect(press(.minus, .grid, at: 7, character: "-") == [.perform("grid.smaller")])
@@ -185,4 +186,36 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     let keys = resolve(nil).keymap.shortcuts(for: "cull.rate.3")
     #expect(keys.first == Shortcut(.position(.digit3)))
     #expect(keys.count == 2)
+}
+
+/// Every transition of the PRD's mode diagram that exists before Compare (V-08), by key.
+@Test func modeDiagramTransitionsWorkByKey() {
+    var router = KeyRouter(keymap: resolve(nil).keymap)
+    var t = 0.0
+    func press(_ key: PhysicalKey, _ mode: ViewMode) -> [RoutedAction] {
+        t += 1
+        return router.handle(KeyInput(keyCode: key.rawValue, timestamp: t), mode: mode, focus: .canvas).actions
+    }
+    #expect(press(.e, .grid) == [.perform("view.loupe")])
+    #expect(press(.return, .grid) == [.perform("view.loupe")])
+    #expect(press(.g, .loupe) == [.perform("view.grid")])
+    #expect(press(.escape, .loupe) == [.perform("view.grid")])
+    // Compare's two exits exist already; the enter keys arrive with V-08.
+    #expect(press(.e, .compare) == [.perform("view.loupe")])
+    #expect(press(.g, .compare) == [.perform("view.grid")])
+    #expect(press(.escape, .compare) == [.perform("view.grid")])
+    // Esc and E do nothing in Grid, G does nothing in Grid.
+    #expect(press(.escape, .grid).isEmpty)
+    #expect(press(.g, .grid).isEmpty)
+    // E does nothing in Loupe.
+    #expect(press(.e, .loupe).isEmpty)
+}
+
+@Test func tabTogglesChromeInEveryModeEvenWithoutPhotos() {
+    var router = KeyRouter(keymap: resolve(nil).keymap)
+    for (i, mode) in ViewMode.allCases.enumerated() {
+        let r = router.handle(KeyInput(keyCode: PhysicalKey.tab.rawValue, timestamp: Double(i)), mode: mode, focus: .canvas)
+        #expect(r.actions == [.perform("view.chrome")])
+    }
+    #expect(CommandTable.standard["view.chrome"]!.isEnabled(in: .init(mode: .grid, hasPhotos: false)))
 }
