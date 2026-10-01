@@ -845,6 +845,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Questions 1 to 3 **decided** as proposed. Toolbar: a Grid/Loupe picker plus Filter and Inspector toggles that are disabled until M-20 and M-18 (items are disabled, never hidden); Compare becomes a third segment in V-08. Tapping `Space` in Loupe does nothing; `Esc` in Loupe goes to Grid whatever the zoom.
 - Keys: `view.loupe` is `E`, `Return`, `Space` (Grid, and Compare once it exists); `view.grid` is `G`, `Esc` (Loupe, Compare). `Esc` and `G` in Grid do nothing. G-13 was already in the router: in a text field the first `Esc` returns focus to the canvas, the next goes to Grid. `view.chrome` (`⇥`, title "Hide Toolbar" / "Show Toolbar") works in every mode.
 - Chrome: SwiftUI `toolbar(id:)` makes the toolbar customizable; `⇥` flips `toolbarVisibility`. While hidden, a local `mouseMoved` monitor shows it again when the pointer is within 6 pt of the content top. There are no panels yet; M-18 and M-20 hang off the same `chromeHidden` flag. Full screen and the title/subtitle (folder name, photo count) were already standard.
+- Loupe's screen is kept alive behind Grid (hidden, not rebuilt) and only loads while it is in front. Rebuilding its Metal canvas on every Grid-to-Loupe entry sometimes left the canvas blank; eight enter/leave cycles in a script now end with the photo showing, 4 runs of 4. Leaving Loupe blanks the canvas so the next entry never flashes the old photo.
 - `−` / `=` stay Grid-only until M-15 gives them a Loupe meaning.
 
 **Checked**

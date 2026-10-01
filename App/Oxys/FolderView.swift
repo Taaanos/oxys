@@ -23,10 +23,13 @@ struct FolderView: View {
             case .failed(let reason):
                 EmptyStateView(message: "Couldn't open this folder: \(reason)")
             case .photos:
-                if model.commands.mode == .grid {
-                    GridScreen(controller: model.grid)
-                } else {
-                    LoupeScreen(model: model)
+                let loupeActive = model.commands.mode != .grid
+                ZStack {
+                    LoupeScreen(model: model, active: loupeActive)
+                        .opacity(loupeActive ? 1 : 0)
+                        .allowsHitTesting(loupeActive)
+                        .accessibilityHidden(!loupeActive)
+                    if !loupeActive { GridScreen(controller: model.grid) }
                 }
             }
         }

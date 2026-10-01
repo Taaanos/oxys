@@ -5,6 +5,8 @@ import SwiftUI
 /// Loupe: the canvas, an info strip along the bottom, and an error tile for a file that cannot be previewed.
 struct LoupeScreen: View {
     let model: AppModel
+    /// False while Grid is in front; the screen stays in the hierarchy so its canvas lives on.
+    let active: Bool
 
     var body: some View {
         let folder = model.folder
@@ -18,9 +20,17 @@ struct LoupeScreen: View {
             InfoStrip(photo: loupe.shown, decision: loupe.shown.flatMap { folder.decision(for: $0.url) }, pixels: loupe.shownPixels)
         }
         .background(Color(white: LoupeView.canvasGray))
-        .task(id: folder.currentURL) { await loupe.load(folder.currentPhoto, in: folder) }
+        .task(id: LoadKey(url: folder.currentURL, active: active)) {
+            loupe.setActive(active)
+            if active { await loupe.load(folder.currentPhoto, in: folder) }
+        }
         .onChange(of: folder.folder) { loupe.reset() }
     }
+}
+
+private struct LoadKey: Equatable {
+    let url: URL?
+    let active: Bool
 }
 
 private struct LoupeCanvas: NSViewRepresentable {

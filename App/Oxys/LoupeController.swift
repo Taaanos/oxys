@@ -41,8 +41,24 @@ final class LoupeController {
     @ObservationIgnored private var lastRequest: (photo: Photo, folder: FolderModel)?
     /// Grid's view, which hosts the announcements and the frame tick while Loupe's canvas is not on screen.
     @ObservationIgnored weak var fallbackHost: NSView?
+    /// Loupe's screen stays alive behind Grid (a fresh Metal layer on every entry sometimes never reached the
+    /// screen), so "has a window" no longer means "is showing". Set by the screen.
+    @ObservationIgnored private(set) var isActive = false
     private var host: NSView? {
-        if let canvas, canvas.window != nil { canvas } else { fallbackHost }
+        if isActive, let canvas, canvas.window != nil { canvas } else { fallbackHost }
+    }
+
+    /// Loupe came to the front or went behind Grid. Going behind blanks the canvas so the next entry never
+    /// flashes the photo Loupe last showed.
+    func setActive(_ active: Bool) {
+        guard active != isActive else { return }
+        isActive = active
+        if !active {
+            shown = nil
+            shownPixels = nil
+            failure = nil
+            canvas?.show(nil)
+        }
     }
     @ObservationIgnored private var pendingFrameToken: Perf.Token?
 
@@ -86,7 +102,7 @@ final class LoupeController {
     /// read and decode); the previous frame stays up until something for `photo` is ready, and `shown`
     /// changes with it. While the full preview loads, its disk thumbnail stands in if there is one.
     func load(_ photo: Photo?, in folder: FolderModel) async {
-        guard let photo else { return }
+        guard let photo, isActive else { return }
         lastRequest = (photo, folder)
         guard let canvas else { return }
         let target = FrameLoader.key(for: photo)
@@ -168,7 +184,7 @@ final class LoupeController {
     /// canvas has presented the frame; a move that changes nothing (at either end) ends it at once.
     func navigate(_ step: FolderModel.Step, folder: FolderModel) {
         // From Grid (⇧ with a cull key) there is no canvas to present a frame, so no interval to time.
-        guard canvas?.window != nil else {
+        guard isActive, canvas?.window != nil else {
             folder.move(step)
             return
         }
