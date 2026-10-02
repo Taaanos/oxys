@@ -181,6 +181,23 @@ The app is Swift-only, arm64-only, and leans on Apple's own image stack (ImageIO
 
 **Minimum macOS:** macOS 27 or newer, Apple silicon only.
 
+### Why macOS only
+
+A cross-platform stack (for example Rust and Tauri) is the usual choice for a desktop app. We do not use it. Oxys is a speed and color-accuracy tool, and both depend on OS features that a cross-platform layer reaches only through a bridge, or cannot reach.
+
+| Reason | Detail |
+| --- | --- |
+| Apple's RAW decoder corrects the lens from data in the file | ImageIO and Core Image read the correction data that the camera writes into the RAW (distortion, vignetting, chromatic aberration; DNG opcode lists). The decoded frame then matches the camera's own picture. LibRaw does not correct lenses. An app on LibRaw must add Lensfun, a community database that is often late for new lenses and can lack a lens (the DJI FC8482 DNG in `docs/spikes/lens-correction.md` has no Lensfun entry). Support differs by brand and format, so check it on the corpus before you claim it for a camera |
+| Camera support comes with macOS | New cameras and lenses arrive with OS updates. We keep no database. LibRaw stays only as a fallback for cameras newer than the OS |
+| Color | ColorSync and the real display profile, with correct output on wide-gamut and HDR displays. A web view gives less control |
+| Drawing | Metal and AppKit views on one GPU surface for peaking, clipping and 1:1 zoom. In Tauri the canvas sits inside a web view |
+| Speed | Key press, decode, cache and draw stay in one process. No IPC boundary, and no copy of large image buffers across it. Signposts and Instruments cover the whole path |
+| Keyboard and VoiceOver | The AppKit responder chain, key repeat and focus work as the user expects. Native controls give accessibility. A web view needs both built by hand |
+| No benefit from portability | The main reason for Tauri is one UI on three platforms. We need one. We would pay for a web UI, an IPC layer and two languages, and get nothing back |
+| Smaller details | Swift 6 strict concurrency checks the decode and cache pipeline at compile time. Finder, `NSWorkspace` and the `Window` scene need no glue code. An arm64-only binary is small and starts fast |
+
+We choose one platform and do it well. Pure logic with no OS dependency (the container parsers, the sidecar writer) lives in Swift packages with their own tests, so a later port could reuse it. A port would need a new UI and a new imaging layer, and it is not planned.
+
 ## Core features
 
 Twelve features make up v1: the eleven from your list plus zoom and 1:1. Each has a requirement and a test for when it is done; numeric performance targets live in the Performance section.
@@ -407,6 +424,7 @@ Your answers are recorded below, and anything you didn't answer keeps my default
 | JPEG-only files | Sidecar only; embedding XMP into the JPEG is opt-in and off by default |
 | Distribution | Open source, unsigned arm64 builds, no notarization, no Mac App Store, no sandbox |
 | Minimum macOS | macOS 27 or newer |
+| macOS only | Native Swift on Apple's image stack, not a cross-platform stack; see Why macOS only |
 | Target user | Also travel photographers who curate a trip into a keeper set |
 | RawTherapee and ART versions | Always the latest release; the test matrix follows them |
 | Sticky zoom | On: zoom and position stay when stepping to the next frame while zoomed; ⌥Z switches it off |
