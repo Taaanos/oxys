@@ -89,7 +89,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-05 | Truth badge | V-02 | done |
 | V-06 | Focus peaking | M-15 | done |
 | V-07 | Highlight and shadow clipping | M-17 | done |
-| V-08 | Compare: layout and culling | M-13, M-19 | todo |
+| V-08 | Compare: layout and culling | M-13, M-19 | done |
 | V-09 | Compare: linked zoom and EXIF differences | V-08, M-15, M-16 | todo |
 | V-10 | RAW+JPEG pairs | M-08, M-21 | todo |
 | V-11 | Auto-advance | M-06 | todo |
@@ -1516,6 +1516,19 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 2. After `⇧X`, does the rejected side show the next frame while the other side stays? *Proposed:* yes.
 3. Stepping the active side onto the photo shown on the other side? *Proposed:* skip over it.
 4. Auto-advance (V-11) in Compare? *Proposed:* behaves like `⇧`: the active side moves on.
+
+**Decisions** (V-08)
+- Questions 1 to 4 **decided** as proposed. `↑`: the candidate becomes the select and the next frame the candidate; at the end of the folder it does nothing and says "Last pair". `⇧X` and every `⇧` cull key act on the active side, then that side moves to the next frame (the destination is chosen before the decision, so hiding rejects does not lose it). A side never steps onto the other side's photo.
+- Entry: exactly two selected photos in Grid compare those two (the later one starts active if it was the active photo); any other selection, or Loupe, compares the active photo with the next; on the last photo the candidate is the previous one. Fewer than two photos: no Compare, and VoiceOver says why.
+- The folder's current photo is always the active side's photo, so undo, the inspector, `E` and `G` need no Compare code. Undo puts the restored photo on its own side, or on the active side.
+- `⇥` is Compare's switch key. The bare `⇥` became its own command `view.chromeTab` (Grid and Loupe only); `⌥⌘T` hides the toolbar in every mode. The old test that said `⇥` hides the toolbar everywhere now says so for Grid and Loupe.
+- Logic is `ComparePair` in `Library` (21 tests). `CompareController` loads both panes through Loupe's frame pipeline, so a photo is decoded and cached once. The toolbar picker has a third segment. The cheat sheet has a Compare group.
+- Each pane has its own truth badge, decision, name, zoom and (when info is at EXIF level) a short EXIF line. `I` still sets the info level for both; it is Loupe-only for now.
+
+**Checked** (V-08)
+- Unit tests: `Library` 116 (new 21: entry rules, stepping and skipping, ends, swap, advance, hidden photos), `Commands` 53 (Compare keys by mode, `⇥` per mode). Release build clean, arm64.
+- `make perf-bench SCENARIO=compare FOLDER=TestData/bench/24mp-1000`: 11 checks pass in the real app (enter from Loupe and from a two-photo selection, skip, switch, swap, rate the active side only, `⇧`-reject advances that side, `↑`, to Loupe on the active photo, to Grid). `key-to-frame` over 505 Compare steps: p50 41 ms, p95 54 ms (many of them cold swaps and advances).
+- **Not checked:** the sidecars of both sides on disk (the bench removes its clone; the sidecar writes ran and `cull-feedback` was logged); `make ui-walk-compare` (new, key events only: the terminal has no Accessibility permission here, so it did not run); how the screen looks (ring, titles, badges), no usable screenshot was taken; VoiceOver; pointer clicks on a pane (keyboard only for now); the thumbnail stand-in while a pane loads (Loupe has it, Compare does not); `R`, `Z`, `F`, `H`, `S` in Compare (V-09).
 
 ### V-09 · Compare: linked zoom and EXIF differences
 

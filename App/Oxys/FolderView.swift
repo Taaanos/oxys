@@ -23,7 +23,8 @@ struct FolderView: View {
             case .failed(let reason):
                 EmptyStateView(message: "Couldn't open this folder: \(reason)")
             case .photos:
-                let loupeActive = model.commands.mode != .grid
+                let mode = model.commands.mode
+                let loupeActive = mode == .loupe
                 VStack(spacing: 0) {
                     if model.showFilterBar { FilterBar(model: model) }
                     ZStack {
@@ -31,7 +32,8 @@ struct FolderView: View {
                             .opacity(loupeActive ? 1 : 0)
                             .allowsHitTesting(loupeActive)
                             .accessibilityHidden(!loupeActive)
-                        if !loupeActive { GridScreen(controller: model.grid) }
+                        if mode == .compare { CompareScreen(model: model) }
+                        if mode == .grid { GridScreen(controller: model.grid) }
                     }
                 }
             }
@@ -76,15 +78,23 @@ private struct ToolbarItems: CustomizableToolbarContent {
 
     var body: some CustomizableToolbarContent {
         ToolbarItem(id: "mode") {
-            // Compare (V-08) joins as a third segment.
             Picker("Mode", selection: Binding(
                 get: { model.commands.mode },
-                set: { model.commands.perform($0 == .grid ? "view.grid" : "view.loupe") })) {
+                set: { mode in
+                    guard mode != model.commands.mode else { return }
+                    let command: CommandID = switch mode {
+                    case .grid: "view.grid"
+                    case .loupe: "view.loupe"
+                    case .compare: "compare.enter"
+                    }
+                    model.commands.perform(command)
+                })) {
                 Text("Grid").tag(ViewMode.grid)
                 Text("Loupe").tag(ViewMode.loupe)
+                Text("Compare").tag(ViewMode.compare)
             }
             .pickerStyle(.segmented)
-            .help("Grid (G) or Loupe (E)")
+            .help("Grid (G), Loupe (E) or Compare (C)")
             .accessibilityLabel("View mode")
             .disabled(model.folder.content != .photos)
         }

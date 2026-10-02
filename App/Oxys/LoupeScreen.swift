@@ -100,11 +100,13 @@ private struct ExifPanel: View {
 }
 
 /// Filename, the decision (stars, label, reject) and the size of the preview shown.
-private struct InfoStrip: View {
+struct InfoStrip: View {
     let photo: Photo?
     let decision: Decision?
     let zoom: ZoomInfo?
     let truth: TruthBadge?
+    /// Compare (V-08): shutter, aperture, ISO and focal length, short enough for half a window.
+    var exifLine: String?
 
     private var zoomSpoken: String {
         guard let zoom else { return "" }
@@ -123,6 +125,7 @@ private struct InfoStrip: View {
                         .lineLimit(1)
                         .help(photo.sidecar.notes.joined(separator: "\n"))
                 }
+                if let exifLine { Text(exifLine).foregroundStyle(Plate.secondary).lineLimit(1) }
                 if let zoom {
                     Text(zoom.level.isFit ? "Fit \(zoom.percent)%" : zoom.isActualSize ? "1:1" : "\(zoom.percent)%").foregroundStyle(Plate.secondary)
                 }
@@ -135,13 +138,13 @@ private struct InfoStrip: View {
             .foregroundStyle(.white)
             .environment(\.colorScheme, .dark)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel(([photo.name, decision?.summary].compactMap { $0 } + photo.sidecar.notes).joined(separator: ", ") + zoomSpoken)
+            .accessibilityLabel(([photo.name, decision?.summary].compactMap { $0 } + photo.sidecar.notes).joined(separator: ", ") + (exifLine.map { ", " + $0 } ?? "") + zoomSpoken)
         }
     }
 }
 
 /// Stars, reject mark and label as text: a letter inside a distinct shape, never color alone.
-private struct DecisionGlyphs: View {
+struct DecisionGlyphs: View {
     let decision: Decision
 
     var body: some View {
@@ -187,7 +190,7 @@ private extension ColorLabel {
 
 /// The confirmation after a cull key. It is a cut, not an animation, and VoiceOver hears the same phrase
 /// through the controller's announcement, so the badge itself is hidden from it.
-private struct CullBadge: View {
+struct CullBadge: View {
     let badge: LoupeController.Badge
 
     var body: some View {
@@ -208,7 +211,7 @@ private struct CullBadge: View {
 }
 
 /// What a file that cannot be previewed shows: its name and why, never a crash or a blank frame.
-private struct ErrorTile: View {
+struct ErrorTile: View {
     let name: String
     let message: String
 

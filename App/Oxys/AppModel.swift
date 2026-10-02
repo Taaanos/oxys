@@ -23,6 +23,7 @@ final class AppModel {
     let folder = FolderModel()
     let loupe = LoupeController()
     let grid: GridController
+    let compare: CompareController
     let commands: CommandCenter
     /// `⇥` hides the toolbar (and, later, the panels); the pointer at the top edge brings it back (M-13).
     private(set) var chromeHidden = false
@@ -123,6 +124,7 @@ final class AppModel {
     init() {
         commands = CommandCenter(folder: folder)
         grid = GridController(folder: folder, loupe: loupe)
+        compare = CompareController(folder: folder, loupe: loupe)
         grid.onOpen = { [unowned self] in commands.mode = .loupe }
         commands.register("file.open") { [unowned self] _ in chooseFolder() }
         commands.register("file.reload") { [unowned self] _ in folder.reload() }
@@ -145,8 +147,13 @@ final class AppModel {
         for (id, step) in [("nav.next", FolderModel.Step.next), ("nav.previous", .previous),
                            ("nav.first", .first), ("nav.last", .last)] {
             // Grid has no canvas to time a frame on; Loupe's navigate also starts the key-to-frame interval.
+            // In Compare the arrows step the active side (V-08).
             commands.register(CommandID(rawValue: id)) { [unowned self] _ in
-                if commands.mode == .grid { folder.move(step) } else { loupe.navigate(step, folder: folder) }
+                switch commands.mode {
+                case .grid: folder.move(step)
+                case .loupe: loupe.navigate(step, folder: folder)
+                case .compare: compare.step(step)
+                }
             }
         }
         commands.register("nav.up") { [unowned self] _ in grid.move(.up) }
@@ -166,6 +173,16 @@ final class AppModel {
         commands.register("view.chrome", title: { [unowned self] in chromeHidden ? "Show Toolbar" : "Hide Toolbar" }) { [unowned self] _ in
             setChromeHidden(!chromeHidden)
         }
+        commands.register("view.chromeTab", title: { [unowned self] in chromeHidden ? "Show Toolbar with Tab" : "Hide Toolbar with Tab" }) { [unowned self] _ in
+            setChromeHidden(!chromeHidden)
+        }
+        // Compare (V-08). Entering makes the pair first, so a refusal (fewer than two photos) leaves the mode alone.
+        commands.register("compare.enter") { [unowned self] _ in
+            if compare.begin(from: commands.mode) { commands.mode = .compare }
+        }
+        commands.register("compare.switchSide") { [unowned self] _ in compare.switchSide() }
+        commands.register("compare.swap") { [unowned self] _ in compare.swap() }
+        commands.register("compare.advance") { [unowned self] _ in compare.advance() }
         commands.register("grid.smaller") { [unowned self] _ in grid.resize(by: -1) }
         commands.register("grid.larger") { [unowned self] _ in grid.resize(by: 1) }
         commands.register("zoom.toggle", isOn: { [unowned self] in loupe.zoomInfo?.isActualSize == true }) { [unowned self] _ in
@@ -245,17 +262,22 @@ final class AppModel {
         for (id, action) in cullActions {
             commands.register(CommandID(rawValue: id)) { [unowned self] phase in
                 // Grid acts on the whole selection when there is one (G-5); Loupe and Compare on the active photo.
+                // In Compare that is the active side's, and `⇧` moves that side on, not the folder's cursor (V-08).
+                if commands.mode == .compare {
+                    compare.cull(action, advance: phase == .performAdvancing)
+                    return
+                }
                 loupe.cull(action, advance: phase == .performAdvancing, folder: folder,
                            targets: commands.mode == .grid ? folder.cullTargets : nil)
             }
         }
         commands.register("edit.undo", isAvailable: { [unowned self] in folder.undoName != nil },
                           title: { [unowned self] in folder.undoName.map { "Undo \($0)" } ?? "Undo" }) { [unowned self] _ in
-            loupe.undo(folder: folder)
+            if commands.mode == .compare { compare.undo() } else { loupe.undo(folder: folder) }
         }
         commands.register("edit.redo", isAvailable: { [unowned self] in folder.redoName != nil },
                           title: { [unowned self] in folder.redoName.map { "Redo \($0)" } ?? "Redo" }) { [unowned self] _ in
-            loupe.redo(folder: folder)
+            if commands.mode == .compare { compare.redo() } else { loupe.redo(folder: folder) }
         }
         commands.inspectorKey = { [unowned self] code, shift, option in inspectorKey(code: code, shift: shift, option: option) }
         commands.start()

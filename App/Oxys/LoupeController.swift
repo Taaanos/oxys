@@ -312,7 +312,8 @@ final class LoupeController {
     static var automaticBudget: Int { min(2 << 30, Int(ProcessInfo.processInfo.physicalMemory / 4)) }
 
     @ObservationIgnored private let thumbnails = FrameLoader.sharedThumbnails
-    @ObservationIgnored private let pipeline: FramePipeline<LoupeFrame>
+    /// Compare (V-08) loads its frames through the same pipeline, so a photo is decoded once and cached once.
+    @ObservationIgnored let pipeline: FramePipeline<LoupeFrame>
     @ObservationIgnored private let plan = PrefetchPlan()
     @ObservationIgnored private var lastIndex: Int?
     @ObservationIgnored private var budgetObserver: Any?
@@ -815,7 +816,7 @@ final class LoupeController {
 
 /// A one-shot display link: ends a signpost interval on its first tick, then stops itself.
 @MainActor
-private final class FrameTicker: NSObject {
+final class FrameTicker: NSObject {
     var link: CADisplayLink?
     private var token: Perf.Token?
     private var keepAlive: FrameTicker?

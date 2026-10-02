@@ -9,7 +9,7 @@ import Library
 /// (set `OXYS_PERF_LOG=<file>`; read it with `PerfTool log`) and quits. Does nothing otherwise.
 ///
 /// Scenarios: `open` (folder open to first image), `nav-prefetched`, `nav-cold`, `nav-held` (30 steps a second),
-/// `scrub` (1,000 frames, memory), `cull`, `zoom`, `develop`, `develop-cancel` (V-02), `overlays`, `grid` (scroll 10,000 files), `idle`.
+/// `scrub` (1,000 frames, memory), `cull`, `zoom`, `develop`, `develop-cancel` (V-02), `compare` (V-08: checks the pair rules, then steps both sides), `overlays`, `grid` (scroll 10,000 files), `idle`.
 @MainActor
 enum PerfBench {
     private static let environment = ProcessInfo.processInfo.environment
@@ -71,6 +71,12 @@ enum PerfBench {
                 commands.perform("nav.next")
                 await settle(.milliseconds(120))
             }
+        case "compare":
+            await compareWalk(model)
+        case "compare-view":
+            // Compare stays up for 40 s so a screenshot can look at it.
+            commands.perform("compare.enter"); await settle(.seconds(1))
+            commands.perform("cull.rate.3"); await settle(.seconds(40))
         case "zoom":
             for _ in 0..<60 {
                 commands.perform("zoom.actual"); await settle(.milliseconds(500))
@@ -198,6 +204,59 @@ enum PerfBench {
     }
 
     // MARK: drivers
+
+    /// V-08: the keys of Compare through the commands they call. First a walk with checks (`check-<name>` is 1 when it
+    /// held, 0 when not), then 100 rounds of stepping both sides, swapping and advancing, so key-to-frame covers both panes.
+    private static func compareWalk(_ model: AppModel) async {
+        let folder = model.folder, commands = model.commands, compare = model.compare
+        let urls = folder.visible.map(\.url)
+        guard urls.count >= 8 else { Perf.record("check-folder-too-small", 0); return }
+        func check(_ name: String, _ ok: Bool) { Perf.record("check-\(name)", ok ? 1 : 0) }
+        func pair() -> (ComparePairSnapshot) {
+            guard let p = compare.pair else { return ComparePairSnapshot(select: nil, candidate: nil, active: nil) }
+            return ComparePairSnapshot(select: p.select, candidate: p.candidate, active: p.active)
+        }
+        let first = urls[0]
+        folder.setCurrent(first)
+        await settle(.milliseconds(500))
+        commands.perform("compare.enter"); await settle(.seconds(1))
+        check("enter-from-loupe", commands.mode == .compare && pair().select == urls[0] && pair().candidate == urls[1] && pair().active == .select)
+        commands.perform("nav.next"); await settle(.milliseconds(500))
+        check("step-skips-other-side", pair().select == urls[2] && pair().candidate == urls[1])
+        commands.perform("compare.switchSide")
+        check("switch-side", pair().active == .candidate && folder.currentURL == urls[1])
+        commands.perform("nav.next"); await settle(.milliseconds(500))
+        check("step-candidate", pair().candidate == urls[3] && pair().select == urls[2])
+        commands.perform("compare.swap"); await settle(.milliseconds(500))
+        check("swap", pair().select == urls[3] && pair().candidate == urls[2] && pair().active == .candidate)
+        commands.perform("cull.rate.3"); await settle(.milliseconds(300))
+        check("rate-active-side", folder.decision(for: urls[2])?.stars == 3 && folder.decision(for: urls[3])?.stars == 0)
+        commands.perform("cull.reject", phase: .performAdvancing); await settle(.milliseconds(500))
+        check("reject-advances-side", folder.decision(for: urls[2])?.isReject == true && pair().candidate == urls[4] && pair().select == urls[3])
+        commands.perform("compare.advance"); await settle(.milliseconds(500))
+        check("advance", pair().select == urls[4] && pair().candidate == urls[5])
+        commands.perform("view.loupe"); await settle(.milliseconds(500))
+        check("to-loupe-on-active", commands.mode == .loupe && folder.currentURL == urls[5])
+        commands.perform("compare.enter"); await settle(.milliseconds(500))
+        commands.perform("view.grid"); await settle(.milliseconds(300))
+        check("to-grid", commands.mode == .grid)
+        // Two selected photos compare those two (Grid).
+        folder.selectNone(); folder.click(urls[6], mode: .replace); folder.click(urls[7], mode: .toggle)
+        commands.perform("compare.enter"); await settle(.milliseconds(500))
+        check("enter-from-selection", pair().select == urls[6] && pair().candidate == urls[7])
+        for _ in 0..<100 {
+            for id in ["nav.next", "compare.switchSide", "nav.next", "compare.swap", "compare.advance", "nav.previous", "compare.switchSide"] {
+                commands.perform(CommandID(rawValue: id)); await settle(.milliseconds(250))
+            }
+        }
+        commands.perform("view.grid")
+    }
+
+    private struct ComparePairSnapshot {
+        let select: URL?
+        let candidate: URL?
+        let active: ComparePair.Side?
+    }
 
     /// Steps forward until the photo on screen is a RAW (the bench folders mix in TIFF scans).
     private static func nextRaw(_ model: AppModel) async {

@@ -112,7 +112,7 @@ public struct CommandTable: Sendable {
                 keys: [Shortcut(.position(.end))]),
 
         // Grid (M-12) and the mode diagram (M-13). Up and down move by a row. Return, Space and E open the
-        // photo in Loupe; G and Esc go back to Grid. Compare (V-08) will join `modes` as it gets its keys.
+        // photo in Loupe; G and Esc go back to Grid. Compare (V-08) is below.
         Command("nav.up", "Up a Row", menu: .init(.photo, group: 0), modes: grid, requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.upArrow))]),
         Command("nav.down", "Down a Row", menu: .init(.photo, group: 0), modes: grid, requires: .photos, repeats: true,
@@ -121,6 +121,16 @@ public struct CommandTable: Sendable {
                 keys: [Shortcut(.position(.e)), Shortcut(.position(.return)), Shortcut(.position(.space))]),
         Command("view.grid", "Show Grid", menu: .init(.view, group: 0), modes: [.loupe, .compare], requires: .photos,
                 keys: [Shortcut(.position(.g)), Shortcut(.position(.escape))]),
+        // Compare (V-08). `C` opens two photos side by side; `←` `→` (the Photo menu's commands) step the active side,
+        // and `⇧X` or any `⇧` cull key acts on it and moves it on. `⇥` and `↑` `↓` are Compare's own.
+        Command("compare.enter", "Compare", menu: .init(.view, group: 0), modes: [.grid, .loupe], requires: .photos,
+                keys: [Shortcut(.position(.c))]),
+        Command("compare.switchSide", "Switch Active Side", menu: .init(.view, group: 6), modes: compare, requires: .photos,
+                keys: [Shortcut(.position(.tab))]),
+        Command("compare.swap", "Swap Select and Candidate", menu: .init(.view, group: 6), modes: compare, requires: .photos,
+                keys: [Shortcut(.position(.downArrow))]),
+        Command("compare.advance", "Next Pair", menu: .init(.view, group: 6), modes: compare, requires: .photos, repeats: true,
+                keys: [Shortcut(.position(.upArrow))]),
         Command("grid.smaller", "Smaller Thumbnails", menu: .init(.view, group: 1), modes: grid, requires: .photos, repeats: true,
                 keys: [Shortcut(.character("-")), Shortcut(.position(.minus), [.command])]),
         Command("grid.larger", "Larger Thumbnails", menu: .init(.view, group: 1), modes: grid, requires: .photos, repeats: true,
@@ -205,9 +215,13 @@ public struct CommandTable: Sendable {
                 keys: [Shortcut(.position(.c), [.command])]),
         Command("info.maps", "Show in Maps", menu: .init(.view, group: 4), modes: loupe, requires: .photos),
 
-        // `⇥` hides the toolbar and panels; the pointer at the top edge, or `⇥` again, brings them back (M-13).
+        // `⇥` hides the toolbar and panels; the pointer at the top edge, or `⇥` again, brings them back (M-13). In
+        // Compare `⇥` switches the active side (PRD), so the bare key is a second command for the other two modes
+        // and `⌥⌘T` stays everywhere.
         Command("view.chrome", "Hide Toolbar", menu: .init(.view, group: 2),
-                keys: [Shortcut(.position(.tab)), Shortcut(.position(.t), [.option, .command])]),
+                keys: [Shortcut(.position(.t), [.option, .command])]),
+        Command("view.chromeTab", "Hide Toolbar with Tab", menu: .init(.view, group: 2), modes: [.grid, .loupe],
+                keys: [Shortcut(.position(.tab))]),
 
         // Cull (M-06). Each has a ⇧ twin that also moves to the next photo. Keypad digits mirror the digit row.
         Command("cull.rate.0", "Clear Rating", menu: .init(.photo, group: 1), modes: cull, requires: .photos, shiftAdvances: true,
@@ -249,6 +263,7 @@ public struct CommandTable: Sendable {
 
     private static let grid: Set<ViewMode> = [.grid]
     private static let loupe: Set<ViewMode> = [.loupe]
+    private static let compare: Set<ViewMode> = [.compare]
 
     /// Cull keys act on the active photo in every mode. In Grid they act on the whole selection when there is one (G-5, M-19).
     private static let cull: Set<ViewMode> = [.grid, .loupe, .compare]

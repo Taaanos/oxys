@@ -4,7 +4,7 @@ BUILD_DIR := build
 APP       := $(BUILD_DIR)/Build/Products/Release/Oxys.app
 PACKAGES  := $(sort $(dir $(wildcard Packages/*/Package.swift)))
 
-.PHONY: build test check-arch launch-time corpus manifest bench-folders perf-bench perf-selftest perf-report sidecar-stress sidecar-gate ui-walk clean
+.PHONY: build test check-arch launch-time corpus manifest bench-folders perf-bench perf-selftest perf-report sidecar-stress sidecar-gate ui-walk ui-walk-compare clean
 
 build:
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release \
@@ -60,3 +60,6 @@ clean:
 # Key-only walk of the core workflow against the built app (needs Accessibility permission for the terminal).
 ui-walk:
 	scripts/ui-walk.sh
+
+ui-walk-compare:
+	scripts/ui-walk-compare.sh

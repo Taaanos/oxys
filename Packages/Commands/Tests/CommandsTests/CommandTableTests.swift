@@ -200,7 +200,10 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(press(.return, .grid) == [.perform("view.loupe")])
     #expect(press(.g, .loupe) == [.perform("view.grid")])
     #expect(press(.escape, .loupe) == [.perform("view.grid")])
-    // Compare's two exits exist already; the enter keys arrive with V-08.
+    // Compare's two exits, and the two ways in.
+    #expect(press(.c, .grid) == [.perform("compare.enter")])
+    #expect(press(.c, .loupe) == [.perform("compare.enter")])
+    #expect(press(.c, .compare).isEmpty)
     #expect(press(.e, .compare) == [.perform("view.loupe")])
     #expect(press(.g, .compare) == [.perform("view.grid")])
     #expect(press(.escape, .compare) == [.perform("view.grid")])
@@ -211,13 +214,19 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(press(.e, .loupe).isEmpty)
 }
 
-@Test func tabTogglesChromeInEveryModeEvenWithoutPhotos() {
+@Test func tabTogglesChromeInGridAndLoupeEvenWithoutPhotos() {
     var router = KeyRouter(keymap: resolve(nil).keymap)
-    for (i, mode) in ViewMode.allCases.enumerated() {
+    for (i, mode) in [ViewMode.grid, .loupe].enumerated() {
         let r = router.handle(KeyInput(keyCode: PhysicalKey.tab.rawValue, timestamp: Double(i)), mode: mode, focus: .canvas)
+        #expect(r.actions == [.perform("view.chromeTab")])
+    }
+    #expect(CommandTable.standard["view.chromeTab"]!.isEnabled(in: .init(mode: .grid, hasPhotos: false)))
+    // Option-Command-T hides the toolbar in every mode, Compare included.
+    for (i, mode) in ViewMode.allCases.enumerated() {
+        let r = router.handle(KeyInput(keyCode: PhysicalKey.t.rawValue, modifiers: [.option, .command], timestamp: Double(10 + i)),
+                              mode: mode, focus: .canvas)
         #expect(r.actions == [.perform("view.chrome")])
     }
-    #expect(CommandTable.standard["view.chrome"]!.isEnabled(in: .init(mode: .grid, hasPhotos: false)))
 }
 
 @Test func zKeyTogglesAndHoldReleases() {
@@ -365,4 +374,26 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     let slash = PhysicalKey.slash.rawValue
     let result = router.handle(KeyInput(keyCode: slash, modifiers: [.shift], timestamp: 0, character: "?"), mode: .grid, focus: .canvas)
     #expect(result.actions == [.perform("help.cheatsheet")])
+}
+
+@Test func compareKeysWorkByKeyInCompareOnly() {
+    var router = KeyRouter(keymap: resolve(nil).keymap)
+    var t = 0.0
+    func press(_ key: PhysicalKey, _ mode: ViewMode, _ modifiers: KeyModifiers = []) -> [RoutedAction] {
+        t += 1
+        return router.handle(KeyInput(keyCode: key.rawValue, modifiers: modifiers, timestamp: t), mode: mode, focus: .canvas).actions
+    }
+    #expect(press(.leftArrow, .compare) == [.perform("nav.previous")])
+    #expect(press(.rightArrow, .compare) == [.perform("nav.next")])
+    #expect(press(.tab, .compare) == [.perform("compare.switchSide")])
+    #expect(press(.downArrow, .compare) == [.perform("compare.swap")])
+    #expect(press(.upArrow, .compare) == [.perform("compare.advance")])
+    #expect(press(.x, .compare, .shift) == [.performAdvancing("cull.reject")])
+    #expect(press(.x, .compare) == [.perform("cull.reject")])
+    #expect(press(.digit3, .compare, .shift) == [.performAdvancing("cull.rate.3")])
+    // The same keys keep their old meaning elsewhere.
+    #expect(press(.tab, .loupe) == [.perform("view.chromeTab")])
+    #expect(press(.downArrow, .loupe) == [.perform("info.fieldNext")])
+    #expect(press(.upArrow, .grid) == [.perform("nav.up")])
+    #expect(press(.downArrow, .grid) == [.perform("nav.down")])
 }

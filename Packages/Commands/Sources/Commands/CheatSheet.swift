@@ -1,7 +1,7 @@
 /// The headings of the cheat sheet, in the PRD's order. A command's group comes from the prefix of its ID
 /// (`cull.rate.3` is Cull), so a new command needs no extra entry; a prefix not listed here fails a test.
 public enum CheatGroup: Int, CaseIterable, Sendable, Comparable {
-    case cull, navigation, zoom, overlays, info, selection, filter, file, help
+    case cull, navigation, compare, zoom, overlays, info, selection, filter, file, help
 
     public static func < (a: CheatGroup, b: CheatGroup) -> Bool { a.rawValue < b.rawValue }
 
@@ -9,6 +9,7 @@ public enum CheatGroup: Int, CaseIterable, Sendable, Comparable {
         switch self {
         case .cull: "Rate, Label and Reject"
         case .navigation: "Move and Switch View"
+        case .compare: "Compare"
         case .zoom: "Zoom and Pan"
         case .overlays: "Overlays"
         case .info: "Info"
@@ -21,7 +22,7 @@ public enum CheatGroup: Int, CaseIterable, Sendable, Comparable {
 
     static let prefixes: [String: CheatGroup] = [
         "cull": .cull, "nav": .navigation, "view": .navigation, "grid": .navigation,
-        "zoom": .zoom, "pan": .zoom, "overlay": .overlays, "info": .info, "select": .selection, "filter": .filter,
+        "compare": .compare, "zoom": .zoom, "pan": .zoom, "overlay": .overlays, "info": .info, "select": .selection, "filter": .filter,
         "file": .file, "edit": .file, "help": .help,
     ]
 }
