@@ -3,6 +3,7 @@
 //   RawSpike sharp <files...>            Laplacian variance of a 1:1 centre crop: CIRAWFilter default vs neutral
 //   RawSpike time  <files...>            decode to a Metal texture, default and neutral (median of 7 after a cold run)
 //   RawSpike dump  <file> <out.png>      write the neutral 1:1 centre crop (1024x1024) as PNG
+//   RawSpike lens <file> <outdir>        V-xx spike: lens correction off vs on: support flag, extent, PNGs, mean abs difference
 //   RawSpike compare <raw> <ref.tiff> <outdir>   neutral CIRAWFilter vs a reference decode (16-bit TIFF, no sharpening): crops, stats, side-by-side PNG
 import CoreImage
 import Foundation
@@ -12,11 +13,11 @@ import Metal
 import UniformTypeIdentifiers
 
 let args = Array(CommandLine.arguments.dropFirst())
-guard let command = args.first, ["flags", "sharp", "time", "dump", "compare"].contains(command), args.count > 1 else {
+guard let command = args.first, ["flags", "sharp", "time", "dump", "compare", "lens"].contains(command), args.count > 1 else {
     FileHandle.standardError.write(Data("usage: RawSpike flags|sharp|time <files...> | dump <file> <out.png>\n".utf8))
     exit(2)
 }
-let urls = command == "compare" ? [URL(fileURLWithPath: args[1])] : args.dropFirst().map { URL(fileURLWithPath: $0) }
+let urls = command == "compare" || command == "lens" ? [URL(fileURLWithPath: args[1])] : args.dropFirst().map { URL(fileURLWithPath: $0) }
 
 guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else { fatalError("no Metal") }
 let context = CIContext(mtlCommandQueue: queue, options: [.workingColorSpace: CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3)!])
@@ -108,6 +109,32 @@ for url in urls {
             rows.append(String(format: "  %@: %.0fx%.0f  cold %.0f ms  median %.0f ms  (min %.0f, max %.0f)", neutral ? "neutral" : "default", image.extent.width, image.extent.height, cold, runs[runs.count / 2], runs.first ?? 0, runs.last ?? 0))
         }
         rows.forEach { print($0) }
+    case "lens":
+        guard args.count == 3 else { print("usage: lens <file> <outdir>"); exit(2) }
+        print("  isLensCorrectionSupported \(yesNo(f.isLensCorrectionSupported)); default enabled \(yesNo(f.isLensCorrectionEnabled))")
+        var small: [CIImage] = []
+        for enabled in [false, true] {
+            guard let g = filter(url, neutral: true) else { continue }
+            if g.isLensCorrectionSupported { g.isLensCorrectionEnabled = enabled }
+            guard let img = g.outputImage else { print("  no output"); continue }
+            let e = img.extent
+            print("  correction \(enabled ? "on " : "off"): nativeSize \(Int(g.nativeSize.width))x\(Int(g.nativeSize.height)) output extent origin (\(Int(e.minX)),\(Int(e.minY))) size \(Int(e.width))x\(Int(e.height))")
+            let scale = 1600 / max(e.width, e.height)
+            let s = img.transformed(by: CGAffineTransform(translationX: -e.minX, y: -e.minY)).transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            small.append(s)
+            let name = "\(args[2])/lens-\(enabled ? "on" : "off").png"
+            if let cg = context.createCGImage(s, from: s.extent.integral, format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)),
+               let dest = CGImageDestinationCreateWithURL(URL(fileURLWithPath: name) as CFURL, UTType.png.identifier as CFString, 1, nil) {
+                CGImageDestinationAddImage(dest, cg, nil); CGImageDestinationFinalize(dest)
+            }
+        }
+        if small.count == 2, small[0].extent.size == small[1].extent.size {
+            let diff = small[0].applyingFilter("CIDifferenceBlendMode", parameters: [kCIInputBackgroundImageKey: small[1]])
+            let avg = diff.applyingFilter("CIAreaAverage", parameters: [kCIInputExtentKey: CIVector(cgRect: diff.extent)])
+            var px = [Float](repeating: 0, count: 4)
+            context.render(avg, toBitmap: &px, rowBytes: 16, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBAf, colorSpace: nil)
+            print(String(format: "  mean abs difference on/off (1600 px, linear): R %.5f G %.5f B %.5f", px[0], px[1], px[2]))
+        } else { print("  extents differ, no pixel diff") }
     case "dump":
         guard args.count == 3, let image = filter(url, neutral: true)?.outputImage else { print("usage: dump <file> <out.png>"); exit(2) }
         let e = image.extent

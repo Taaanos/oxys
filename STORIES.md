@@ -99,6 +99,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-15 | Session resume | M-20 | todo |
 | V-16 | Interop guidance | M-22, F-04 | todo |
 | V-17 | Distribution | G-2 | todo |
+| V-19 | Optional lens correction for RAW | V-02, M-22 | todo (spike done: `docs/spikes/lens-correction.md`) |
 | V-18 | v1.0 gate | all v1.0, P-11 | todo |
 | **Phase 2b** | **Performance** (build before V-18) | | |
 | P-01 | Performance gate tool and a real shoot | M-26 | done (criterion 1 not met: the M-26 table does not reproduce; cold rows run warm, no `purge`) |
@@ -856,7 +857,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 **Decisions and notes**
 - Questions 1 to 3 **decided** as proposed. Toolbar: a Grid/Loupe picker plus Filter and Inspector toggles that are disabled until M-20 and M-18 (items are disabled, never hidden); Compare becomes a third segment in V-08. Tapping `Space` in Loupe does nothing; `Esc` in Loupe goes to Grid whatever the zoom.
 - Keys: `view.loupe` is `E`, `Return`, `Space` (Grid, and Compare once it exists); `view.grid` is `G`, `Esc` (Loupe, Compare). `Esc` and `G` in Grid do nothing. G-13 was already in the router: in a text field the first `Esc` returns focus to the canvas, the next goes to Grid. `view.chrome` (`⇥`, title "Hide Toolbar" / "Show Toolbar") works in every mode.
-- Chrome: SwiftUI `toolbar(id:)` makes the toolbar customizable; `⇥` flips `toolbarVisibility`. While hidden, a local `mouseMoved` monitor shows it again when the pointer is within 6 pt of the content top. There are no panels yet; M-18 and M-20 hang off the same `chromeHidden` flag. Full screen and the title/subtitle (folder name, photo count) were already standard.
+- Chrome: SwiftUI `toolbar(id:)` makes the toolbar customizable; `⇥` flips `toolbarVisibility`. The first build also showed it again when the pointer came within 6 pt of the content top. That is removed: the inspector shares the flag, so a pointer that drifted to the top edge brought back the inspector and shifted the canvas. Only `⇥` and `⌥⌘T` show the chrome again. There are no panels yet; M-18 and M-20 hang off the same `chromeHidden` flag. Full screen and the title/subtitle (folder name, photo count) were already standard.
 - Loupe's screen is kept alive behind Grid (hidden, not rebuilt) and only loads while it is in front. Rebuilding its Metal canvas on every Grid-to-Loupe entry sometimes left the canvas blank; eight enter/leave cycles in a script now end with the photo showing, 4 runs of 4. Leaving Loupe blanks the canvas so the next entry never flashes the old photo.
 - `−` / `=` stay Grid-only until M-15 gives them a Loupe meaning (done: they step the zoom in Loupe).
 
@@ -1790,6 +1791,43 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 **Open questions**
 1. An update mechanism? (Sparkle signs updates with its own key and doesn't need Apple signing.) *Proposed:* not in v1.0; Homebrew handles upgrades.
 2. The GitHub organization and repository name (see G-1).
+
+### V-19 · Optional lens correction for RAW
+
+**Depends on:** V-02, M-22
+
+> As a photographer with a wide-angle camera, I want to switch on the lens correction that the system RAW decoder applies, so that the developed RAW has the same geometry as my editor and the camera's preview.
+
+**Why:** V-02 switches lens correction off, so that 1:1 shows sensor pixels. The spike (`docs/spikes/lens-correction.md`) shows that the decoder corrects the DJI FC8482 DNG from data inside the file, and that the correction moves the picture toward the corners. ART cannot do this for this camera, because its correction depends on a lens database. Some photographers want the corrected picture, and some want sensor pixels. The default stays sensor pixels.
+
+**Scope**
+- A toggle in Settings → General (`⌘,`): "Lens correction for RAW". Off by default. Key: `rawLensCorrection`.
+- `RawDeveloper.neutralize` takes the setting. It sets `isLensCorrectionEnabled` only when `isLensCorrectionSupported` is true. When the camera does not support it, the setting has no effect.
+- When the setting changes, `RawFrameCache` drops its frames. A RAW on screen develops again with the new setting, and the preview stays on screen until the new frame is ready (as in V-02). Frames in the background develop again on demand.
+- The toggle is silent. The Settings text and `docs/guide/settings.md` carry one fixed sentence: "Applies only to cameras that the system decoder supports. Other cameras are not changed." There is no message and no VoiceOver announcement.
+- The inspector shows a row "Lens correction" for the shown photo: **Applied** (setting on and camera supported), **Off** (setting off), **Not supported** (setting on, camera not supported), or **Camera preview** when only the embedded preview is shown. `LoupeFrame` gets one field with the state that `develop` read from the `CIRAWFilter`.
+- The histogram, peaking and clipping overlays use the developed frame, so they follow the setting with no other change.
+- Not in this story: a lens database, a manual lens profile, or any correction that the decoder does not offer (G-2 stays closed).
+
+**Acceptance criteria**
+- [ ] With the setting off, the developed RAW is the same as before this story: a test compares the pixels of a corpus RAW before and after.
+- [ ] With the setting on, a camera with `isLensCorrectionSupported` gives a developed RAW that differs from the setting-off RAW, and the extent is the same as `nativeSize` after orientation. The DJI FC8482 file from the spike is the check.
+- [ ] A camera without support gives the same frame with the setting on or off.
+- [ ] The inspector row shows Applied, Off, Not supported and Camera preview in the right cases, and VoiceOver reads it.
+- [ ] Switching the setting while a RAW is on screen develops it again with no relaunch. A frame cached under the old setting is never shown.
+- [ ] A decode with correction on stays inside the V-02 time limits (1 s at 24 MP, 2 s at 45 to 61 MP), measured with `make perf-bench SCENARIO=develop`.
+- [ ] The toggle is reachable by keyboard and has a VoiceOver label. `docs/guide/settings.md` describes it and says that 1:1 with correction on is resampled and is not sensor pixels.
+- [ ] `docs/spikes/lens-correction.md` states the edge error of the preview-to-RAW zoom mapping (see Decided).
+
+**Decided (before the build)**
+- **Supported cameras only, silently.** The setting applies when `isLensCorrectionSupported` is true. Other cameras ignore it, and the toggle gives no message. The inspector row is the only place that shows the state.
+- **Zoom mapping does not change.** V-02 maps a zoom position between the preview and the RAW by fraction of the picture. It stays that way. With correction off, the preview (corrected by the camera) and the RAW differ toward the corners, so the mapped position is off there. With correction on, both are corrected and the mapping should be closer, but this is not measured. The decoder does not give us its correction model, so an exact mapping is not possible. The AF point (V-01) uses the same fractions and has the same error. This is written in the spike document and not in the UI, because the error is small and only visible at the edge of the picture.
+- **The truth badge does not change.** V-05's badge keeps "RAW" with the setting on or off. The inspector row has the detail.
+- **The performance gate keeps the default.** `make perf-gate` runs with the setting off. One `develop` run with the setting on goes in this story's result.
+- **The cache is dropped when the setting changes.** The setting is read when a frame is developed. `FrameKey` does not change.
+
+**Open questions**
+None. Support is read from `isLensCorrectionSupported` when each file is developed, so we keep no list of cameras.
 
 ### V-18 · v1.0 gate
 
