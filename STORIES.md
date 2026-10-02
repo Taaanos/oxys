@@ -78,7 +78,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-21 | Reveal in Finder | M-19 | built (live Finder check pending) |
 | M-22 | Settings window | M-05 | done (keyboard walk-through and live naming switch not checked in the running app) |
 | M-23 | Cheat sheet and menu audit | M-05 and all MVP commands | done |
-| M-24 | Keyboard-only and accessibility pass | all MVP UI | built, unverified in the running app |
+| M-24 | Keyboard-only and accessibility pass | all MVP UI | built; VoiceOver and Full Keyboard Access not checked |
 | M-25 | MVP gate: interoperability and data safety | M-07 to M-11 | todo |
 | M-26 | MVP gate: performance | all MVP | todo |
 | **Phase 2** | **v1.0** | | |
@@ -1185,7 +1185,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - A scripted UI test that walks through the core workflow without pointer events.
 
 **Acceptance criteria**
-- [ ] Core workflow steps 1, 2, 4 and 5 (Reveal only; Edit and Extract come in v1.0) complete by keyboard alone. (Every command has a key and a menu item; `scripts/ui-walk.sh` is written but **not run**.)
+- [x] Core workflow steps 1, 2, 4 and 5 (Reveal only; Edit and Extract come in v1.0) complete by keyboard alone. (Every command has a key and a menu item. `scripts/ui-walk.sh` passes on the real app: open, first pass with ratings and a reject, narrow, select all. Reveal is not in the walk, because it opens Finder.)
 - [x] The full cull loop passes on at least one non-Latin layout. (Greek and Russian, by test.)
 
 **Built (decisions and results)**
@@ -1193,11 +1193,12 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Contrast: white on the red and green label chips was 3.5:1 and 2.2:1, and red or orange text on the plate was below 4.5:1. Chips now use black letters (5:1 or better on all five colors). The "Rejected" and warning labels keep a colored icon and use white text (`PlateLabel`). The Grid's badge strip uses the Loupe plate opacity (70%) and a darker red under the white ✕. State is never color alone: stars are filled or hollow, labels carry a letter or a filled circle, a reject carries a word and an ✕, a selection carries a check.
 - Full Keyboard Access: `⇥` went to "Hide Toolbar" in every state, so Tab could not reach the filter bar, the toolbar or the banner buttons. With Full Keyboard Access on, `⇥` and `⇧⇥` now go to the system. "Hide Toolbar" gains `⌥⌘T` (the system's own key) so it stays reachable. A focused control (button, picker) now owns its keys, so Space presses a button; `Esc` returns to the image.
 - Non-Latin layouts: `NonLatinCullLoopTests` builds real key events under the Greek and Russian layouts and routes them through the standard keymap. Every positional default key gives the same actions as on the ABC layout, and a first-pass loop (next, rate and advance, reject, label, back, reveal, select all) gives the expected commands. Punctuation keys already use the ASCII-capable layout (M-05).
-- `scripts/ui-walk.sh` (`make ui-walk`): opens a copy of three corpus files, then walks open, first pass, narrow and select all with System Events key codes only, then checks the sidecars. A real XCUITest target was not added: it needs a project edit and the same permission.
+- `scripts/ui-walk.sh` (`make ui-walk`): opens a copy of three corpus files, then walks open, first pass, narrow and select all with System Events key codes only, then checks the sidecars. A real XCUITest target was not added: it needs a project edit and the same permission. The walk starts with `Home`: the capture-time re-sort can move the photo that open selected (the current photo follows its file, G-6), so a fixed key count from the open position is not reliable.
 
 **Checked**
 - Unit tests pass (Commands: 50). Release build clean.
-- **Not checked** (this session has no Accessibility permission, so it cannot drive the window): `ui-walk.sh`; Tab movement with Full Keyboard Access on; a VoiceOver pass; the focused-control rule on SwiftUI buttons (it assumes a hosted button is an `NSControl`); the contrast numbers are computed, not measured on screen.
+- `make ui-walk` passed on the user's machine (ratings 3, -1 and 5 in three sidecars).
+- **Not checked**: Tab movement with Full Keyboard Access on; a VoiceOver pass; the focused-control rule on SwiftUI buttons (it assumes a hosted button is an `NSControl`); the contrast numbers are computed, not measured on screen.
 
 ### M-25 · MVP gate: interoperability and data safety
 
