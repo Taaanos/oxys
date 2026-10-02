@@ -49,18 +49,23 @@ public struct PhotoFilter: Sendable, Equatable {
     /// True when the list is being narrowed right now.
     public var isNarrowing: Bool { isOn && hasCriteria }
 
-    /// A click on star `n` in the bar: that many or more. With `extend` (⇧) and a minimum already set, the range
-    /// runs between the minimum and `n`. A click on the only lit star clears the row.
-    public mutating func clickStar(_ n: Int, extend: Bool) {
+    /// A click on star `n` in the bar: exactly that many stars. With `extend` (⇧) and a star already chosen, the
+    /// range runs between the first star and `n`; with `orMore` (⌥) it is `n` or more. A click on the only lit
+    /// star clears the row.
+    public mutating func clickStar(_ n: Int, extend: Bool = false, orMore: Bool = false) {
         if extend, minStars > 0 {
             let anchor = minStars
             minStars = min(anchor, n)
             maxStars = max(anchor, n)
-        } else if minStars == n, maxStars == 5 {
-            minStars = 0
-        } else {
+        } else if orMore {
             minStars = n
             maxStars = 5
+        } else if minStars == n, maxStars == n {
+            minStars = 0
+            maxStars = 5
+        } else {
+            minStars = n
+            maxStars = n
         }
     }
 

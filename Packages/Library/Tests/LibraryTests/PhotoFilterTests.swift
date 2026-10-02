@@ -87,23 +87,22 @@ import Testing
         #expect(f.apply(to: sample, keeping: kept).map(\.name) == ["IMG_1.ARW", "IMG_10.ARW", "Other.ARW"])
     }
 
-    @Test func shiftClickMakesAStarRange() {
+    @Test func starClicks() {
         var f = PhotoFilter()
-        f.clickStar(2, extend: false)
+        f.clickStar(2)
+        #expect(f.minStars == 2 && f.maxStars == 2)
+        f.clickStar(5, extend: true)
         #expect(f.minStars == 2 && f.maxStars == 5)
-        f.clickStar(4, extend: true)
-        #expect(f.minStars == 2 && f.maxStars == 4)
+        f.clickStar(3, extend: true)
+        #expect(f.minStars == 2 && f.maxStars == 3)
         f.clickStar(1, extend: true)
         #expect(f.minStars == 1 && f.maxStars == 2)
-        f.clickStar(3, extend: false)
+        f.clickStar(3, orMore: true)
         #expect(f.minStars == 3 && f.maxStars == 5)
-        f.clickStar(3, extend: false)
-        #expect(f.minStars == 0)
-        let shown = f.apply(to: sampleRange)
-        #expect(shown.count == sampleRange.count)
+        f.clickStar(4)
+        f.clickStar(4)
+        #expect(f.minStars == 0 && f.maxStars == 5)
     }
-
-    private var sampleRange: [Photo] { sample }
 
     @Test func maximumLeavesOutHigherAndRejects() {
         var f = PhotoFilter()
