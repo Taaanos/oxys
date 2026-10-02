@@ -14,6 +14,8 @@ public struct TruthBadge: Equatable, Sendable {
         case file
         /// The camera JPEG or HEIC of a RAW+JPEG pair (V-10): the file's own pixels, but not the RAW's.
         case cameraJPEG
+        /// A screen-size frame (P-03) is up while the full-size preview loads. Fine at Fit, a stretched picture past it.
+        case loadingFullSize
     }
 
     public var text: String
@@ -31,6 +33,10 @@ public struct TruthBadge: Equatable, Sendable {
         switch source {
         case .developing:
             return TruthBadge(text: "Developing", isWarning: true)
+        case .loadingFullSize:
+            // At Fit the screen-size frame has a pixel for every pixel of the screen, as the full one would.
+            if isFit { return make(source: .preview, percent: percent, isFit: isFit, longEdge: longEdge, sensorLongEdge: sensorLongEdge) }
+            return TruthBadge(text: "Loading full size", isWarning: true)
         case .raw:
             if enlarged { return TruthBadge(text: "RAW enlarged \(factor)", isWarning: false) }
             return TruthBadge(text: percent == 100 && !isFit ? "RAW 1:1" : "RAW", isWarning: false)

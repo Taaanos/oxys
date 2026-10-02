@@ -90,7 +90,7 @@ final class LoupeController {
     /// The truth badge (V-05) for the photo on screen; nil until a picture and its zoom are known.
     var truthBadge: TruthBadge? {
         guard failure == nil, let photo = shown, let pixels = shownPixels, let zoom = zoomInfo else { return nil }
-        let source: TruthBadge.Source = !photo.showsRaw ? (photo.isPair ? .cameraJPEG : .file) : developState == .raw ? .raw : developState == .developing ? .developing : .preview
+        let source: TruthBadge.Source = showingScreenSize ? .loadingFullSize : !photo.showsRaw ? (photo.isPair ? .cameraJPEG : .file) : developState == .raw ? .raw : developState == .developing ? .developing : .preview
         return TruthBadge.make(source: source, percent: zoom.percent, isFit: zoom.level.isFit, longEdge: max(pixels.width, pixels.height),
                                sensorLongEdge: RawPolicy.longEdge(ofDimensions: exif?.dimensions))
     }
@@ -103,6 +103,8 @@ final class LoupeController {
     private(set) var peakingMode = PeakingSettings.mode
     /// A thumbnail stands in for the preview: peaking waits for the real frame.
     private(set) var showingStandIn = false
+    /// The stand-in is a screen-size frame of the photo (P-03), not a disk thumbnail.
+    private(set) var showingScreenSize = false
 
     /// What the label over the canvas says: the mode, and which pixels were analyzed. Nil when nothing is painted.
     struct PeakingLabel: Equatable {
@@ -299,6 +301,7 @@ final class LoupeController {
         didSet {
             canvas?.onZoomChange = { [weak self] info in
                 self?.zoomInfo = info
+                if self?.showingScreenSize == true, info?.level.isFit == false { self?.wantsFullSizeNow = true }
                 self?.developAtActualSizeIfNeeded()
             }
             canvas?.stickyZoom = stickyZoom
@@ -332,6 +335,7 @@ final class LoupeController {
             histogram = nil
             shownPixels = nil
             showingStandIn = false
+            showingScreenSize = false
             failure = nil
             canvas?.show(nil)
         }
@@ -362,14 +366,22 @@ final class LoupeController {
     @ObservationIgnored private let thumbnails = FrameLoader.sharedThumbnails
     /// Compare (V-08) loads its frames through the same pipeline, so a photo is decoded once and cached once.
     @ObservationIgnored let pipeline: FramePipeline<LoupeFrame>
+    @ObservationIgnored private let screenRequest = ScreenFrameRequest()
+    /// P-03: how long the cursor must stay on a photo with only its screen-size frame up before the full-size frame
+    /// loads. A held key moves on before that, so it never pays for a full decode it would throw away.
+    static let dwellBeforeFullSize = Duration.milliseconds(100)
+    /// Set by a zoom past Fit while a screen-size frame is up: the full-size frame loads at once.
+    @ObservationIgnored private var wantsFullSizeNow = false
     @ObservationIgnored private let plan = PrefetchPlan()
     @ObservationIgnored private var lastIndex: Int?
     @ObservationIgnored private var budgetObserver: Any?
 
     init() {
-        let thumbnails = thumbnails
-        // One load holds the decoded image and the upload buffer beside the texture: about 2.5 times its cost.
-        pipeline = FramePipeline(budget: Self.memoryBudget, transientFactor: 1.5) { key in try await FrameLoader.load(key, thumbnails: thumbnails) }
+        let thumbnails = thumbnails, request = screenRequest
+        // One load holds the decoded image and the upload buffer beside the texture: about 1.5 times its cost.
+        pipeline = FramePipeline(budget: Self.memoryBudget, transientFactor: 1.5, quick: { key in
+            try await FrameLoader.loadScreenSize(key, request: request, thumbnails: thumbnails)
+        }) { key in try await FrameLoader.load(key, thumbnails: thumbnails) }
         budgetObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -412,6 +424,24 @@ final class LoupeController {
         Task { await pipeline.reset() }
     }
 
+    /// P-03: the screen-size frame of `photo`, started once per photo. A key press starts it before SwiftUI has
+    /// updated the window (`navigate`), so the decode runs beside that work on the main thread; `load` finds it here.
+    /// Nil when the photo is cached or has no screen-size form.
+    private func quickFrame(for photo: Photo, key: FrameKey) -> Task<LoupeFrame?, Never> {
+        if let early = earlyQuick, early.key == key { return early.task }
+        if let canvas {
+            let drawable = canvas.drawablePixelSize
+            screenRequest.edge = Int(max(drawable.width, drawable.height))
+            screenRequest.histogram = showHistogram && showInfoStrip
+        }
+        let pipeline = pipeline
+        LoupeGPU.shared?.wake()
+        let task = Task.detached(priority: .high) { await pipeline.quickFrame(for: key) }
+        earlyQuick = (key, task)
+        return task
+    }
+    @ObservationIgnored private var earlyQuick: (key: FrameKey, task: Task<LoupeFrame?, Never>)?
+
     /// Shows `photo`'s preview. A newer call cancels an older one (and the pipeline cancels the old request's
     /// read and decode); the previous frame stays up until something for `photo` is ready, and `shown`
     /// changes with it. While the full preview loads, its disk thumbnail stands in if there is one.
@@ -420,6 +450,7 @@ final class LoupeController {
         lastRequest = (photo, folder)
         guard let canvas else { return }
         let target = FrameLoader.key(for: photo)
+        let quickLoad = quickFrame(for: photo, key: target)
         // Moving on cancels the decode of the photo left behind (V-02).
         if developingURL != photo.url { stopDeveloping() }
         let index = folder.currentIndex
@@ -437,12 +468,48 @@ final class LoupeController {
         warmExif([photo.url] + neighborIndices.map { folder.visible[$0].url })
 
         let pipeline = pipeline, thumbnails = thumbnails
+
+        // P-03: a cold photo shows its screen-size frame first, and the full-size frame follows when the cursor stays.
+        var quickShown = false
+        if !(await pipeline.isCached(target)) {
+            if let quick = await quickLoad.value, isCurrent(photo, in: folder) {
+                quickShown = true
+                let same = shown?.url == photo.url
+                let token = takeToken()
+                canvas.show(quick.image, keyToFrame: token, sameZoom: same, zoomSizeFactor: quick.sizeFactor, isStandIn: true)
+                FrameLog.record(cursor: folder.currentURL, displayed: photo.url, kind: "screen")
+                // The frame goes to the screen first; SwiftUI's update for the new photo waits one turn of the run
+                // loop, so it cannot hold up the frame's commit.
+                try? await Task.sleep(for: .milliseconds(2))
+                guard isCurrent(photo, in: folder) else { return }
+                shown = photo
+                previewShown(of: photo)
+                updateExif(for: photo)
+                folder.setPreview(PreviewInfo(pixelWidth: quick.width, pixelHeight: quick.height), for: photo.url)
+                histogram = quick.histogram
+                shownPixels = (quick.width, quick.height)
+                lastPreviewLongSide = CGFloat(max(quick.width, quick.height))
+                showingStandIn = true
+                showingScreenSize = true
+                wantsFullSizeNow = false
+                failure = nil
+                canvas.setAccessibilityLabel("\(photo.name), \(quick.width) by \(quick.height) pixels")
+                // Wait for the cursor to stay, or for a zoom that needs the real pixels.
+                var waited = Duration.zero
+                while waited < Self.dwellBeforeFullSize, !wantsFullSizeNow, !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(10))
+                    waited += .milliseconds(10)
+                }
+                guard isCurrent(photo, in: folder) else { return }
+            }
+        }
+
         let finished = Mutex(false)
         let full = Task { () -> Result<LoupeFrame?, any Error> in
             defer { finished.withLock { $0 = true } }
             do { return .success(try await pipeline.frame(for: target, prefetch: neighbors)) } catch { return .failure(error) }
         }
-        if !(await pipeline.isCached(target)) {
+        if !quickShown, !(await pipeline.isCached(target)) {
             let stand = await Task.detached(priority: .userInitiated) {
                 FrameLoader.placeholder(for: target, thumbnails: thumbnails)
             }.value
@@ -454,6 +521,7 @@ final class LoupeController {
                 histogram = nil
                 shownPixels = nil
                 showingStandIn = true
+                showingScreenSize = false
                 failure = nil
                 canvas.setAccessibilityLabel(photo.name)
                 let long = max(stand.displaySize.width, stand.displaySize.height)
@@ -484,9 +552,11 @@ final class LoupeController {
         shownPixels = (frame.width, frame.height)
         lastPreviewLongSide = CGFloat(max(frame.width, frame.height))
         showingStandIn = false
+        showingScreenSize = false
         failure = nil
         canvas.setAccessibilityLabel("\(photo.name), \(frame.width) by \(frame.height) pixels")
-        canvas.show(frame.image, keyToFrame: token, sameZoom: same)
+        // The full-size frame replaces the screen-size one in place: same picture, more pixels, the view stays put.
+        canvas.show(frame.image, keyToFrame: token, sameZoom: same, keepView: quickShown)
         FrameLog.record(cursor: folder.currentURL, displayed: photo.url, kind: "preview")
         // Back on a photo that was in RAW mode: its decode is still cached, or the mode lapses (V-02/Q1).
         // In Always mode every RAW is wanted, unless sent back to the preview with `R` (V-03).
@@ -673,6 +743,8 @@ final class LoupeController {
         updateExif(for: photo)
         histogram = nil
         shownPixels = nil
+        showingStandIn = false
+        showingScreenSize = false
         failure = message
         canvas.setAccessibilityLabel("\(photo.name). \(message)")
         canvas.show(nil, keyToFrame: token)
@@ -765,6 +837,7 @@ final class LoupeController {
         if folder.move(step) {
             if let stale = pendingFrameToken { Perf.end(stale) }
             pendingFrameToken = token
+            if let photo = folder.currentPhoto { _ = quickFrame(for: photo, key: FrameLoader.key(for: photo)) }
         } else {
             Perf.end(token)
         }

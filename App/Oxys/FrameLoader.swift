@@ -6,6 +6,7 @@ import Diagnostics
 import Foundation
 import Imaging
 import Library
+import Synchronization
 
 /// What the pipeline holds per photo: the uploaded texture and the size of the preview it came from.
 nonisolated struct LoupeFrame: Sendable {
@@ -14,6 +15,34 @@ nonisolated struct LoupeFrame: Sendable {
     let height: Int
     /// Computed with the frame, so a prefetched frame has its histogram ready (M-17); nil if it could not be.
     let histogram: Histogram?
+    /// P-03: a stand-in decoded at the size of the screen. `width` and `height` are still the full preview's, so the
+    /// zoom geometry and the badge talk about the picture; the texture behind `image` is smaller.
+    var isScreenSize = false
+
+    /// The upright size of the pixels in the texture.
+    var pixelSize: CGSize { image.displaySize }
+    /// How much larger the full preview is than the texture (1 for a full-size frame).
+    var sizeFactor: CGFloat {
+        let texture = max(image.displaySize.width, image.displaySize.height)
+        return texture > 0 ? CGFloat(max(width, height)) / texture : 1
+    }
+}
+
+/// What the screen-size load needs to know about the window, written by the main actor before a load and read by the
+/// quick loader on another thread.
+nonisolated final class ScreenFrameRequest: Sendable {
+    private let storage = Mutex((edge: 0, histogram: false))
+    /// The long edge of the drawable in pixels.
+    var edge: Int {
+        get { storage.withLock { $0.edge } }
+        set { storage.withLock { $0.edge = newValue } }
+    }
+    /// The histogram is on screen, so the screen-size frame brings one. Off, it is left to the full-size frame: the
+    /// count is work on the critical path of a frame nobody is looking at the histogram of.
+    var histogram: Bool {
+        get { storage.withLock { $0.histogram } }
+        set { storage.withLock { $0.histogram = newValue } }
+    }
 }
 
 /// The pipeline's work for one photo: map the file, decode the embedded preview, upload it. Checks for
@@ -79,6 +108,41 @@ nonisolated enum FrameLoader {
         } catch {
             throw PreviewError.corrupt
         }
+    }
+
+    /// P-03: the preview decoded at the size of the screen (ImageIO scales the JPEG while it decodes, which is much
+    /// cheaper than the full frame), without a mip chain, with its histogram and the 512 px thumbnail from its own
+    /// pixels. Nil when the preview is not at least twice the screen (`ScreenSizePolicy`): one step is then as fast.
+    /// Throws like `load`; the pipeline treats a failure here as "nothing quick", and the full load reports it.
+    static func loadScreenSize(_ key: FrameKey, request: ScreenFrameRequest, thumbnails: DiskThumbnailCache) async throws -> LoupeFrame? {
+        let token = Perf.begin(.screenFrame)
+        defer { Perf.end(token) }
+        try Task.checkCancellation()
+        try simulateSlowRead()
+        let source = try PreviewSource.open(key.url, isRaw: key.isRaw)
+        try Task.checkCancellation()
+        guard let long = source.loupeLongEdge,
+              let factor = ScreenSizePolicy.subsampleFactor(sourceLongEdge: long, drawableLongEdge: request.edge),
+              let decoded = try source.decodeLoupe(subsampledBy: factor)
+        else { return nil }
+        try Task.checkCancellation()
+        guard let gpu = LoupeGPU.shared else { throw PreviewError.corrupt }
+        let wantsHistogram = request.histogram
+        let thumbnailFile = thumbnails.fileURL(path: key.url.path, size: key.fileSize, modified: key.modified,
+                                               longEdge: thumbnailEdge)
+        let needsThumbnail = !FileManager.default.fileExists(atPath: thumbnailFile.path)
+        let uploaded = try await gpu.prepare(decoded.image, orientation: decoded.orientation, mipmapped: false) { pixels in
+            (histogram: wantsHistogram ? Perf.measure(.histogram) { Histogram.compute(pixels.image, source: .preview) } : nil,
+             thumbnail: needsThumbnail ? pixels.image.downscaled(longEdge: thumbnailEdge) : nil)
+        }
+        guard let (prepared, extras) = uploaded else { throw PreviewError.corrupt }
+        if let thumbnail = extras.thumbnail {
+            storeThumbnail(thumbnail, orientation: decoded.orientation, key: key, into: thumbnails)
+        }
+        let size = decoded.sourceDisplaySize
+        var frame = LoupeFrame(image: prepared, width: size.width, height: size.height, histogram: extras.histogram)
+        frame.isScreenSize = true
+        return frame
     }
 
     /// Writes the 512 px thumbnail once per file version, off the critical path.

@@ -17,7 +17,7 @@ import Metadata
 /// `compare-view` (Compare stays up for 40 s, for a screenshot), `overlays`, `peaking` (V-06: F on and off, then browsing with it on),
 /// `peaking-still` (the overlay on one photo), `peaking-view` (stays up for 40 s; `OXYS_BENCH_ZOOM=1` goes to 1:1 first),
 /// `clipping` and `clipping-still` (the same for H and S, V-07), `grid` (scroll 10,000 files), `idle`,
-/// `load-memory` (P-02: the working memory of one frame load).
+/// `load-memory` (P-02: the working memory of one frame load), `zoom-from-screen` (P-03: 1:1 over a screen-size frame).
 /// `scripts/perf-gate.sh` (P-01) runs the ones in `scripts/perf-targets.tsv` against the PRD limits.
 /// `OXYS_BENCH_DELAY_MS=<n>` makes every frame load wait n ms first, as slow media would (see `FrameLoader`).
 @MainActor
@@ -94,6 +94,27 @@ enum PerfBench {
                 commands.perform("zoom.actual"); await settle(.milliseconds(500))
                 commands.perform("zoom.fit"); await settle(.milliseconds(500))
                 commands.perform("nav.next"); await settle(.milliseconds(300))
+            }
+        case "zoom-from-screen":
+            // P-03: a cold photo, then 1:1 while only its screen-size frame is up. The badge must say so at once, and
+            // the full-size frame must replace the frame in place. `full-after-zoom-ms` is the zoom command to the
+            // full frame; `screen-frame-at-zoom` and `badge-warns-at-zoom` count the runs where the zoom found the
+            // screen-size frame up and the badge warning.
+            for i in 0..<20 {
+                loupe.reset(); await settle(.milliseconds(300))
+                commands.perform(i % 2 == 0 ? "nav.last" : "nav.first")
+                let waiting = ContinuousClock.now
+                while !loupe.showingScreenSize, waiting.duration(to: .now) < .seconds(3) { await settle(.milliseconds(1)) }
+                let screenUp = loupe.showingScreenSize
+                Perf.record("screen-frame-at-zoom", screenUp ? 1 : 0)
+                let began = ContinuousClock.now
+                commands.perform("zoom.actual")
+                await settle(.milliseconds(30))
+                Perf.record("badge-warns-at-zoom", loupe.truthBadge?.text == "Loading full size" ? 1 : 0)
+                while loupe.showingScreenSize, began.duration(to: .now) < .seconds(3) { await settle(.milliseconds(1)) }
+                Perf.record("full-after-zoom-ms", ms(began.duration(to: .now)))
+                await settle(.milliseconds(400))
+                commands.perform("zoom.fit"); await settle(.milliseconds(300))
             }
         case "develop":
             // R, wait for the RAW on screen, R back, next photo. `raw-ready` is press to developed frame (V-02).

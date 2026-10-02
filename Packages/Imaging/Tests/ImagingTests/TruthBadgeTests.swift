@@ -46,3 +46,10 @@ private func badge(_ source: TruthBadge.Source, percent: Int = 31, fit: Bool = t
         #expect(badge(.preview, percent: percent, fit: false).isWarning)
     }
 }
+
+@Test func aScreenSizeFrameIsHonestWhenItIsStretched() {
+    // At Fit it has a pixel for every screen pixel, so the badge reads as the full preview would.
+    #expect(badge(.loadingFullSize) == badge(.preview))
+    #expect(badge(.loadingFullSize, percent: 100, fit: false) == TruthBadge(text: "Loading full size", isWarning: true))
+    #expect(badge(.loadingFullSize, percent: 300, fit: false) == TruthBadge(text: "Loading full size", isWarning: true))
+}

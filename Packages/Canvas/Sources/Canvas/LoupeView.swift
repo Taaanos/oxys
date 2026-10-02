@@ -352,6 +352,9 @@ public final class LoupeView: NSView {
         return modes.first { $0.ioFlags & 0x0200_0000 != 0 }?.pixelWidth
     }
 
+    /// The size of the picture area in pixels (not points): what a screen-size frame is decoded for (P-03).
+    public var drawablePixelSize: CGSize { drawableSize }
+
     private var drawableSize: CGSize {
         let scale = window?.backingScaleFactor ?? 1
         return CGSize(width: (bounds.width * scale).rounded(), height: (bounds.height * scale).rounded())
@@ -388,6 +391,16 @@ public final class LoupeView: NSView {
 
     public override func layout() {
         super.layout()
+        renderIfResized()
+    }
+
+    /// SwiftUI lays the view out again after almost every state change, with the same size. A frame drawn then
+    /// would only queue a second present of the same picture in front of the real frame (P-03): the next
+    /// navigation's frame waited two refreshes behind them.
+    private func renderIfResized() {
+        let scale = window?.backingScaleFactor ?? 1
+        let size = CGSize(width: (bounds.width * scale).rounded(), height: (bounds.height * scale).rounded())
+        guard size != lastDrawableSize || metalLayer.contentsScale != scale else { return }
         render()
     }
 
@@ -395,7 +408,7 @@ public final class LoupeView: NSView {
     /// before the final size is known; render at every size change so the last frame is never a stretched one.
     public override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
-        render()
+        renderIfResized()
     }
 
     public override func viewDidEndLiveResize() {

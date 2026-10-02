@@ -25,8 +25,11 @@ fi
 pkill -x Oxys 2>/dev/null || true
 delay=()
 [ -z "${OXYS_BENCH_DELAY_MS:-}" ] || delay=(--env OXYS_BENCH_DELAY_MS="$OXYS_BENCH_DELAY_MS")
+# The user's RAW setting must not change a measurement: every scenario but the develop ones runs in the default mode.
+mode=(--args -rawMode onDemand)
+case $scenario in develop*) mode=() ;; esac
 open -n -W --env OXYS_BENCH="$scenario" --env OXYS_OPEN="$work" --env OXYS_PERF_LOG="$log" \
-  --env OXYS_FRAME_LOG="$log.frames" "${delay[@]}" "$APP"
+  --env OXYS_FRAME_LOG="$log.frames" "${delay[@]}" "$APP" "${mode[@]}"
 { [ "$scenario" != cull ] && [ "$scenario" != compare ]; } || rm -rf "$(dirname "$work")"
 grep -q '^done' "$log" || { echo "WARNING: $scenario run did not finish ($log)" >&2; [ -z "${BENCH_QUIET:-}" ] || exit 1; }
 [ -z "${BENCH_QUIET:-}" ] || exit 0

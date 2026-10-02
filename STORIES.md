@@ -104,7 +104,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | **Phase 2b** | **Performance** (build before V-18) | | |
 | P-01 | Performance gate tool and a real shoot | M-26 | done (criterion 1 not met: the M-26 table does not reproduce; cold rows run warm, no `purge`) |
 | P-02 | Decode once, into GPU memory | P-01 | done (criterion 2 met against the P-01 baseline, not against the stale 3.4 GB; see the story) |
-| P-03 | Screen-size frame first (cold next image) | P-02 | todo |
+| P-03 | Screen-size frame first (cold next image) | P-02 | done (criteria 1 and 3 met; criterion 2: prefetched p95 is 62 ms, not under 50, unchanged by this story; see the story) |
 | P-04 | One memory budget | P-02 | todo |
 | P-05 | Keys within one display frame while frames load | P-01 | todo |
 | P-06 | Overlay toggles without new allocations | P-01 | todo |
@@ -1953,6 +1953,31 @@ The code changes the M-26 diagnosis in two places, found while planning this pha
 **Open questions**
 1. Does a screen-size frame at 1:1 show a warning in the badge? *Proposed:* yes, "Loading full size" in the warning style, until the full frame is in.
 2. Screen size on a Retina display: points or pixels? *Proposed:* drawable pixels.
+
+**Result (2 Oct 2026, Apple M4, Release build, 4K display at 2x, drawable 3,280 px)**
+
+- Q1 **Decided as proposed:** at 1:1 the badge says "Loading full size" (warning style) until the full frame is in. At Fit it reads as the full preview would (`TruthBadge.Source.loadingFullSize`).
+- Q2 **Decided as proposed:** the screen size is the drawable in pixels (`LoupeView.drawablePixelSize`).
+- Built: `ScreenSizePolicy` (which fraction), `PreviewSource.decodeLoupe(subsampledBy:)` and `loupeLongEdge`, `FramePipeline.quickFrame(for:)` (not cached; stops every other load first), `FrameLoader.loadScreenSize`, `LoupeGPU.prepare(mipmapped:)` and `LoupeGPU.wake()`, the `screen-frame` signpost, and the bench scenario `zoom-from-screen`. 11 new tests.
+- **Changed from the story text:** the screen-size frame is not "the drawable size". ImageIO is fast only at exact 1/2, 1/4 and 1/8 scales (7,008 px ARW: 1/2 = 35 ms, 3,000 px = 59 ms, 3,840 px = 143 ms, full = 53 ms). So the frame is the smallest exact fraction that has at least 0.75 of the drawable's long edge, made with ImageIO's JPEG subsample factor. A preview with no such fraction (the drone DNGs, 960 px) loads in one step as before.
+- The full frame waits 100 ms after the screen-size frame (`dwellBeforeFullSize`), or starts at once when the zoom goes past Fit. It stays at the same priority as before: after the wait nothing competes with it. The mip chain is built with the full frame, which is no longer on the critical path. The far end of the prefetch window still holds full frames (not done; P-04 can take it).
+- The screen-size load starts at the key press (`navigate`), not when SwiftUI runs `load`, because the main thread is busy for about 30 ms after a key. `LoupeGPU.wake()` runs at the same time, because the first GPU command after a pause waits for the GPU to clock up.
+- `LoupeView.layout()` and `setFrameSize()` now draw only when the size changed. Before, SwiftUI's layout passes drew the same picture twice after a key and queued presents in front of the real frame.
+- The bench script pins `rawMode` to on-demand (except `develop*`). A user's "always" setting had put RAW develops into every run.
+
+| Measure | Before | After |
+| --- | --- | --- |
+| Cold next image, `24mp-1000`, p50 / p95 | 196 / 232 ms | 88 / 94 ms (runs: p95 93 to 110) |
+| Cold next image, `real-drone-840`, p95 | 78 ms | 71 ms |
+| Prefetched next image, p95 | 63 ms | 63 ms |
+| Stale frames, held key (also with a 200 ms delay) | 0 | 0 of 376 and 0 of 405 |
+| `scrub` peak footprint | 3,358 MB | 3,124 MB |
+| Zoom to 1:1 over a screen-size frame: badge warns / frame found up | | 20 of 20 / 20 of 20; full frame in place 130 ms after the zoom |
+
+- Criterion 1: met on both sets in the median run, but the margin is small on `24mp-1000` (p95 93 to 110 ms between runs). Of that, about 50 ms is the half-scale JPEG decode and 30 to 40 ms is the display pipeline (the bench presses keys exactly 1 s apart, so the vsync wait is the same every time; in real use it varies). The bench touches two files only, so it is warm for the file cache; `sudo purge` was not run.
+- Criterion 2: **not met, not changed.** Prefetched p95 was 63 ms in P-01 and is 63 ms now. A cached frame still waits for SwiftUI's update after the key. Showing a cached frame from `navigate` is the next step; it belongs with P-05.
+- Criterion 3 met (`make perf-bench SCENARIO=zoom-from-screen`).
+- Not done: the quick decode could go to 1/4 scale (about 10 ms faster, visibly soft on a 2x display) if `minimumSharpness` is lowered.
 
 ### P-04 · One memory budget
 

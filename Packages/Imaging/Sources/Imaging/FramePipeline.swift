@@ -34,7 +34,12 @@ public struct LoadedFrame<Frame: Sendable>: Sendable {
 public actor FramePipeline<Frame: Sendable> {
     public typealias Loader = @Sendable (FrameKey) async throws -> LoadedFrame<Frame>
 
+    /// A frame that is fast to make and is not kept (P-03): nil when the file has no quick form.
+    public typealias QuickLoader = @Sendable (FrameKey) async throws -> Frame?
+
     private let load: Loader
+    private let quick: QuickLoader?
+    private var quickTask: Task<Frame?, any Error>?
     private var cache: ByteBudgetCache<FrameKey, Frame>
     private struct Inflight {
         let id: UInt64
@@ -60,7 +65,9 @@ public actor FramePipeline<Frame: Sendable> {
     public static var slowLoadThreshold: Double { 0.15 }
 
     /// `transientFactor`: working memory of one load, as a multiple of the finished frame's cost (0 = ignore).
-    public init(budget: Int, maxPrefetchConcurrency: Int = 2, transientFactor: Double = 0, load: @escaping Loader) {
+    public init(budget: Int, maxPrefetchConcurrency: Int = 2, transientFactor: Double = 0, quick: QuickLoader? = nil,
+                load: @escaping Loader) {
+        self.quick = quick
         cache = ByteBudgetCache(budget: budget)
         requestedBudget = budget
         self.transientFactor = transientFactor
@@ -90,18 +97,25 @@ public actor FramePipeline<Frame: Sendable> {
     /// The frame if it is in the cache, with no loading and no change to what is in flight.
     public func cachedFrame(_ key: FrameKey) -> Frame? { cache.value(for: key) }
 
+    /// P-03: a quick frame of `target` for a photo that is not here yet, so the screen is not empty while the full
+    /// frame loads. It is not cached. Nil when there is nothing quick to show: no quick loader, the file has no quick
+    /// form, `target` is cached or already loading (waiting for that is cheaper), a newer request came, or the load
+    /// failed (the full load reports the error). A cold arrival means the user is moving, so every other load and
+    /// the prefetch stop first and leave the CPU to this one.
+    public func quickFrame(for target: FrameKey) async -> Frame? {
+        guard let quick, !cache.contains(target), inflight[target] == nil else { return nil }
+        cancelLoads(except: [target])
+        quickTask?.cancel()
+        let task = Task(priority: .high) { try await quick(target) }
+        quickTask = task
+        return try? await task.value
+    }
+
     /// The frame for `target`, loading it at once at high priority. `prefetch` lists the neighbors worth having
     /// next, most useful first. Anything in flight that is neither is cancelled before it reads or decodes.
     /// Returns nil when this request was itself superseded (cancelled) before it finished.
     public func frame(for target: FrameKey, prefetch: [FrameKey]) async throws -> Frame? {
-        let wanted = Set([target] + prefetch)
-        for (key, entry) in inflight where !wanted.contains(key) {
-            entry.task.cancel()
-            inflight[key] = nil
-        }
-        applyBudget()
-        prefetchDriver?.cancel()
-        prefetchDriver = nil
+        cancelLoads(except: Set([target] + prefetch))
 
         let hit = cache.value(for: target)
         if let hit {
@@ -118,8 +132,20 @@ public actor FramePipeline<Frame: Sendable> {
         }
     }
 
+    private func cancelLoads(except wanted: Set<FrameKey>) {
+        for (key, entry) in inflight where !wanted.contains(key) {
+            entry.task.cancel()
+            inflight[key] = nil
+        }
+        applyBudget()
+        prefetchDriver?.cancel()
+        prefetchDriver = nil
+    }
+
     /// Drops everything: a new folder was opened.
     public func reset() {
+        quickTask?.cancel()
+        quickTask = nil
         for entry in inflight.values { entry.task.cancel() }
         inflight = [:]
         prefetchDriver?.cancel()

@@ -132,6 +132,79 @@ private func number(_ key: FrameKey) -> Int { Int(key.url.deletingPathExtension(
     #expect(!(await pipeline.isCached(key(1))))
 }
 
+// MARK: - Quick frames (P-03)
+
+@Test func aQuickFrameIsNotCachedAndTheFullFrameStillLoads() async throws {
+    let pipeline = FramePipeline<Int>(budget: 1_000, quick: { key in -number(key) }) { key in
+        LoadedFrame(frame: number(key), cost: 10)
+    }
+    #expect(await pipeline.quickFrame(for: key(3)) == -3)
+    #expect(await pipeline.cachedBytes == 0)
+    #expect(!(await pipeline.isCached(key(3))))
+    #expect(try await pipeline.frame(for: key(3), prefetch: []) == 3)
+}
+
+@Test func thereIsNoQuickFrameForACachedOrLoadingPhotoOrWithoutALoader() async throws {
+    let plain = FramePipeline<Int>(budget: 1_000) { key in LoadedFrame(frame: number(key), cost: 10) }
+    #expect(await plain.quickFrame(for: key(1)) == nil)
+
+    let pipeline = FramePipeline<Int>(budget: 1_000, quick: { key in -number(key) }) { key in
+        try await Task.sleep(for: .milliseconds(300))
+        return LoadedFrame(frame: number(key), cost: 10)
+    }
+    _ = try await pipeline.frame(for: key(1), prefetch: [])
+    #expect(await pipeline.quickFrame(for: key(1)) == nil)          // cached
+    let loading = Task { try await pipeline.frame(for: key(2), prefetch: []) }
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(await pipeline.quickFrame(for: key(2)) == nil)          // already running: waiting is cheaper
+    _ = try await loading.value
+}
+
+@Test func aQuickFrameStopsTheLoadsOfPhotosTheUserHasLeft() async throws {
+    let recorder = Recorder()
+    let pipeline = FramePipeline<Int>(budget: 10_000, quick: { key in -number(key) }) { key in
+        let n = number(key)
+        do {
+            try await Task.sleep(for: .milliseconds(400))
+            try Task.checkCancellation()
+        } catch { await recorder.cancelled(n); throw error }
+        await recorder.loaded(n)
+        return LoadedFrame(frame: n, cost: 10)
+    }
+    let behind = Task { try await pipeline.frame(for: key(1), prefetch: [key(2)]) }
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(await pipeline.quickFrame(for: key(50)) == -50)
+    #expect(try await behind.value == nil)
+    #expect(await recorder.cancelled.contains(1))
+    #expect(!(await recorder.loaded.contains(1)))
+}
+
+@Test func aFailingQuickLoadShowsNothingInsteadOfAnError() async {
+    struct Boom: Error {}
+    let pipeline = FramePipeline<Int>(budget: 1_000, quick: { _ in throw Boom() }) { key in
+        LoadedFrame(frame: number(key), cost: 10)
+    }
+    #expect(await pipeline.quickFrame(for: key(1)) == nil)
+}
+
+@Test func theScreenSizeFrameIsAnExactFractionOfThePreview() {
+    // 1/4 of 7,008 is 1,752, enough for a 1,920 px screen at 0.75 sharpness; a 2,560 px screen needs 1/2.
+    #expect(ScreenSizePolicy.subsampleFactor(sourceLongEdge: 7008, drawableLongEdge: 1920) == 4)
+    #expect(ScreenSizePolicy.subsampleFactor(sourceLongEdge: 7008, drawableLongEdge: 2560) == 2)
+    #expect(ScreenSizePolicy.subsampleFactor(sourceLongEdge: 5760, drawableLongEdge: 2560) == 2)
+    #expect(ScreenSizePolicy.subsampleFactor(sourceLongEdge: 5760, drawableLongEdge: 800) == 8)
+    // A rounded-up fraction, so an odd size never falls under the exact scale.
+    #expect(ScreenSizePolicy.subsampleFactor(sourceLongEdge: 6001, drawableLongEdge: 2560) == 2)
+}
+
+@Test func thereIsNoScreenSizeFrameWhenNoCheapFractionCoversTheScreen() {
+    #expect(ScreenSizePolicy.subsampleFactor(sourceLongEdge: 5760, drawableLongEdge: 3840) == 2)    // exactly 0.75
+    #expect(ScreenSizePolicy.subsampleFactor(sourceLongEdge: 5000, drawableLongEdge: 3840) == nil)
+    #expect(ScreenSizePolicy.subsampleFactor(sourceLongEdge: 960, drawableLongEdge: 2560) == nil)
+    #expect(ScreenSizePolicy.subsampleFactor(sourceLongEdge: 6000, drawableLongEdge: 0) == nil)
+    #expect(ScreenSizePolicy.subsampleFactor(sourceLongEdge: 0, drawableLongEdge: 1920) == nil)
+}
+
 // MARK: - DiskThumbnailCache
 
 private func tempDirectory() -> URL {

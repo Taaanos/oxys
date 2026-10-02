@@ -196,3 +196,33 @@ private func makeImage(width: Int, height: Int) -> CGImage? {
     CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
               space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)?.makeImage()
 }
+
+// MARK: - P-03: decode at a fraction of the size
+
+@Test func aSubsampledDecodeHasAFractionOfThePixelsAndKeepsOrientationAndSourceSize() throws {
+    let url = try write(makeTIFFContainer(jpeg: makeJPEG(width: 1600, height: 1000), orientation: 6), named: "p3a.dng")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let source = try PreviewSource.open(url, isRaw: true)
+    let half = try #require(try source.decodeLoupe(subsampledBy: 2))
+    #expect((half.image.width, half.image.height) == (800, 500))
+    #expect(half.orientation == .right)
+    #expect((half.sourceWidth, half.sourceHeight) == (1600, 1000))
+    #expect(half.sourceDisplaySize == (1000, 1600))
+    let eighth = try #require(try source.decodeLoupe(subsampledBy: 8))
+    #expect((eighth.image.width, eighth.image.height) == (200, 125))
+}
+
+@Test func aSubsampledDecodeOfAJpegOriginalWorks() throws {
+    let url = try write(makeJPEG(width: 640, height: 480), named: "p3b.jpg")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let quarter = try #require(try PreviewSource.open(url, isRaw: false).decodeLoupe(subsampledBy: 4))
+    #expect((quarter.image.width, quarter.image.height) == (160, 120))
+}
+
+@Test func theLongEdgeOfThePreviewIsKnownWithoutDecoding() throws {
+    let raw = try write(makeTIFFContainer(jpeg: makeJPEG(width: 1600, height: 1000)), named: "p3c.dng")
+    let jpeg = try write(makeJPEG(width: 640, height: 480), named: "p3d.jpg")
+    defer { try? FileManager.default.removeItem(at: raw); try? FileManager.default.removeItem(at: jpeg) }
+    #expect(try PreviewSource.open(raw, isRaw: true).loupeLongEdge == 1600)
+    #expect(try PreviewSource.open(jpeg, isRaw: false).loupeLongEdge == 640)
+}

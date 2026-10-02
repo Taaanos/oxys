@@ -71,6 +71,18 @@ public final class LoupeGPU: @unchecked Sendable {
         ])
     }
 
+    private lazy var wakeBuffer: (any MTLBuffer)? = device.makeBuffer(length: 16, options: .storageModePrivate)
+
+    /// Submits a tiny command so the GPU leaves its idle state while the CPU decodes (P-03): the first command after
+    /// a pause waits for the GPU to clock up, and the screen-size frame's upload would be that command. Does nothing
+    /// useful for the picture; call it when a key press makes a load certain.
+    public func wake() {
+        guard let wakeBuffer, let buffer = queue.makeCommandBuffer(), let blit = buffer.makeBlitCommandEncoder() else { return }
+        blit.fill(buffer: wakeBuffer, range: 0..<16, value: 0)
+        blit.endEncoding()
+        buffer.commit()
+    }
+
     /// Uploads `image` with a full mip chain. The pixels are drawn into a BGRA context in the image's own color
     /// space, so their values are untouched and the layer's color space is what gives them meaning.
     /// Returns nil when the image is empty or larger than the GPU allows.
@@ -126,7 +138,11 @@ public final class LoupeGPU: @unchecked Sendable {
     /// Throws `CancellationError` when the task was cancelled after the decode and before the copy was queued;
     /// after that the copy finishes first, so the buffer is never freed under the GPU. Nil when the image is
     /// empty, larger than the GPU allows, or could not be drawn.
+    ///
+    /// `mipmapped: false` (P-03) is for the screen-size frame: it is drawn at about 1:1, so a mip chain would cost
+    /// GPU time and a third more memory for nothing. The cost it reports is level 0 only.
     public func prepare<Analysis: Sendable>(_ image: CGImage, orientation: CGImagePropertyOrientation,
+                                            mipmapped: Bool = true,
                                             analyzing analyze: @escaping @Sendable (StagedPixels) -> Analysis)
         async throws -> (image: PreparedImage, analysis: Analysis)? {
         let width = image.width, height = image.height
@@ -146,7 +162,7 @@ public final class LoupeGPU: @unchecked Sendable {
         try Task.checkCancellation()
 
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: Self.pixelFormat, width: width,
-                                                                  height: height, mipmapped: true)
+                                                                  height: height, mipmapped: mipmapped)
         descriptor.usage = .shaderRead
         descriptor.storageMode = .shared
         guard let texture = device.makeTexture(descriptor: descriptor),
@@ -163,7 +179,7 @@ public final class LoupeGPU: @unchecked Sendable {
         blit.copy(from: staging, sourceOffset: 0, sourceBytesPerRow: bytesPerRow, sourceBytesPerImage: bytesPerRow * height,
                   sourceSize: MTLSize(width: width, height: height, depth: 1), to: texture, destinationSlice: 0,
                   destinationLevel: 0, destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
-        blit.generateMipmaps(for: texture)
+        if mipmapped { blit.generateMipmaps(for: texture) }
         blit.endEncoding()
 
         let staged = StagedPixels(image: view)
@@ -172,7 +188,7 @@ public final class LoupeGPU: @unchecked Sendable {
         let result = await analysis
         let size = orientation.swapsAxes ? CGSize(width: height, height: width) : CGSize(width: width, height: height)
         return (PreparedImage(texture: texture, orientation: orientation, colorSpace: colorSpace, displaySize: size,
-                              byteCost: width * height * 4 * 4 / 3), result)
+                              byteCost: mipmapped ? width * height * 4 * 4 / 3 : width * height * 4), result)
     }
 
     /// Renders `image` (upright, extent from the origin) straight into a mipmapped texture at its own pixel size,
