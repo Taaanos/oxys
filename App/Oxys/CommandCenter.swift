@@ -139,7 +139,7 @@ final class CommandCenter {
 
     private func route(_ event: NSEvent) -> Bool {
         // Panels (Open, alerts) own their keys; so does anything while the window is not key.
-        guard let window = event.window, window.isKeyWindow, !(window is NSPanel),
+        guard let window = event.window, window.isKeyWindow, !(window is NSPanel), window.sheetParent == nil,
               let input = KeyInput(event: event, layout: KeyLayout.asciiCapable())
         else { return false }
         let focus: KeyFocus = if let tv = window.firstResponder as? NSTextView, tv.isEditable || tv.isFieldEditor {
