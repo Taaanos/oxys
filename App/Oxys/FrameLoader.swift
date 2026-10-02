@@ -34,12 +34,16 @@ nonisolated enum FrameLoader {
             try Task.checkCancellation()
             let decoded = try source.decodeLoupe(maxPixelSize: 8192)
             try Task.checkCancellation()
-            guard let gpu = LoupeGPU.shared, let prepared = gpu.prepare(decoded.image, orientation: decoded.orientation)
-            else { throw PreviewError.corrupt }
-            let size = decoded.sourceDisplaySize
-            let histogram = Perf.measure(.histogram) {
-                Histogram.compute(decoded.image, source: .preview)
+            // The histogram runs beside the upload instead of after it; both only read the decoded image.
+            nonisolated(unsafe) var histogram: Histogram?
+            let group = DispatchGroup()
+            DispatchQueue.global(qos: .userInitiated).async(group: group) {
+                histogram = Perf.measure(.histogram) { Histogram.compute(decoded.image, source: .preview) }
             }
+            let prepared = LoupeGPU.shared?.prepare(decoded.image, orientation: decoded.orientation)
+            group.wait()
+            guard let prepared else { throw PreviewError.corrupt }
+            let size = decoded.sourceDisplaySize
             storeThumbnail(from: source, key: key, into: thumbnails)
             return LoadedFrame(frame: LoupeFrame(image: prepared, width: size.width, height: size.height, histogram: histogram),
                                cost: prepared.byteCost)

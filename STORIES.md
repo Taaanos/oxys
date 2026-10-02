@@ -80,7 +80,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-23 | Cheat sheet and menu audit | M-05 and all MVP commands | done |
 | M-24 | Keyboard-only and accessibility pass | all MVP UI | built; VoiceOver and Full Keyboard Access not checked |
 | M-25 | MVP gate: interoperability and data safety | M-07 to M-11 | in progress (automated parts done; the Lightroom Classic, RawTherapee and ART matrix waits for you: `docs/m25-interop-matrix.md`) |
-| M-26 | MVP gate: performance | all MVP | todo |
+| M-26 | MVP gate: performance | all MVP | done (gate not met: 6 misses) |
 | **Phase 2** | **v1.0** | | |
 | V-01 | Maker notes: lens and AF point | M-16, F-03 | todo |
 | V-02 | Develop the RAW on demand | F-06, M-04, M-14 | todo |
@@ -1241,7 +1241,18 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - [ ] `docs/perf/mvp.md` lists each target with its measured value, pass or fail, and the fix for each miss.
 
 **Open questions**
-1. Slow media: see G-11.
+1. Slow media: see G-11. **Decided** as proposed, but not measured: no SD card or share was at hand. The numbers are reported for the SSD only.
+
+**Built**
+- `docs/perf/mvp.md`: every target with its measured value, pass or fail, and the fix for each miss.
+- `OXYS_PERF_LOG` (`Perf.record`, `PerfTool log`) and an in-app driver (`PerfBench`, `OXYS_BENCH=<scenario>`, `scripts/perf-bench.sh`, `make perf-bench`) that runs a scenario through the key commands and prints p50 and p95 per interval. It replaces Instruments for the gate.
+- Two fixes found by the gate: `FramePipeline(transientFactor:)` counts the working memory of loads in flight against the budget (peak 4.6 GB to 3.4 GB), and the histogram runs beside the texture upload (cold frame load p50 184 ms to 137 ms).
+
+**Result:** passes: launch, folder open, scan list, next image prefetched, no stale frame, Grid 60 fps, sidecar writes, idle CPU. **Misses (not fixed here):** next image cold (p95 232 ms on the 24 MP set), capture times for 5,000 files (3.7 s), cull feedback, overlay toggles and zoom (p95 above one frame), and memory (3.4 GB footprint against a 2 GB budget). Each has a fix proposal in the document; the memory and cold-load fixes need their own stories.
+
+**Checked**
+- Unit tests pass (Imaging 35, Diagnostics 11). Release build clean. `make sidecar-stress` passes.
+- **Not checked**: the slowest supported Mac (base M1, 8 GB), SD card, network share, real 1,000-frame shoots (the bench sets are clones of 14 files, so the OS cache is warmer than in real use).
 
 ---
 

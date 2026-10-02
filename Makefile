@@ -4,7 +4,7 @@ BUILD_DIR := build
 APP       := $(BUILD_DIR)/Build/Products/Release/Oxys.app
 PACKAGES  := $(sort $(dir $(wildcard Packages/*/Package.swift)))
 
-.PHONY: build test check-arch launch-time corpus manifest bench-folders perf-selftest perf-report sidecar-stress sidecar-gate ui-walk clean
+.PHONY: build test check-arch launch-time corpus manifest bench-folders perf-bench perf-selftest perf-report sidecar-stress sidecar-gate ui-walk clean
 
 build:
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release \
@@ -36,6 +36,10 @@ bench-folders: manifest
 
 # Latency table for a run: scripts/perf-record.sh <app> [seconds] records and prints it;
 # `make perf-report TRACE=build/traces/x.trace` prints it for an existing trace.
+# M-26: one in-app scenario, e.g. `make perf-bench SCENARIO=nav-cold FOLDER=TestData/bench/24mp-1000`.
+perf-bench: build
+	scripts/perf-bench.sh $(SCENARIO) $(FOLDER)
+
 perf-selftest:
 	scripts/perf-record.sh --selftest
 

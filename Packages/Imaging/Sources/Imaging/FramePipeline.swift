@@ -47,11 +47,20 @@ public actor FramePipeline<Frame: Sendable> {
     private let maxPrefetchConcurrency: Int
     /// Smoothed load time in seconds; drives the "reads are slow" widening.
     private var averageLoad: Double = 0
+    /// The budget the caller asked for. While frames load, each one needs working memory on top of its final
+    /// cost (the decoded image, the upload buffer), so the cache gives that much up: the budget bounds the
+    /// cache and the loads together, not the cache alone (M-26).
+    private var requestedBudget: Int
+    private let transientFactor: Double
+    private var lastCost = 0
 
     public static var slowLoadThreshold: Double { 0.15 }
 
-    public init(budget: Int, maxPrefetchConcurrency: Int = 2, load: @escaping Loader) {
+    /// `transientFactor`: working memory of one load, as a multiple of the finished frame's cost (0 = ignore).
+    public init(budget: Int, maxPrefetchConcurrency: Int = 2, transientFactor: Double = 0, load: @escaping Loader) {
         cache = ByteBudgetCache(budget: budget)
+        requestedBudget = budget
+        self.transientFactor = transientFactor
         self.maxPrefetchConcurrency = maxPrefetchConcurrency
         self.load = load
     }
@@ -59,7 +68,17 @@ public actor FramePipeline<Frame: Sendable> {
     public var isSlow: Bool { averageLoad > Self.slowLoadThreshold }
     public var cachedBytes: Int { cache.totalCost }
 
-    public func setBudget(_ bytes: Int) { cache.budget = bytes }
+    public func setBudget(_ bytes: Int) {
+        requestedBudget = bytes
+        applyBudget()
+    }
+
+    /// The cache's share of the budget right now: what was asked for, less the working memory of the loads in
+    /// flight, but never under half of it.
+    private func applyBudget() {
+        let reserve = Int(Double(inflight.count * lastCost) * transientFactor)
+        cache.budget = max(requestedBudget - reserve, requestedBudget / 2)
+    }
 
     public func isCached(_ key: FrameKey) -> Bool { cache.contains(key) }
 
@@ -72,6 +91,7 @@ public actor FramePipeline<Frame: Sendable> {
             entry.task.cancel()
             inflight[key] = nil
         }
+        applyBudget()
         prefetchDriver?.cancel()
         prefetchDriver = nil
 
@@ -115,6 +135,7 @@ public actor FramePipeline<Frame: Sendable> {
         nextID += 1
         let id = nextID
         inflight[key] = Inflight(id: id, task: task)
+        applyBudget()
         // Files the result in the cache when it lands, independent of whoever is waiting for it.
         Task {
             let result = await task.value
@@ -129,6 +150,8 @@ public actor FramePipeline<Frame: Sendable> {
         guard inflight[key]?.id == id else { return }
         inflight[key] = nil
         if case .success(let loaded) = result {
+            lastCost = loaded.cost
+            applyBudget()
             cache.insert(loaded.frame, cost: loaded.cost, for: key)
             let seconds = started.duration(to: .now).seconds
             averageLoad = averageLoad == 0 ? seconds : averageLoad * 0.7 + seconds * 0.3

@@ -142,6 +142,22 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         wantedRange = 0..<0
     }
 
+    // MARK: bench (M-26)
+
+    func scrollToTop() {
+        guard let scrollView else { return }
+        scrollView.contentView.scroll(to: .zero)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
+    /// Scrolls to the bottom at a constant speed, one step per display-link tick, and reports the time between
+    /// ticks in milliseconds: a tick that comes late is a frame that was dropped.
+    func scrollWithDisplayLink(pointsPerSecond: CGFloat, interval report: @escaping @MainActor (Double) -> Void) async {
+        guard let scrollView else { return }
+        let driver = GridScroller(scrollView: scrollView, speed: pointsPerSecond, report: report)
+        await driver.run()
+    }
+
     // MARK: geometry
 
     private var size: CGFloat { GridGeometry.itemSizes[step] }
@@ -527,5 +543,49 @@ private extension ColorLabel {
         case .blue: .systemBlue
         case .purple: .systemPurple
         }
+    }
+}
+
+/// Drives `GridController.scrollWithDisplayLink`.
+@MainActor
+private final class GridScroller: NSObject {
+    private let scrollView: NSScrollView
+    private let speed: CGFloat
+    private let report: @MainActor (Double) -> Void
+    private var link: CADisplayLink?
+    private var last: CFTimeInterval?
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    init(scrollView: NSScrollView, speed: CGFloat, report: @escaping @MainActor (Double) -> Void) {
+        self.scrollView = scrollView
+        self.speed = speed
+        self.report = report
+    }
+
+    func run() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            self.continuation = continuation
+            link = scrollView.displayLink(target: self, selector: #selector(tick(_:)))
+            link?.add(to: .main, forMode: .common)
+        }
+    }
+
+    @objc private func tick(_ link: CADisplayLink) {
+        let clip = scrollView.contentView
+        let maxY = (scrollView.documentView?.frame.height ?? 0) - clip.bounds.height
+        if let last {
+            report((link.timestamp - last) * 1000)
+            let y = clip.bounds.origin.y + speed * CGFloat(link.timestamp - last)
+            if y >= maxY {
+                link.invalidate()
+                self.link = nil
+                continuation?.resume()
+                continuation = nil
+                return
+            }
+            clip.scroll(to: NSPoint(x: 0, y: y))
+            scrollView.reflectScrolledClipView(clip)
+        }
+        last = link.timestamp
     }
 }

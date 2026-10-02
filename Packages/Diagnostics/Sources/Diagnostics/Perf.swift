@@ -1,4 +1,6 @@
+import Foundation
 import os
+import Synchronization
 
 /// The performance-critical intervals, defined once so the app, the packages and the report tool agree on names.
 /// Each one shows up in Instruments' os_signpost track under `Perf.subsystem` / `Perf.category`.
@@ -64,21 +66,54 @@ public enum Perf {
     public struct Token: Sendable {
         let interval: PerfInterval
         let state: OSSignpostIntervalState
+        let start: UInt64
     }
 
     public static func begin(_ interval: PerfInterval) -> Token {
         Token(interval: interval,
-              state: signposter.beginInterval(interval.signpostName, id: signposter.makeSignpostID()))
+              state: signposter.beginInterval(interval.signpostName, id: signposter.makeSignpostID()),
+              start: DispatchTime.now().uptimeNanoseconds)
     }
 
     public static func end(_ token: Token) {
         signposter.endInterval(token.interval.signpostName, token.state)
+        if logFile.isOn {
+            record(token.interval.rawValue, Double(DispatchTime.now().uptimeNanoseconds - token.start) / 1_000_000)
+        }
     }
+
+    /// Appends `name<TAB>value` to the file named by `OXYS_PERF_LOG` (M-26), so a run can be measured without
+    /// Instruments. Intervals are written in milliseconds as they end; the bench adds its own metrics, whose
+    /// names carry their unit (`rss-mb`). Does nothing when the variable is not set.
+    public static func record(_ name: String, _ value: Double) {
+        logFile.append("\(name)\t\(value)\n")
+    }
+
+    private static let logFile = LogFile(path: ProcessInfo.processInfo.environment["OXYS_PERF_LOG"])
 
     /// Runs `body` inside an interval.
     public static func measure<T>(_ interval: PerfInterval, _ body: () throws -> T) rethrows -> T {
         let token = begin(interval)
         defer { end(token) }
         return try body()
+    }
+}
+
+private final class LogFile: Sendable {
+    private let handle: Mutex<FileHandle?>
+    let isOn: Bool
+
+    init(path: String?) {
+        var opened: FileHandle?
+        if let path {
+            FileManager.default.createFile(atPath: path, contents: nil)
+            opened = FileHandle(forWritingAtPath: path)
+        }
+        handle = Mutex(opened)
+        isOn = opened != nil
+    }
+
+    func append(_ line: String) {
+        handle.withLock { try? $0?.write(contentsOf: Data(line.utf8)) }
     }
 }

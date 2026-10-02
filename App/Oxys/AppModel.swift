@@ -238,7 +238,9 @@ final class AppModel {
             MainActor.assumeIsolated { folder.flushSidecarWrites() }
         }
         // Developer hook, like OXYS_REPORT_LAUNCH: open a folder at launch for scripted checks.
-        if let path = ProcessInfo.processInfo.environment["OXYS_OPEN"] { open(URL(fileURLWithPath: path)) }
+        if let path = ProcessInfo.processInfo.environment["OXYS_OPEN"] {
+            if PerfBench.scenario != nil { PerfBench.start(model: self, folder: URL(fileURLWithPath: path)) } else { open(URL(fileURLWithPath: path)) }
+        }
     }
 
     // MARK: filter and sort (M-20)

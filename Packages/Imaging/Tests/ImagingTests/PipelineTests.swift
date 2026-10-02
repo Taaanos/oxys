@@ -197,3 +197,15 @@ private func solidImage(_ width: Int, _ height: Int) -> CGImage {
     #expect(!cache.directory.path.hasPrefix(photos.path))
     #expect(DiskThumbnailCache.standardDirectory(bundleID: "dev.oxys.Oxys").path.contains("/Library/Caches/dev.oxys.Oxys/"))
 }
+
+@Test func loadsInFlightTakeTheirWorkingMemoryOutOfTheCache() async throws {
+    // Budget 100, frames cost 20, a load needs 2x its cost while it runs: with 3 loads at once the cache
+    // may hold 100 - 3 * 40 -> floored at 50. Once the loads end the cache stays within the full 100.
+    let pipeline = FramePipeline<Int>(budget: 100, transientFactor: 2) { key in
+        try await Task.sleep(for: .milliseconds(20))
+        return LoadedFrame(frame: number(key), cost: 20)
+    }
+    for n in 0..<30 { _ = try await pipeline.frame(for: key(n), prefetch: [key(n + 1), key(n + 2)]) }
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(await pipeline.cachedBytes <= 100)
+}

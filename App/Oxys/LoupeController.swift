@@ -151,7 +151,8 @@ final class LoupeController {
 
     init() {
         let thumbnails = thumbnails
-        pipeline = FramePipeline(budget: Self.memoryBudget) { key in try FrameLoader.load(key, thumbnails: thumbnails) }
+        // One load holds the decoded image and the upload buffer beside the texture: about 2.5 times its cost.
+        pipeline = FramePipeline(budget: Self.memoryBudget, transientFactor: 2.5) { key in try FrameLoader.load(key, thumbnails: thumbnails) }
         budgetObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.applyBudget() }

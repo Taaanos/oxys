@@ -1,6 +1,7 @@
 // F-02 tool.
 //   PerfTool selftest              emit synthetic intervals (to check the recording pipeline end to end)
 //   PerfTool report <file.trace>   print p50/p95/max per interval from an Instruments trace
+//   PerfTool log <file>            the same table from an OXYS_PERF_LOG file (M-26)
 import Diagnostics
 import Foundation
 
@@ -32,7 +33,23 @@ case "report" where args.count == 2:
         FileHandle.standardError.write(Data("report failed: \(error)\n".utf8))
         exit(1)
     }
+case "log" where args.count == 2:
+    guard let text = try? String(contentsOfFile: args[1], encoding: .utf8) else {
+        FileHandle.standardError.write(Data("cannot read \(args[1])\n".utf8))
+        exit(1)
+    }
+    var byName: [String: [Double]] = [:]
+    var order: [String] = []
+    for line in text.split(separator: "\n") {
+        let parts = line.split(separator: "\t")
+        guard parts.count == 2, let value = Double(parts[1]) else { continue }
+        let name = String(parts[0])
+        if byName[name] == nil { order.append(name) }
+        byName[name, default: []].append(value)
+    }
+    let rows = order.compactMap { n in LatencyStats(samples: byName[n] ?? []).map { (name: n, stats: $0) } }
+    print(LatencyTable.render(rows))
 default:
-    FileHandle.standardError.write(Data("usage: PerfTool selftest | report <file.trace>\n".utf8))
+    FileHandle.standardError.write(Data("usage: PerfTool selftest | report <file.trace> | log <file>\n".utf8))
     exit(2)
 }
