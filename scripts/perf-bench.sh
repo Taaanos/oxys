@@ -3,12 +3,16 @@
 # Usage: scripts/perf-bench.sh <scenario> <folder> [path/to/Oxys.app]
 # Scenarios that write sidecars (cull, compare) run on an APFS clone, so the bench folders stay clean.
 # Environment: BENCH_CLEAR_THUMBS=1 empties the disk thumbnail cache first (a cold first run).
+#   BENCH_LOG=<file>          write the run's numbers there (the gate, scripts/perf-gate.sh, sets it); the frame log goes to <file>.frames
+#   BENCH_QUIET=1             do not print the table
+#   OXYS_BENCH_DELAY_MS=<n>   every frame load waits n ms first, as slow media would (P-01)
 set -eu
 cd "$(dirname "$0")/.."
 scenario=${1:?scenario}; folder=${2:?folder}
 APP=${3:-build/Build/Products/Release/Oxys.app}
-log=build/traces/bench-$scenario-$(date +%H%M%S).tsv
-mkdir -p build/traces
+log=${BENCH_LOG:-build/traces/bench-$scenario-$(date +%H%M%S).tsv}
+case $log in /*) ;; *) log=$PWD/$log ;; esac
+mkdir -p "$(dirname "$log")"
 work=$(cd "$folder" && pwd)
 if [ "$scenario" = cull ] || [ "$scenario" = compare ]; then
   work=$(mktemp -d)/clone
@@ -19,9 +23,12 @@ if [ "${BENCH_CLEAR_THUMBS:-}" = 1 ]; then
 fi
 (cd Packages/Diagnostics && swift build -c release >/dev/null)
 pkill -x Oxys 2>/dev/null || true
-open -n -W --env OXYS_BENCH="$scenario" --env OXYS_OPEN="$work" --env OXYS_PERF_LOG="$PWD/$log" \
-  --env OXYS_FRAME_LOG="$PWD/$log.frames" "$APP"
+delay=()
+[ -z "${OXYS_BENCH_DELAY_MS:-}" ] || delay=(--env OXYS_BENCH_DELAY_MS="$OXYS_BENCH_DELAY_MS")
+open -n -W --env OXYS_BENCH="$scenario" --env OXYS_OPEN="$work" --env OXYS_PERF_LOG="$log" \
+  --env OXYS_FRAME_LOG="$log.frames" "${delay[@]}" "$APP"
 { [ "$scenario" != cull ] && [ "$scenario" != compare ]; } || rm -rf "$(dirname "$work")"
+grep -q '^done' "$log" || { echo "WARNING: $scenario run did not finish ($log)" >&2; [ -z "${BENCH_QUIET:-}" ] || exit 1; }
+[ -z "${BENCH_QUIET:-}" ] || exit 0
 echo "== $scenario on $(basename "$folder") ($log)"
-grep -q '^done' "$log" || echo "WARNING: run did not finish"
 Packages/Diagnostics/.build/release/PerfTool log "$log"

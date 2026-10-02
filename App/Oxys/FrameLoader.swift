@@ -28,9 +28,24 @@ nonisolated enum FrameLoader {
         FrameKey(url: photo.shownURL, fileSize: photo.shownFileSize, modified: photo.shownModificationDate, isRaw: photo.showsRaw)
     }
 
+    /// Developer hook for slow media (G-11, P-01): `OXYS_BENCH_DELAY_MS=<n>` makes every frame load wait n ms before
+    /// it reads, as an SD card or a network share would. The wait is cut into steps, so a cancelled load stops at once.
+    private static let readDelay: Int = Int(ProcessInfo.processInfo.environment["OXYS_BENCH_DELAY_MS"] ?? "") ?? 0
+
+    private static func simulateSlowRead() throws {
+        var left = readDelay
+        while left > 0 {
+            try Task.checkCancellation()
+            let step = min(left, 5)
+            usleep(UInt32(step) * 1000)
+            left -= step
+        }
+    }
+
     static func load(_ key: FrameKey, thumbnails: DiskThumbnailCache) throws -> LoadedFrame<LoupeFrame> {
         do {
             try Task.checkCancellation()
+            try simulateSlowRead()
             let source = try PreviewSource.open(key.url, isRaw: key.isRaw)
             try Task.checkCancellation()
             let decoded = try source.decodeLoupe(maxPixelSize: 8192)

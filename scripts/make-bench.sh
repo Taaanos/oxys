@@ -4,6 +4,7 @@
 #   hires-1000    1,000 files from sources at 40 MP or more
 #   scan-5000     5,000 files, mixed: folder-scan tests
 #   grid-10000    10,000 files, mixed: Grid scrolling
+# Folders named real-* hold a real shoot (all different files; P-01). They are never touched here, only counted.
 # Clones of one file share their bytes, so these folders suit scan and Grid tests but NOT next-image timings:
 # the OS file cache makes repeated bytes look faster than a real shoot (use real shoots there, see STORIES F-02).
 # Needs TestData/manifest.json (make manifest) and jq. Safe to re-run: existing folders are rebuilt.
@@ -38,3 +39,14 @@ fill $out/24mp-1000   1000  "${mid[@]}"
 fill $out/hires-1000  1000  "${big[@]}"
 fill $out/scan-5000   5000  "${all[@]}"
 fill $out/grid-10000  10000 "${all[@]}"
+
+# P-01: real shoots (real-* folders) are the user's own files, never made here; report which are present.
+shopt -s nullglob
+real=($out/real-*/)
+if (( ${#real[@]} )); then
+  for dir in "${real[@]}"; do
+    echo "${dir%/}: $(find "$dir" -type f | wc -l | tr -d ' ') files, $(du -sh "$dir" | cut -f1) (real shoot, kept)"
+  done
+else
+  echo "no real shoot in $out/real-*: clone your own files there (cp -c, no extra disk), see STORIES P-01"
+fi

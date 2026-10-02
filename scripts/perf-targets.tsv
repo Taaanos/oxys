@@ -1,0 +1,26 @@
+# P-01: the PRD performance targets as limits a run can be held to. `make perf-gate` reads this file.
+# Columns, separated by TABs: scenario, interval (a name in the run log), statistic (p50 p95 max peak), limit, PRD row, folder.
+#   A scenario with a folder runs once per folder: "open" without one is the folder under test, "open" with scan-5000 the scan test.
+#   A value passes when it is at or under the limit. The gate value is the median of the scenario's runs.
+#   limit "-" : the row is printed but cannot fail.   folder (optional): a bench folder name; else the folder under test.
+#   scenario "launch": scripts/launch-time.sh, not an in-app scenario. A "-slow" scenario is its base scenario with a loader delay of 200 ms (G-11).
+#   Display-frame rows use 16.7 ms, one refresh at 60 Hz; P-05 decides what counts as "within one frame" for a key that arrives mid-frame.
+launch	launch-to-first-draw	max	1000	Launch to empty window, under 1 s
+open	folder-open-to-first-image	max	300	Folder open to first image, under 300 ms
+open	folder-scan	max	3000	Folder scan, 5,000 files: the list	scan-5000
+open	capture-times	max	3000	Folder scan, 5,000 files with capture times, under 3 s	scan-5000
+nav-prefetched	key-to-frame	p95	50	Next image, prefetched, p95 under 50 ms
+nav-cold	key-to-frame	p95	100	Next image, cold, p95 under 100 ms
+nav-held	stale-frames	max	0	No stale frame under held key
+nav-held	frames-logged	max	-	Frames shown during the held key (reported: a stale count is only meaningful with frames)
+nav-held-slow	frames-logged	max	-	Frames shown during the held key, 200 ms loader delay (reported)
+nav-held-slow	stale-frames	max	0	No stale frame under held key, 200 ms loader delay (P-01)
+cull	cull-feedback	p95	16.7	Cull key to feedback, within 16 ms
+cull	sidecar-write	p95	-	Sidecar write never blocks input (reported; make sidecar-stress gates it)
+overlays	info.histogram	p95	16.7	Overlay toggles, within one display frame
+overlays	info.cycle	p95	16.7	Overlay toggles, within one display frame
+zoom	zoom	p95	16.7	Zoom to 1:1, within one display frame
+grid	grid-frame-ms	max	25	Grid scrolling, 60 fps with 10,000 files (a frame over 1.5 refreshes is dropped)	grid-10000
+scrub	footprint-peak-mb	peak	2048	Memory, prefetch cache within its 2 GB budget (process footprint)
+idle	idle-cpu-percent-loupe	max	0.5	Idle, 0% CPU in Loupe (P-09 tightens the limit to 0)
+idle	idle-cpu-percent-grid	max	0.5	Idle, 0% CPU in Grid (P-09 tightens the limit to 0)

@@ -5,7 +5,7 @@ Derived from [PRD.md](PRD.md) (Sep 30, 2026). "Oxys" is a working name taken fro
 ## How to use this document
 
 - Stories are listed in the suggested build order. Each one is a thin increment you can run and check before moving on.
-- IDs: `F-` foundation and spikes, `M-` MVP, `V-` v1.0, `B-` / `L-` backlog (v1.x / Later).
+- IDs: `F-` foundation and spikes, `M-` MVP, `V-` v1.0, `P-` performance (Phase 2b, before the v1.0 gate), `B-` / `L-` backlog (v1.x / Later).
 - Open questions are numbered per story, so we can refer to them as `M-08/Q1`. Every question has a *Proposed* default, so an unanswered question never blocks work: we build the default and revisit later. When one is settled, change *Proposed* to **Decided** where it stands.
 - Questions that touch many stories live in [Cross-cutting open questions](#cross-cutting-open-questions); stories link to them as `G-n`.
 - Status lives in the [Story index](#story-index): `todo`, `in progress`, `done`, `parked`.
@@ -99,7 +99,19 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-15 | Session resume | M-20 | todo |
 | V-16 | Interop guidance | M-22, F-04 | todo |
 | V-17 | Distribution | G-2 | todo |
-| V-18 | v1.0 gate | all v1.0 | todo |
+| V-18 | v1.0 gate | all v1.0, P-11 | todo |
+| **Phase 2b** | **Performance** (build before V-18) | | |
+| P-01 | Performance gate tool and a real shoot | M-26 | done (criterion 1 not met: the M-26 table does not reproduce; cold rows run warm, no `purge`) |
+| P-02 | Decode once, into GPU memory | P-01 | todo |
+| P-03 | Screen-size frame first (cold next image) | P-02 | todo |
+| P-04 | One memory budget | P-02 | todo |
+| P-05 | Keys within one display frame while frames load | P-01 | todo |
+| P-06 | Overlay toggles without new allocations | P-01 | todo |
+| P-07 | Capture times in under 3 s | P-01 | todo |
+| P-08 | Grid first pass without dropped frames | P-01 | todo |
+| P-09 | Zero idle CPU in Loupe | P-01 | todo |
+| P-10 | RAW develop and extraction on real files | P-01 | todo |
+| P-11 | Performance gate | P-02 to P-10 | todo |
 
 ### Dependency map (foundations and MVP)
 
@@ -148,7 +160,7 @@ These are questions, plus gaps I found in the PRD while splitting it, that affec
 | --- | --- | --- | --- |
 | G-1 | Is "Oxys" the product name? It sets the bundle ID, the Application Support folder and the Homebrew cask name. | **Decided:** product name Oxys, bundle ID `dev.oxys.Oxys` as a placeholder. Set the real ID (with the GitHub org) before V-17; changing it later resets users' settings and cache. | F-01, V-17 |
 | G-2 | License (deferred in the PRD). It decides whether LibRaw or GPL code is usable, and it has to be settled before the first third-party code lands. F-06 found LibRaw is not needed for v1.0. | Decide right after F-03 and F-06, since those two spikes show which libraries we need. | F-03, V-04, V-17 |
-| G-3 | What is the slowest supported Mac? Every performance target is measured on it. | Base M1 with 8 GB of RAM. That also questions the 2 GB default prefetch budget. | F-02, M-04, M-26 |
+| G-3 | What is the slowest supported Mac? Every performance target is measured on it. | **Decided:** the reference Mac is the development Mac (Apple M4, 24 GB, internal SSD). No other Mac is available, so every target is measured on it. The PRD's "slowest supported Mac" stays unmeasured, and the v1.0 gate (V-18, P-11) says so. | F-02, M-04, M-26, P-01, P-11 |
 | G-4 | Scan subfolders? Cards use `DCIM/100XXXXX/`. | Not recursive in the MVP; show a hint when the folder holds no photos but its subfolders do. | M-01 |
 | G-5 | In Grid with several photos selected, do cull keys apply to all of them or only to the active one? | All selected in Grid (as in Lightroom's Grid), only the active photo in Loupe and Compare. One undo step for the group. | M-06, M-09, M-19 |
 | G-6 | When a decision makes the current photo leave the active filter (you press `2` while showing ≥3 stars), does it disappear at once? | It stays until you move away, so the view never jumps under your fingers. | M-06, M-20 |
@@ -156,7 +168,7 @@ These are questions, plus gaps I found in the PRD while splitting it, that affec
 | G-8 | Lightroom Classic writes metadata inside DNG, JPEG and TIFF files rather than in sidecars, so it will likely ignore our sidecars for DNG and TIFF too, not only JPEG as the PRD says. DNG is in the supported set. | Verify in F-04; read embedded ratings as a fallback (M-07/Q3); explain it in the app (V-16). | F-04, M-07, V-16 |
 | G-9 | An atomic rename needs the temporary file on the same volume, so for a moment it sits in the photo folder under a hidden name. That is the one exception to "nothing but sidecars in the photographer's folders". | Accept it; clean up leftover temp files from a crash when the folder is next opened. | M-08 |
 | G-10 | Who runs the manual interoperability tests, and on which machine with a Lightroom Classic license? | **Decided:** you run the GUI steps from a checklist I write; I analyze the files they produce. No Lightroom license is available during the spikes (only RawTherapee and ART), so Lightroom Classic is tested later with users, against the real app, in M-25. | F-04, M-25 |
-| G-11 | Do the performance targets apply on SD cards and network shares too? | The targets apply on the SSD. On SD and SMB the "never a stale frame" rule must still hold, and latencies are reported but don't gate the release. | M-26 |
+| G-11 | Do the performance targets apply on SD cards and network shares too? | **Decided:** the targets apply on the internal SSD only. No SD card or SMB share is available. The request tokens that prevent stale frames are the only protection on slow media; P-01 checks them with a delay injected into the loader, not on real media. | M-26, P-01 |
 | G-12 | Auto-repeat on cull keys: holding `⇧3` would rate and advance through many frames. | Cull keys and overlay toggles ignore auto-repeat; only navigation, zoom and pan repeat. | F-05, M-06 |
 | G-13 | `Esc` means both "return focus to the image" (from a text field) and "go to Grid". | First `Esc` leaves the text field or closes the popover or cheat sheet; the next `Esc` goes to Grid. | M-05, M-13 |
 
@@ -1781,17 +1793,237 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 
 ### V-18 · v1.0 gate
 
-**Depends on:** all v1.0
+**Depends on:** all v1.0, P-11
 
 > As the team, we ship v1.0 only when every "Done when" holds and the success metrics are met.
 
 **Scope**
 - A checklist of every "Done when" in the PRD's Core features.
+- The P-11 report is the performance part of this gate. It is measured on the reference Mac only (G-3, G-11).
 - The success metrics: benchmark cull speed (timed sessions against the photographer's current tool), keyboard-only completion (100%), all performance targets including RAW decode, the interop matrix, data safety, learnability (5 new users) and trust in checks (20 images against FastRawViewer or RawTherapee).
 
 **Open questions**
 1. Who are the five learnability testers and the benchmark photographers? *Proposed:* you recruit them; I prepare the scripts and the timing sheet.
 2. What tolerance counts as agreement in "trust in checks"? *Proposed:* clipped percentages within 0.5 percentage points, histogram shapes matching visually, peaking judged side by side.
+
+---
+
+## Phase 2b: Performance
+
+**Gate to leave the phase:** every PRD performance target passes on the reference Mac (G-3), or has a recorded decision (P-11). V-18 depends on it.
+
+M-26 missed 6 targets, and V-02 to V-13 left more performance items open. These stories collect them. The targets are the PRD's. Every story measures with `make perf-gate` (P-01) on `24mp-1000`, `hires-1000` and the real set (`real-drone-840`), before and after the change, and writes both numbers in its result.
+
+The code changes the M-26 diagnosis in two places, found while planning this phase:
+- The texture upload does not run on the main thread (`FrameLoader.load` is nonisolated). But `LoupeGPU.prepare` blocks a cooperative-pool thread with `waitUntilCompleted()`, and the histogram blocks one with `group.wait()`.
+- One `MTLCommandQueue` (`LoupeGPU.queue`) carries the upload blits, the mip chains, the Core Image RAW renders, the overlay analysis and the present pass. A present can wait behind a prefetch. This explains "slow samples coincide with a frame load" better than the main thread does.
+
+### P-01 · Performance gate tool and a real shoot
+
+**Depends on:** M-26
+
+> As the team, I want one command that runs every performance scenario and compares it with the PRD targets, on a real shoot, so that each fix is measured the same way and a regression shows at once.
+
+**Scope**
+- A real set: 840 different 48.8 MP DJI DNG files (the owner's drone shoot, about 98 MB each, 77 GB) in `TestData/bench/real-drone-840`, APFS clones (`cp -c`, no extra disk) of the owner's folder with the DNGs only, so the app never writes sidecars into the original. Git-ignored. `make bench-folders` lists every `real-*` folder with its file count and size; it does not make them. This replaces the planned 1,000 files of 33 MP ARW: no ARW shoot was at hand, so the 24 to 33 MP class stays on the clone sets. The DNGs' embedded previews are only 960×720, so this set is a light test for decode, upload and memory (P-02 to P-04 are judged on `24mp-1000`); it is a good test for RAW develop (P-10), Grid and folder scans.
+- `scripts/perf-targets.tsv`: scenario, interval, statistic (p50, p95, max, peak), limit, PRD row. `make perf-gate [FOLDER=…]` runs the scenarios, prints a table with pass or fail, and exits non-zero on a fail.
+- Cold runs: the script stops and asks you to run `sudo purge` before each cold scenario.
+- A loader delay (`OXYS_BENCH_DELAY_MS`) that makes every read slow, to check "no stale frame" as on slow media (G-11).
+- Correct `docs/perf/mvp.md`: `24mp-1000` holds clones of about 5 files and `hires-1000` clones of one file (the 48.8 MP DJI DNG), not 14; the upload is not on the main thread; one GPU queue. Complete the scenario list in the `PerfBench.swift` header (7 scenarios are missing).
+- An Instruments trace of `cull` with the thread and GPU tracks, to confirm the one-queue diagnosis before P-05.
+
+**Acceptance criteria**
+- [ ] `make perf-gate` reproduces the M-26 table (the same passes and fails) on `24mp-1000`.
+- [ ] The gate runs on `real-drone-840`, and its numbers are in `docs/perf/mvp.md` as the new baseline.
+- [ ] 0 stale frames under held key with a 200 ms loader delay.
+
+**Open questions**
+1. Which statistic gates "within one display frame"? *Proposed:* the frame is presented no later than the second display refresh after the key event (the first is not possible for an event that arrives mid-frame). Report the number of refreshes, not milliseconds.
+2. Run-to-run noise? *Proposed:* no tolerance in the limits; run each scenario 3 times and gate on the median run.
+
+**Decisions and checks**
+- Built: `scripts/perf-targets.tsv` (limits), `scripts/perf-gate.sh` and `make perf-gate FOLDER=…`, `PerfTool gate` (logic in `Packages/Diagnostics/PerfGate.swift`, 7 new tests), `OXYS_BENCH_DELAY_MS` (in `FrameLoader`, cut into 5 ms steps so a cancel still stops at once), `make bench-folders` listing the `real-*` folders. `docs/perf/mvp.md` is corrected and holds the new baseline.
+- Q1 **Decided, changed from the proposal:** the gate keeps the M-26 limits in ms (16.7 ms for one display frame) and does not report refreshes yet. Switching to "the second refresh" now would have turned the overlay and cull rows into passes with no change to the app. P-05 decides the rule where it matters.
+- Q2 **Decided as proposed:** 3 runs per scenario, the gate value is the median run, no tolerance.
+- Real set: you gave `/Users/thanos/Pictures/KG/drone` (840 DNGs, DJI FC8482, 8064×6048). It is cloned with `cp -c` into `TestData/bench/real-drone-840` with no sidecars, so the original folder is never opened by the app. Its embedded previews are 960×720 (see Scope).
+- Cold runs: the script stops and asks for `sudo purge` before each cold run, or `PERF_GATE_WARM=1` skips it. The baseline was run with `PERF_GATE_WARM=1` because `purge` needs your password: **re-run `open` and `nav-cold` after `purge` for the cold numbers.**
+- Instruments (Metal System Trace, `cull`, 45 s): a present waited behind a background command buffer 5 times in 1,176 (p95 7.5 ms), so the one-queue diagnosis **is not confirmed** for `cull`. The main thread is late (a 10 ms timer, p95 14 ms), cause unknown. P-05 starts from a Time Profiler run, not from the queue. Details in `docs/perf/mvp.md`.
+- Criterion 1 **not met:** the gate does not reproduce the M-26 table on three rows (prefetched next image 63 ms against 45, Grid worst frame, memory peak 5.6 GB against 3.4 GB). The M-26 build, built and run again today with the same gate, shows the same drift (prefetched 57 to 148 ms, memory 4.3 to 4.6 GB), so it is the Mac's state or noise, not a code change. The other rows match. You decide: accept today's baseline as the reference (my proposal), or look for what changed on the Mac.
+- Criterion 2 met: the gate ran on `real-drone-840` (3 runs, no failed run) and the numbers are in `docs/perf/mvp.md`.
+- Criterion 3 met: 0 stale frames of 404 (`24mp-1000`) and 401 (`real-drone-840`) frames in 3 runs each, with a 200 ms loader delay. The load time was p50 326 ms; a held key shows only the photo under the cursor.
+- Not done: the gate is not run on `hires-1000` (it is one file cloned; the real set replaces it), and not on the slowest Mac or on slow media (G-3, G-11).
+
+### P-02 · Decode once, into GPU memory
+
+**Depends on:** P-01
+
+> As a photographer, I want each frame to load with one copy of its pixels, so that memory stays inside the budget and a load does not block other work.
+
+**Scope**
+- Today a frame has 3 full-size copies while it loads: ImageIO decodes with `ShouldCacheImmediately` (`PreviewSource.decodeLoupe`), `CGContext.draw` copies into a new staging buffer, and a blit copies into a new mipmapped texture. Decode the preview straight into the shared upload buffer (draw the not-yet-decoded `CGImage` into the context), or make level 0 of the texture from that buffer. Goal: one full-size copy plus the texture.
+- No blocking waits on the cooperative pool: `addCompletedHandler` with a continuation instead of `waitUntilCompleted()`; the histogram as a child task instead of `group.wait()`.
+- Cancel a load between decode and upload. Keep the memory of a cancelled load in the reservation until the load really ends (today `FramePipeline` removes it at cancel).
+- The 512 px thumbnail store uses the decoded pixels, not a second decode.
+
+**Acceptance criteria**
+- [ ] The working memory of one 24 MP load is at most 1.5 times the finished frame (`Perf.record`).
+- [ ] The `scrub` peak footprint is at least 1 GB below the M-26 value (3.4 GB).
+- [ ] No regression in prefetched or cold next image.
+
+**Open questions**
+1. Is a linear texture made from a buffer fast enough to sample at Fit? *Proposed:* measure both; keep the blit if the linear texture costs more than 1 ms per draw.
+
+### P-03 · Screen-size frame first (cold next image)
+
+**Depends on:** P-02
+
+> As a photographer, I want an uncached photo on screen in under 100 ms, so that the first pass never waits.
+
+**Scope**
+- A cold load decodes at the view's drawable size first (ImageIO `MaxPixelSize`), shows it, and ends `key-to-frame`. The full-size frame follows at utility priority when the cursor stays, or at once when the zoom needs it. Today a 24 MP preview always decodes at 6,000 px.
+- No mip chain on the screen-size frame. The full-size frame builds its mips when the GPU is idle.
+- Prefetch keeps full-size frames for the near neighbors; the far end of the window can hold screen-size frames only.
+- The truth badge (V-05) reads the real pixel size of the texture on screen, so a screen-size frame at 1:1 says so.
+
+**Acceptance criteria**
+- [ ] Cold next image p95 under 100 ms on `24mp-1000` and `real-drone-840` (after `purge`).
+- [ ] Prefetched p95 still under 50 ms; 0 stale frames under held key.
+- [ ] Zoom to 1:1 from a screen-size frame: the scaled frame shows at once, and the full-size frame replaces it in place (the PRD's "sharpens in").
+
+**Open questions**
+1. Does a screen-size frame at 1:1 show a warning in the badge? *Proposed:* yes, "Loading full size" in the warning style, until the full frame is in.
+2. Screen size on a Retina display: points or pixels? *Proposed:* drawable pixels.
+
+### P-04 · One memory budget
+
+**Depends on:** P-02
+
+> As a photographer, I want the app to stay inside the memory budget I set, also with RAWs developing, so that the Mac does not swap during a cull.
+
+**Scope**
+- One budget for the preview frame cache, the RAW cache (5 decodes at most) and the loads in flight. Today `RawFrameCache` has its own budget, read once at start (V-03 peaked at 3.9 GB). It follows a change of the setting.
+- While a navigation key is held: load the target only, no prefetch; prefetch starts again on key-up.
+- A memory-pressure source (`DispatchSource.makeMemoryPressureSource`): on warning, keep the current frame and its 2 neighbors; on critical, the current frame only.
+- `malloc_zone_pressure_relief` after a scrub, when the pipeline is idle.
+
+**Acceptance criteria**
+- [ ] Peak `phys_footprint` at most the budget plus 600 MB in `scrub` (24 MP and `hires-1000`) and `develop-always`, with the 2 GB budget.
+- [ ] After a scrub, the footprint falls to the cache content plus 600 MB within 2 s.
+- [ ] No regression in next image or in V-03's `raw-ready`.
+
+**Open questions**
+1. The fixed part of the footprint (app, Metal, ImageIO caches) is outside the budget. *Proposed:* allow 600 MB, measured with an empty folder open; change the number if P-01 measures more.
+
+### P-05 · Keys within one display frame while frames load
+
+**Depends on:** P-01
+
+> As a photographer, I want stars, overlays and zoom to show at the next screen refresh even while the next photo loads, so that the app feels instant.
+
+**Scope**
+- Two Metal command queues: one for the present pass and toggled overlays, one for uploads, mips, RAW renders and prefetch analysis.
+- Keep the 1:1 scale per screen. Today `LoupeView.oneToOneScale` calls `CGDisplayCopyDisplayMode` and `CGDisplayCopyAllDisplayModes` 3 to 5 times for each zoom step. Update it on `NSWindow.didChangeScreenNotification` and on a display-mode change.
+- Remove other main-thread work that the P-01 trace finds on the cull, overlay and zoom paths.
+
+**Acceptance criteria**
+- [ ] Cull feedback, histogram and info toggles, and zoom to 1:1 meet the P-01/Q1 statistic at p95 in `cull`, `overlays` and `zoom`, on `24mp-1000` and `real-drone-840`.
+
+### P-06 · Overlay toggles without new allocations
+
+**Depends on:** P-01
+
+> As a photographer, I want F, H and S to toggle as fast on the 100th press as on the first.
+
+**Scope**
+- Today `setPeaking(nil)` and `setClipping(nil)` drop the mask, so each "on" allocates a new texture (32 MB at 24 MP) and runs the analysis again. Keep the masks while the overlay is off. Drop them when the photo, its source (preview or RAW), the peaking mode or the thresholds change, or under memory pressure (P-04).
+- "Off" only skips the overlay draw. "On" with a kept mask runs no analysis.
+- Find the cause of the V-06 step (toggles 2.5 times slower after about 45). If the step stays after this change, record what the trace shows.
+
+**Acceptance criteria**
+- [ ] `peaking-still` and `clipping-still`: the p95 of toggles 50 to 100 is within 10% of toggles 1 to 45, and meets the P-01/Q1 statistic.
+- [ ] The memory of a kept mask counts against the budget.
+
+### P-07 · Capture times in under 3 s
+
+**Depends on:** P-01
+
+> As a photographer, I want 5,000 photos sorted by capture time in under 3 s, and at once when I open the folder again.
+
+**Scope**
+- Today ImageIO builds the full property dictionary of each file (`ExifReader`), 8 files at a time, and nothing is kept between opens. Read `DateTimeOriginal`, `SubSecTimeOriginal` and `OffsetTimeOriginal` with the `Containers` parser for TIFF-based RAWs and JPEG (extend `CaptureTime.dateTimeOriginalString`), CR3 through its `CMT1` box, RAF through its embedded JPEG. ImageIO stays as the fallback for all other files.
+- A capture-time cache per folder in `~/Library/Caches/<bundle id>/captures/`, keyed by path, size and modification date. Never in the photo folder.
+- Tune the read width with `ScanBench` for the new reader.
+
+**Acceptance criteria**
+- [ ] `scan-5000`: list and capture times under 3 s at the first open after `purge`.
+- [ ] The same folder opened again: capture times in under 300 ms.
+- [ ] The new reader gives the same result as ImageIO on every corpus file (unit test).
+
+**Open questions**
+1. Cache size limit? *Proposed:* the same rule as V-15/Q3: 90 days or 500 folders.
+
+### P-08 · Grid first pass without dropped frames
+
+**Depends on:** P-01
+
+> As a photographer, I want Grid to scroll smoothly the first time I open a folder, while it makes the thumbnails.
+
+**Scope**
+- Trim the thumbnail cache on its own background task, not in a loader slot (today `trim()` lists the whole cache folder every 64 writes). Set the LRU date at most once per file per session (today every disk hit writes file attributes).
+- Decode thumbnails into a display-ready format off the main thread, so Core Animation does not convert colors on commit.
+- Apply finished thumbnails once per display refresh, as a batch, not one `configure` per thumbnail.
+- The number of loaders follows the number of performance cores, not a fixed 4.
+
+**Acceptance criteria**
+- [ ] `grid` with `BENCH_CLEAR_THUMBS=1` on `grid-10000` and `real-drone-840`: no refresh over 33 ms in the first pass (M-26 measured a 143 ms maximum).
+- [ ] The second pass stays at 60 fps (the PRD target).
+
+**Open questions**
+1. The PRD target is for thumbnails from the disk cache only. *Proposed:* the 33 ms limit above for the first pass, as our own target.
+
+### P-09 · Zero idle CPU in Loupe
+
+**Depends on:** P-01
+
+> As a photographer on a laptop, I want the app to use no CPU while I look at a photo.
+
+**Scope**
+- The pipeline reports "idle": no load, thumbnail store, EXIF warm-up or develop in flight. The `idle` scenario starts its window only then. Today it starts 3 s after the folder opens, when prefetch can still run.
+- If the CPU stays above 0: find each wake-up with Instruments and remove it (candidates: the defaults observer, the folder watcher, display links that do not stop).
+
+**Acceptance criteria**
+- [ ] `idle`: Loupe and Grid each under 0.01% CPU over 30 s after the pipeline is idle.
+
+### P-10 · RAW develop and extraction on real files
+
+**Depends on:** P-01
+
+> As a photographer, I want the RAW and extraction targets checked on real files of every size the PRD names.
+
+**Scope**
+- Add one 60 to 61 MP RAW from raw.pixls.us (CC0) to `scripts/corpus.tsv` and fetch it with `make corpus` (ask before the download). V-02 did not measure 61 MP.
+- Measure `develop` and `develop-always` on `real-drone-840` and on the 61 MP file.
+- Cold extraction (V-13 missed it): `make extract-bench` on `real-drone-840` after `purge`, against `cp` of a purged set of files with the same total bytes, so that both read from disk.
+
+**Acceptance criteria**
+- [ ] Develop p95 under 1 s at 24 to 33 MP and under 2 s at 61 MP.
+- [ ] 500 files extract within 20% of the cold copy.
+
+**Open questions**
+1. What if the cold extraction still misses? *Proposed:* read the preview bytes with `F_NOCACHE` and larger reads, then measure again. If it still misses, record the reason and accept it, because a Finder copy from a card also reads from disk.
+
+### P-11 · Performance gate
+
+**Depends on:** P-02 to P-10
+
+> As the team, we want every PRD performance target met on the reference Mac before v1.0.
+
+**Scope**
+- `make perf-gate` on `24mp-1000`, `hires-1000`, `real-drone-840`, `scan-5000` and `grid-10000`, warm and cold.
+- `docs/perf/v1.md`: each target, the measured value, pass or fail, the Mac (G-3), and what was not measured (other Macs, slow media).
+
+**Acceptance criteria**
+- [ ] Every PRD performance target passes, or has a recorded decision from you.
 
 ---
 
@@ -1813,12 +2045,12 @@ These are not broken into stories yet. The right column shows what each one buil
 | B-10 | Group by day and place | v1.x | M-16 GPS, M-12 | |
 | B-11 | Battery-friendly mode | v1.x | M-04 | Smaller prefetch window, cheaper overlays |
 | B-12 | Opt-in XMP embedding in JPEGs | v1.x? | V-16 | See V-16/Q1 |
-| B-13 | Faster cold frames | v1.x | M-26, M-04 | Cold next image p95 was 232 ms at 24 MP (target 100 ms). Show a screen-size decode first, then the 8192 px frame; upload without the mip chain until the frame is idle. Re-measure with `make perf-bench SCENARIO=nav-cold` |
-| B-14 | Memory within the budget | v1.x | M-26, M-04 | Footprint peaked at 3.4 GB against a 2 GB budget. Cap decode size to the screen unless zoomed, load one frame at a time while a key is held, release freed heap after a scrub (`malloc_zone_pressure_relief`). Check with `scrub` |
-| B-15 | Main-thread frame work | v1.x | M-26, M-14 | Cull feedback (p95 41 ms), overlay toggles (36 ms) and zoom (36 ms) miss one display frame while a frame loads. Move the texture upload off the main thread; then look at the zoom draw path |
-| B-16 | Faster capture times | v1.x | M-26, M-01 | 5,000 files take 3.7 s (target 3 s). More parallel reads, or cache times by path, size and date. The list itself is already 82 ms |
-| B-17 | Gate on the slowest Mac and slow media | v1.x | M-26, G-3, G-11 | Run the M-26 scenarios on a base M1 with 8 GB, an SD card and an SMB share, with real 1,000-frame shoots instead of clones. Report only on slow media |
-| B-18 | Zero idle CPU in Loupe | v1.x | M-26 | 0.18% with nothing changing (Grid: 0.01%). Find what wakes the process |
+| B-13 | Faster cold frames | v1.x | M-26, M-04 | **Moved to P-02 and P-03.** Cold next image p95 was 232 ms at 24 MP (target 100 ms) |
+| B-14 | Memory within the budget | v1.x | M-26, M-04 | **Moved to P-02 and P-04.** Footprint peaked at 3.4 GB against a 2 GB budget |
+| B-15 | Main-thread frame work | v1.x | M-26, M-14 | **Moved to P-05.** Cull feedback (p95 41 ms), overlay toggles (36 ms) and zoom (36 ms) miss one display frame while a frame loads. The upload is not on the main thread (see P-05) |
+| B-16 | Faster capture times | v1.x | M-26, M-01 | **Moved to P-07.** 5,000 files take 3.7 s (target 3 s) |
+| B-17 | Gate on the slowest Mac and slow media | v1.x | M-26, G-3, G-11 | **Closed:** no other Mac, SD card or SMB share is available (G-3, G-11). The real 1,000-frame shoot is in P-01 |
+| B-18 | Zero idle CPU in Loupe | v1.x | M-26 | **Moved to P-09.** 0.18% with nothing changing (Grid: 0.01%) |
 | L-01 | Sharpness score badge | Later | V-06 | Reuses the peaking kernels |
 | L-02 | RAW-level histogram and clipping stats | Later | V-02, V-04 | Needs sensor data before white balance |
 | L-03 | Waveform, RGB parade, vectorscope | Later | M-17 | |

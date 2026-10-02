@@ -4,7 +4,7 @@ BUILD_DIR := build
 APP       := $(BUILD_DIR)/Build/Products/Release/Oxys.app
 PACKAGES  := $(sort $(dir $(wildcard Packages/*/Package.swift)))
 
-.PHONY: build test check-arch launch-time corpus manifest bench-folders perf-bench perf-selftest perf-report sidecar-stress extract-bench sidecar-gate ui-walk ui-walk-compare clean
+.PHONY: build test check-arch launch-time corpus manifest bench-folders perf-bench perf-gate perf-selftest perf-report sidecar-stress extract-bench sidecar-gate ui-walk ui-walk-compare clean
 
 build:
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release \
@@ -39,6 +39,11 @@ bench-folders: manifest
 # M-26: one in-app scenario, e.g. `make perf-bench SCENARIO=nav-cold FOLDER=TestData/bench/24mp-1000`.
 perf-bench: build
 	scripts/perf-bench.sh $(SCENARIO) $(FOLDER)
+
+# P-01: every scenario in scripts/perf-targets.tsv, 3 runs each, held to the PRD limits; exits 1 on a fail.
+# `make perf-gate FOLDER=TestData/bench/real-drone-840`. PERF_GATE_WARM=1 skips the `sudo purge` prompts.
+perf-gate: build
+	scripts/perf-gate.sh $(FOLDER)
 
 perf-selftest:
 	scripts/perf-record.sh --selftest

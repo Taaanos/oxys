@@ -11,7 +11,13 @@ import Metadata
 /// (set `OXYS_PERF_LOG=<file>`; read it with `PerfTool log`) and quits. Does nothing otherwise.
 ///
 /// Scenarios: `open` (folder open to first image), `nav-prefetched`, `nav-cold`, `nav-held` (30 steps a second),
-/// `scrub` (1,000 frames, memory), `cull`, `zoom`, `develop`, `develop-cancel` (V-02), `compare` (V-08: checks the pair rules, then steps both sides), `compare-link` (V-09: linked zoom and pan, overlays and `R` on both panes), `overlays`, `grid` (scroll 10,000 files), `idle`.
+/// `scrub` (1,000 frames, memory), `cull`, `zoom`, `develop`, `develop-always` (⇧R then browsing, V-03), `develop-cancel` (V-02),
+/// `compare` (V-08: checks the pair rules, then steps both sides), `compare-link` (V-09: linked zoom and pan, overlays and `R` on both panes),
+/// `compare-view` (Compare stays up for 40 s, for a screenshot), `overlays`, `peaking` (V-06: F on and off, then browsing with it on),
+/// `peaking-still` (the overlay on one photo), `peaking-view` (stays up for 40 s; `OXYS_BENCH_ZOOM=1` goes to 1:1 first),
+/// `clipping` and `clipping-still` (the same for H and S, V-07), `grid` (scroll 10,000 files), `idle`.
+/// `scripts/perf-gate.sh` (P-01) runs the ones in `scripts/perf-targets.tsv` against the PRD limits.
+/// `OXYS_BENCH_DELAY_MS=<n>` makes every frame load wait n ms first, as slow media would (see `FrameLoader`).
 @MainActor
 enum PerfBench {
     private static let environment = ProcessInfo.processInfo.environment
