@@ -61,8 +61,14 @@ Each RAW file has a JPEG inside it. Oxys can save these JPEGs as separate files.
 
 What you get:
 
-- The file is `name.jpg`. It is the largest JPEG inside the RAW. Oxys does not decode it or compress it again.
-- Many embedded JPEGs have no EXIF block. They would show sideways and have no date. Oxys then adds a small EXIF block with the RAW's orientation, camera make and model, and capture time. The image data does not change. If the embedded JPEG has its own EXIF, Oxys does not change it. To get the exact bytes with nothing added, turn on **Extract exact bytes** in [Settings](settings.md#general).
+- The file is `name.jpg`. The name is the RAW's name. It is the largest JPEG inside the RAW. Oxys does not decode it or compress it again. The image data does not change.
+- The JPEG keeps the metadata of the RAW:
+  - **EXIF:** camera, lens, exposure, ISO, capture time and time zone, GPS, copyright, artist, serial number, and the maker note (the camera's own data, such as Sony or Canon focus data). The picture size is the size of the JPEG, and the orientation is the one the JPEG needs. Data that only describes the RAW itself is not copied (RAW size, color matrices, Sony SR2 data, DNG private blocks).
+  - **XMP:** your rating and color label from the Oxys sidecar (`name.xmp`). If a DNG holds its own XMP and has no sidecar, that XMP is used. Lightroom and other apps read the stars from the JPEG.
+  - **File attributes:** the creation date, the modification date, the permissions, and all extended attributes (Finder tags, Finder comments, "where from", and others). The copy has the same dates as the RAW.
+- If the embedded JPEG has its own XMP, Oxys keeps it. If the embedded JPEG has its own EXIF, the RAW's EXIF replaces it. Oxys keeps the orientation of the embedded JPEG.
+- If a maker note cannot be moved safely into the JPEG, Oxys leaves that one note out and lists the file in the summary. Oxys also lists a file whose attributes it could not copy.
+- To get exactly the embedded bytes, with no EXIF or XMP from the RAW, turn on **Extract exact bytes** in [Settings](settings.md#general). The file attributes are still copied.
 - Oxys never replaces a file. If `name.jpg` is there already, the new file is `name-1.jpg`, then `name-2.jpg`. The summary lists these names.
 - Oxys reads your RAW files and writes only into the folder you chose. Do not choose the folder that holds your photos if you want to keep it clean.
 

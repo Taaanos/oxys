@@ -267,3 +267,22 @@ private struct TIFFBuilder {
     #expect(out.dropFirst(8).prefix(segment.count) == segment)
     #expect(ExifSegment.insert(segment, into: Data("not a jpeg".utf8)) == nil)
 }
+
+@Test func rewritingReplacesExifAddsXMPAndKeepsTheRest() throws {
+    let jpeg = makeJPEG(width: 160, height: 120, orientation: 8, icc: true)
+    let exif = try #require(ExifSegment.build(.init(make: "SONY", orientation: 6)))
+    let xmp = try #require(JPEGSegments.xmpSegment(Data("<x:xmpmeta/>".utf8)))
+    let out = try #require(JPEGSegments.rewriting(jpeg, exif: exif, xmp: xmp))
+    let header = try #require(JPEGHeader.parse(ByteReader(data: out), at: 0))
+    #expect(header.exifOrientation == 6)          // the old Exif is gone, the new one is in
+    #expect(header.hasICCProfile)
+    let segments = try #require(JPEGSegments.list(out))
+    #expect(segments.filter(\.isExif).count == 1)
+    #expect(segments.filter(\.isXMP).count == 1)
+    // Scan data (after the last segment) is the original's.
+    #expect(out.suffix(14) == jpeg.suffix(14))
+    // A JPEG with XMP keeps its own.
+    let again = try #require(JPEGSegments.rewriting(out, exif: nil, xmp: xmp))
+    #expect(try #require(JPEGSegments.list(again)).filter(\.isXMP).count == 1)
+    #expect(JPEGSegments.xmpSegment(Data(count: 70_000)) == nil)
+}

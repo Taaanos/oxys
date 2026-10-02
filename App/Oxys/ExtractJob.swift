@@ -29,14 +29,14 @@ final class ExtractJob {
     var isShowing: Bool { if case .idle = state { false } else { true } }
 
     /// Starts the job on a background thread. Does nothing while another job runs. `finished` gets the spoken summary.
-    func start(_ sources: [URL], into folder: URL, exactBytes: Bool, finished: @escaping @MainActor @Sendable (String) -> Void) {
+    func start(_ sources: [URL], into folder: URL, exactBytes: Bool, sidecars: [URL: URL], finished: @escaping @MainActor @Sendable (String) -> Void) {
         guard !isRunning, !sources.isEmpty else { return }
         cancelFlag.set(false)
         state = .running(done: 0, total: sources.count, folder: folder)
         let flag = cancelFlag
         Task.detached(priority: .utility) { [weak self] in
             let lastReport = Mutex(ContinuousClock.now)
-            let summary = EmbeddedJPEGExtractor.run(sources, into: folder, exactBytes: exactBytes, progress: { done in
+            let summary = EmbeddedJPEGExtractor.run(sources, into: folder, exactBytes: exactBytes, sidecars: sidecars, progress: { done in
                 // At most about 20 updates a second; the last one is the summary.
                 let now = ContinuousClock.now
                 let due = lastReport.withLock { last in
@@ -122,13 +122,15 @@ private struct SummaryView: View {
                 .accessibilityAddTraits(.isHeader)
             Text(headline).font(.callout).foregroundStyle(Plate.secondary)
             if summary.exifAdded > 0 {
-                Text("\(summary.exifAdded.formatted()) got the RAW's orientation, camera and date added in an EXIF block. The image data is unchanged.")
+                Text("\(summary.exifAdded.formatted()) got the RAW's EXIF" + (summary.xmpAdded > 0 ? " and XMP (rating and label)" : "") + ". File dates, permissions and extended attributes were copied. The image data is unchanged.")
                     .font(.caption).foregroundStyle(Plate.secondary).fixedSize(horizontal: false, vertical: true)
             }
             if summary.hasProblems || !summary.renamed.isEmpty {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 6) {
                         list("No embedded JPEG", summary.withoutEmbeddedJPEG, icon: "exclamationmark.triangle.fill")
+                        list("Maker note not copied", summary.makerNoteSkipped, icon: "exclamationmark.triangle.fill")
+                        list("File attributes not fully copied", summary.attributeWarnings.map { "\($0.name): \($0.detail)" }, icon: "exclamationmark.triangle.fill")
                         list("Not a RAW file, skipped", summary.notRaw, icon: "minus.circle")
                         list("Failed", summary.failed.map { "\($0.name): \($0.detail)" }, icon: "xmark.octagon.fill")
                         list("Renamed, the name was taken", summary.renamed.map { "\($0.name) → \($0.detail)" }, icon: "arrow.right.circle")

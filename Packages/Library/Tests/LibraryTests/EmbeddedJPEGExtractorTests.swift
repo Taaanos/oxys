@@ -1,5 +1,7 @@
 import Containers
+import Darwin
 import Foundation
+import Synchronization
 import Testing
 @testable import Library
 
@@ -64,7 +66,7 @@ private func scratch() throws -> URL {
     #expect(data.suffix(preview.count - 2) == preview.suffix(preview.count - 2))
 }
 
-@Test func aPreviewWithItsOwnExifIsLeftAlone() throws {
+@Test func aPreviewsOwnOrientationWinsAndItsExifIsReplacedByTheRAWs() throws {
     let dir = try scratch(); defer { try? FileManager.default.removeItem(at: dir) }
     let preview = jpeg(width: 160, height: 120, exifOrientation: 8)
     let source = dir.appendingPathComponent("A.ARW")
@@ -72,8 +74,55 @@ private func scratch() throws -> URL {
     let out = try scratch(); defer { try? FileManager.default.removeItem(at: out) }
 
     let result = try EmbeddedJPEGExtractor.extract(source, into: out)
-    #expect(!result.exifAdded)
-    #expect(try Data(contentsOf: result.output) == preview)
+    #expect(result.exifAdded)
+    let data = try Data(contentsOf: result.output)
+    #expect(try #require(JPEGHeader.parse(ByteReader(data: data), at: 0)).exifOrientation == 8)
+    #expect(try #require(JPEGSegments.list(data)).filter(\.isExif).count == 1)
+}
+
+@Test func theFilesDatesPermissionsAndExtendedAttributesGoAlong() throws {
+    let dir = try scratch(); defer { try? FileManager.default.removeItem(at: dir) }
+    let source = dir.appendingPathComponent("A.ARW")
+    try fakeRaw(orientation: 1, preview: jpeg(width: 160, height: 120)).write(to: source)
+    let created = Date(timeIntervalSince1970: 1_500_000_000), modified = Date(timeIntervalSince1970: 1_600_000_000)
+    try FileManager.default.setAttributes([.creationDate: created, .modificationDate: modified, .posixPermissions: 0o600],
+                                          ofItemAtPath: source.path)
+    let tag = Data("bplist-or-anything".utf8)
+    #expect(tag.withUnsafeBytes { setxattr(source.path, "com.apple.metadata:test", $0.baseAddress, $0.count, 0, 0) } == 0)
+    // setxattr and setAttributes can touch each other's times; set the dates again.
+    try FileManager.default.setAttributes([.creationDate: created, .modificationDate: modified], ofItemAtPath: source.path)
+    let out = try scratch(); defer { try? FileManager.default.removeItem(at: out) }
+
+    for exact in [false, true] {
+        let result = try EmbeddedJPEGExtractor.extract(source, into: out, exactBytes: exact)
+        #expect(result.attributeWarnings.isEmpty)
+        let a = try FileManager.default.attributesOfItem(atPath: result.output.path)
+        #expect(a[.creationDate] as? Date == created)
+        #expect(a[.modificationDate] as? Date == modified)
+        #expect(a[.posixPermissions] as? Int == 0o600)
+        var buffer = [UInt8](repeating: 0, count: 64)
+        let n = getxattr(result.output.path, "com.apple.metadata:test", &buffer, 64, 0, 0)
+        #expect(Data(buffer.prefix(max(n, 0))) == tag)
+    }
+}
+
+@Test func theSidecarsRatingTravelsAsXMPUnlessExact() throws {
+    let dir = try scratch(); defer { try? FileManager.default.removeItem(at: dir) }
+    let source = dir.appendingPathComponent("A.ARW"), sidecar = dir.appendingPathComponent("A.xmp")
+    try fakeRaw(orientation: 1, preview: jpeg(width: 160, height: 120)).write(to: source)
+    let packet = "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"><rdf:Description xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\" xmp:Rating=\"4\" xmp:Label=\"Green\"/></rdf:RDF></x:xmpmeta>"
+    try Data(packet.utf8).write(to: sidecar)
+    let out = try scratch(); defer { try? FileManager.default.removeItem(at: out) }
+
+    let result = try EmbeddedJPEGExtractor.extract(source, into: out, sidecar: sidecar)
+    #expect(result.xmpAdded)
+    let data = try Data(contentsOf: result.output)
+    let segment = try #require(JPEGSegments.list(data)?.first { $0.isXMP })
+    #expect(String(decoding: data[segment.range], as: UTF8.self).contains("xmp:Rating=\"4\""))
+
+    let exact = try EmbeddedJPEGExtractor.extract(source, into: out, exactBytes: true, sidecar: sidecar)
+    #expect(!exact.xmpAdded)
+    #expect(try #require(JPEGSegments.list(Data(contentsOf: exact.output))).allSatisfy { !$0.isXMP })
 }
 
 @Test func takenNamesGetASuffixAndNothingIsOverwritten() throws {
@@ -116,9 +165,27 @@ private func scratch() throws -> URL {
         sources.append(url)
     }
     let out = try scratch(); defer { try? FileManager.default.removeItem(at: out) }
-    var done = 0
-    let summary = EmbeddedJPEGExtractor.run(sources, into: out, exactBytes: true, progress: { done = $0 }, isCancelled: { done >= 2 })
+    let done = Mutex(0)
+    let summary = EmbeddedJPEGExtractor.run(sources, into: out, exactBytes: true, parallelism: 1,
+                                            progress: { n in done.withLock { $0 = n } }, isCancelled: { done.withLock { $0 >= 2 } })
     #expect(summary.cancelled)
     #expect(summary.written == 2)
     #expect(try FileManager.default.contentsOfDirectory(atPath: out.path).sorted() == ["F0.jpg", "F1.jpg"])
+}
+
+@Test func parallelRunGivesTheSameNamesAsASerialOne() throws {
+    let dir = try scratch(); defer { try? FileManager.default.removeItem(at: dir) }
+    var sources: [URL] = []
+    for i in 0..<40 {
+        for ext in ["ARW", "NEF"] where i % 4 == 0 || ext == "ARW" {
+            let url = dir.appendingPathComponent("IMG_\(i).\(ext)")
+            try fakeRaw(orientation: 1, preview: jpeg(width: 160 + i, height: 120)).write(to: url)
+            sources.append(url)
+        }
+    }
+    let out = try scratch(); defer { try? FileManager.default.removeItem(at: out) }
+    let summary = EmbeddedJPEGExtractor.run(sources, into: out, exactBytes: true, parallelism: 8)
+    #expect(summary.written == sources.count && !summary.cancelled)
+    #expect(summary.renamed.count == 10 && summary.renamed.allSatisfy { $0.name.hasSuffix(".NEF") && $0.detail.hasSuffix("-1.jpg") })
+    #expect(try FileManager.default.contentsOfDirectory(atPath: out.path).count == sources.count)
 }

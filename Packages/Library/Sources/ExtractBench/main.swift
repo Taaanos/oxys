@@ -2,6 +2,7 @@
 //   ExtractBench <folder or files...> [--exact] [--verify]
 // Extracts every file's largest embedded JPEG into a new temporary folder, then copies that folder with `cp -R`
 // (a real byte copy: the stand-in for Finder) and prints both times. The extraction must be within 20% of the copy.
+// --out=DIR keeps the JPEGs there instead of a temporary folder.
 // --verify compares each output with the reference extractor named in PREVIEW_ORACLE (identical bytes, or the same
 // bytes plus zero padding), in exact mode only.
 import Containers
@@ -11,6 +12,7 @@ import Library
 var paths = Array(CommandLine.arguments.dropFirst())
 let exact = paths.contains("--exact") || paths.contains("--verify")
 let verify = paths.contains("--verify")
+let keep = paths.first { $0.hasPrefix("--out=") }.map { URL(fileURLWithPath: String($0.dropFirst(6))) }
 paths.removeAll { $0.hasPrefix("--") }
 guard !paths.isEmpty else {
     FileHandle.standardError.write(Data("usage: ExtractBench <folder or files...> [--exact] [--verify]\n".utf8))
@@ -37,7 +39,7 @@ for path in paths {
 }
 
 let work = FileManager.default.temporaryDirectory.appendingPathComponent("extract-bench-\(UUID().uuidString)")
-let out = work.appendingPathComponent("out"), copy = work.appendingPathComponent("copy")
+let out = keep ?? work.appendingPathComponent("out"), copy = work.appendingPathComponent("copy")
 try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
 defer { try? FileManager.default.removeItem(at: work) }
 

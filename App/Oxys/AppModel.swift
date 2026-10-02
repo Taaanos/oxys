@@ -142,7 +142,11 @@ final class AppModel {
         guard panel.runModal() == .OK, let destination = panel.url else { return }
         UserDefaults.standard.set(destination.path, forKey: "extractFolder")
         announce(sources.count == 1 ? "Extracting 1 JPEG" : "Extracting \(sources.count.formatted()) JPEGs")
-        extract.start(sources, into: destination, exactBytes: UserDefaults.standard.bool(forKey: "extractExactBytes")) { [unowned self] summary in
+        // The sidecar's rating and label go into the JPEG's XMP. A DNG's own XMP is used when it has no sidecar.
+        let wanted = Set(sources)
+        let sidecars = Dictionary(folder.photos.compactMap { p in wanted.contains(p.url) ? p.sidecar.file.map { (p.url, $0) } : nil },
+                                  uniquingKeysWith: { first, _ in first })
+        extract.start(sources, into: destination, exactBytes: UserDefaults.standard.bool(forKey: "extractExactBytes"), sidecars: sidecars) { [unowned self] summary in
             announce(summary)
         }
     }
