@@ -77,7 +77,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-20 | Filter and sort bar | M-19 | built, not checked in the live app |
 | M-21 | Reveal in Finder | M-19 | built (live Finder check pending) |
 | M-22 | Settings window | M-05 | done (keyboard walk-through and live naming switch not checked in the running app) |
-| M-23 | Cheat sheet and menu audit | M-05 and all MVP commands | todo |
+| M-23 | Cheat sheet and menu audit | M-05 and all MVP commands | done |
 | M-24 | Keyboard-only and accessibility pass | all MVP UI | todo |
 | M-25 | MVP gate: interoperability and data safety | M-07 to M-11 | todo |
 | M-26 | MVP gate: performance | all MVP | todo |
@@ -1160,7 +1160,16 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Audit: every MVP command is in a menu and in the cheat sheet, and Help search finds them.
 
 **Acceptance criteria**
-- [ ] A unit test fails if any command lacks a menu placement or a cheat-sheet group.
+- [x] A unit test fails if any command lacks a menu placement or a cheat-sheet group.
+
+**Built (decisions and results)**
+- `CheatSheet.swift` (Commands): `CheatGroup` (Rate, Label and Reject; Move and Switch View; Zoom and Pan; Info; Select; Filter and Sort; Files; Help). A command's group comes from its ID prefix, so new commands need no extra entry and an unmapped prefix fails the test. `CheatSheet.sections(table:keymap:mode:)` returns the current mode's commands with the keys of the live keymap (so user remaps show), commands without a key included.
+- `help.cheatsheet` ("Keyboard Shortcuts", `?`, every mode) is in the Help menu. `CheatSheetView` is a sheet on the window: keys print as the menus print them, `?` or `Esc` closes it, the list scrolls by keyboard (focusable scroll view), each row is one VoiceOver element ("Reject", value "X"). A sheet is an `NSPanel`, so the command key monitor leaves its keys alone.
+- Help search: the system Help menu search indexes menu items, and every command has one (tested).
+
+**Checked**
+- Unit tests: every command has a menu placement and a group; per-mode listing; `?` routes to the command. Release build clean.
+- **Not checked** (this session cannot drive the window): scrolling by keyboard, `?`/`Esc` dismissal, Help search in the running app.
 
 ### M-24 · Keyboard-only and accessibility pass
 

@@ -25,6 +25,8 @@ final class AppModel {
     let commands: CommandCenter
     /// `⇥` hides the toolbar (and, later, the panels); the pointer at the top edge brings it back (M-13).
     private(set) var chromeHidden = false
+    /// The `?` sheet (M-23).
+    var showCheatSheet = false
     /// The inspector sidebar (⌥⌘I), remembered across launches. Hidden along with the toolbar by `⇥` (M-13).
     private(set) var showInspector = UserDefaults.standard.bool(forKey: "showInspector")
     /// True after "Move Focus to Inspector" until `Esc`: `⇥`, `⇧⇥`, `↑` and `↓` walk the inspector's rows and
@@ -133,6 +135,7 @@ final class AppModel {
             announce(urls.count == 1 ? "Revealed 1 file in Finder" : "Revealed \(urls.count.formatted()) files in Finder")
         }
         registerFilter()
+        commands.register("help.cheatsheet") { [unowned self] _ in showCheatSheet = true }
         commands.register("view.loupe") { [unowned self] _ in commands.mode = .loupe }
         commands.register("view.grid") { [unowned self] _ in commands.mode = .grid }
         commands.register("view.chrome", title: { [unowned self] in chromeHidden ? "Show Toolbar" : "Hide Toolbar" }) { [unowned self] _ in

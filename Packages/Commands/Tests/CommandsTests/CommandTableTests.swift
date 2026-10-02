@@ -301,3 +301,30 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     }
     #expect(table["select.extendNext"]?.modes == [.grid])
 }
+
+@Test func everyCommandHasAMenuPlacementAndACheatSheetGroup() {
+    for command in CommandTable.standard.commands {
+        #expect(command.menu != nil, "\(command.id.rawValue) is not in a menu")
+        #expect(command.cheatGroup != nil, "\(command.id.rawValue) has no cheat-sheet group")
+    }
+}
+
+@Test func cheatSheetListsOnlyTheModesCommandsWithTheirKeys() {
+    let keymap = resolve(nil).keymap
+    func ids(_ mode: ViewMode) -> Set<CommandID> {
+        Set(CheatSheet.sections(table: .standard, keymap: keymap, mode: mode).flatMap { $0.entries.map(\.id) })
+    }
+    #expect(ids(.loupe).contains("zoom.toggle") && !ids(.grid).contains("zoom.toggle"))
+    #expect(ids(.grid).contains("select.extendNext") && !ids(.loupe).contains("select.extendNext"))
+    #expect(ids(.grid).contains("help.cheatsheet") && ids(.loupe).contains("cull.reject"))
+    let sections = CheatSheet.sections(table: .standard, keymap: keymap, mode: .loupe)
+    #expect(sections.map(\.group) == sections.map(\.group).sorted())
+    #expect(sections.first { $0.group == .cull }?.entries.first { $0.id == "cull.reject" }?.shortcuts == [Shortcut(.position(.x))])
+}
+
+@Test func theCheatSheetKeyIsQuestionMark() {
+    var router = KeyRouter(keymap: resolve(nil).keymap)
+    let slash = PhysicalKey.slash.rawValue
+    let result = router.handle(KeyInput(keyCode: slash, modifiers: [.shift], timestamp: 0, character: "?"), mode: .grid, focus: .canvas)
+    #expect(result.actions == [.perform("help.cheatsheet")])
+}

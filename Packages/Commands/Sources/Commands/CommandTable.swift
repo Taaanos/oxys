@@ -217,6 +217,10 @@ public struct CommandTable: Sendable {
         // Reveal (M-21): one Finder window with the selection (or the active photo) highlighted.
         Command("file.reveal", "Reveal in Finder", menu: .init(.photo, group: 4), requires: .photos,
                 keys: [Shortcut(.position(.r), [.command])]),
+
+        // The cheat sheet (M-23): `?` in every mode. The Help menu search finds every item above by its title.
+        Command("help.cheatsheet", "Keyboard Shortcuts", menu: .init(.help),
+                keys: [Shortcut(.character("?"))]),
     ])
 
     private static let grid: Set<ViewMode> = [.grid]
