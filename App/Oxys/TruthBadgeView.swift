@@ -7,8 +7,14 @@ struct TruthBadgeView: View {
     let badge: TruthBadge
 
     var body: some View {
-        Label(badge.text, systemImage: badge.isWarning ? "exclamationmark.triangle.fill" : "checkmark.seal")
-            .labelStyle(PlateIconStyle(tint: badge.isWarning ? Plate.warning : Plate.secondary))
+        Group {
+            if badge.isWarning {
+                Label(badge.text, systemImage: "exclamationmark.triangle.fill")
+                    .labelStyle(PlateIconStyle(tint: Plate.warning))
+            } else {
+                Text(badge.text).foregroundStyle(.white)
+            }
+        }
             .font(.callout.weight(.semibold))
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
