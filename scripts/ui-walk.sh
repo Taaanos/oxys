@@ -13,7 +13,8 @@ cp "$SRC/DSC01014.ARW" "$SRC/DSC09025.ARW" "$SRC/DSC00204.dng" "$WORK/"
 key() { osascript -e "tell application \"System Events\" to tell process \"Oxys\" to key code $1 ${2:-}"; sleep "${KEY_DELAY:-0.4}"; }
 # Key codes (physical keys): 36 Return, 124 →, 7 X, 20 digit 3, 23 digit 5.
 # After a step, shows which sidecars exist and their ratings (the trace for a failed walk).
-snap() { sleep 1.5; echo "-- $1"; for x in "$WORK"/*.xmp(N); do echo "   $(basename "$x"): $(grep -o 'xmp:Rating="[-0-9]*"' "$x")"; done; }
+# The Loupe image's VoiceOver label starts with the file name, so it says which photo is current.
+snap() { sleep 1.5; echo "-- $1 | shown: $(osascript -e 'tell application "System Events" to tell process "Oxys" to get description of (entire contents of window 1 whose description starts with "DSC")' 2>&1 | head -c 200)"; for x in "$WORK"/*.xmp(N); do echo "   $(basename "$x"): $(grep -o 'xmp:Rating="[-0-9]*"' "$x")"; done; }
 pkill -x Oxys 2>/dev/null || true
 open "$APP"
 sleep 2
@@ -32,7 +33,7 @@ key 124           # next
 key 7             # X
 snap "after X (next photo should be rejected)"
 key 124
-snap "after next"
+snap "after next (should show DSC00204)"
 key 23 "using shift down"   # ⇧5
 sleep 2           # the write queue settles
 # 4. Narrow: ⌥⌘3 shows 3 stars and more.
