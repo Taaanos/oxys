@@ -213,12 +213,12 @@ final class AppModel {
             findRequest += 1
         }
         commands.register("filter.clear", isAvailable: { [unowned self] in folder.filter.hasCriteria }) { [unowned self] _ in
-            folder.updateFilter { $0.minStars = 0; $0.maxStars = 5; $0.labels = []; $0.rejects = .showAll; $0.search = "" }
+            folder.updateFilter { $0.setMinimumStars(0); $0.labels = []; $0.rejects = .showAll; $0.search = "" }
             announceFilter("Filter cleared")
         }
         for n in 0...5 {
-            commands.register(CommandID(rawValue: "filter.stars.\(n)"), isOn: { [unowned self] in folder.filter.minStars == n && folder.filter.maxStars == 5 }) { [unowned self] _ in
-                setFilter { $0.minStars = n; $0.maxStars = 5 }
+            commands.register(CommandID(rawValue: "filter.stars.\(n)"), isOn: { [unowned self] in folder.filter.stars == (n > 0 ? Set(n...5) : []) }) { [unowned self] _ in
+                setFilter { $0.setMinimumStars(n) }
             }
         }
         commands.register("filter.label.any", isOn: { [unowned self] in folder.filter.labels.isEmpty }) { [unowned self] _ in

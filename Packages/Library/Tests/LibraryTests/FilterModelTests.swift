@@ -27,7 +27,7 @@ import Testing
 
     @Test func filterNarrowsWhatNavigationWalks() async throws {
         let (folder, model) = try await threePhotos(); defer { folder.remove() }
-        model.updateFilter { $0.minStars = 4 }
+        model.updateFilter { $0.setMinimumStars(4) }
         #expect(model.visible.map(\.name) == ["a.ARW", "c.ARW"])
         #expect(model.photos.count == 3)
         model.setCurrent(index: 0)
@@ -35,12 +35,12 @@ import Testing
         #expect(model.currentPhoto?.name == "c.ARW")
         model.updateFilter { $0.isOn = false }
         #expect(model.visible.count == 3)
-        #expect(model.filter.minStars == 4)
+        #expect(model.filter.stars == [4, 5])
     }
 
     @Test func aDecisionKeepsTheCurrentPhotoUntilYouMoveAway() async throws {
         let (folder, model) = try await threePhotos(); defer { folder.remove() }
-        model.updateFilter { $0.minStars = 4 }
+        model.updateFilter { $0.setMinimumStars(4) }
         model.setCurrent(index: 0)
         model.apply(.setRating(1))
         #expect(model.visible.map(\.name) == ["a.ARW", "c.ARW"])
@@ -52,7 +52,7 @@ import Testing
         let (folder, model) = try await threePhotos(); defer { folder.remove() }
         model.setCurrent(index: 1)
         model.selectAll()
-        model.updateFilter { $0.minStars = 4 }
+        model.updateFilter { $0.setMinimumStars(4) }
         #expect(model.currentPhoto?.name == "c.ARW")
         #expect(model.selection.count == 2)
     }

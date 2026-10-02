@@ -21,9 +21,9 @@ import Testing
 
     @Test func minimumStarsExcludesRejects() {
         var f = PhotoFilter()
-        f.minStars = 3
+        f.setMinimumStars(3)
         #expect(f.apply(to: sample).map(\.name) == ["IMG_1.ARW", "IMG_10.ARW"])
-        f.minStars = 0
+        f.setMinimumStars(0)
         #expect(f.apply(to: sample).count == 4)
     }
 
@@ -45,7 +45,7 @@ import Testing
 
     @Test func criteriaCombine() {
         var f = PhotoFilter()
-        f.minStars = 1
+        f.setMinimumStars(1)
         f.labels = [.red]
         f.rejects = .hideRejected
         #expect(f.apply(to: sample).map(\.name) == ["IMG_1.ARW", "Other.ARW"])
@@ -61,10 +61,10 @@ import Testing
 
     @Test func turningItOffKeepsSettings() {
         var f = PhotoFilter()
-        f.minStars = 4
+        f.setMinimumStars(4)
         f.isOn = false
         #expect(f.apply(to: sample).count == 4)
-        #expect(f.minStars == 4)
+        #expect(f.stars == [4, 5])
         f.isOn = true
         #expect(f.apply(to: sample).count == 1)
     }
@@ -82,7 +82,7 @@ import Testing
 
     @Test func keptPhotoStaysAfterLeavingTheFilter() {
         var f = PhotoFilter()
-        f.minStars = 3
+        f.setMinimumStars(3)
         let kept = sample[3].url // 1 star: does not match
         #expect(f.apply(to: sample, keeping: kept).map(\.name) == ["IMG_1.ARW", "IMG_10.ARW", "Other.ARW"])
     }
@@ -90,23 +90,34 @@ import Testing
     @Test func starClicks() {
         var f = PhotoFilter()
         f.clickStar(2)
-        #expect(f.minStars == 2 && f.maxStars == 2)
+        #expect(f.stars == [2])
         f.clickStar(5, extend: true)
-        #expect(f.minStars == 2 && f.maxStars == 5)
+        #expect(f.stars == [2, 3, 4, 5])
         f.clickStar(3, extend: true)
-        #expect(f.minStars == 2 && f.maxStars == 3)
+        #expect(f.stars == [2, 3])
         f.clickStar(1, extend: true)
-        #expect(f.minStars == 1 && f.maxStars == 2)
+        #expect(f.stars == [1, 2])
         f.clickStar(3, orMore: true)
-        #expect(f.minStars == 3 && f.maxStars == 5)
+        #expect(f.stars == [3, 4, 5])
         f.clickStar(4)
         f.clickStar(4)
-        #expect(f.minStars == 0 && f.maxStars == 5)
+        #expect(f.stars.isEmpty)
+    }
+
+    @Test func commandClickPicksSeparateStars() {
+        var f = PhotoFilter()
+        f.clickStar(1)
+        f.clickStar(3, toggle: true)
+        #expect(f.stars == [1, 3])
+        #expect(f.summary == "1 and 3 stars")
+        f.clickStar(1, toggle: true)
+        #expect(f.stars == [3])
+        #expect(f.apply(to: sample).map(\.name) == ["IMG_1.ARW"])
     }
 
     @Test func maximumLeavesOutHigherAndRejects() {
         var f = PhotoFilter()
-        f.clickStar(1, extend: false)
+        f.clickStar(1)
         f.clickStar(3, extend: true)
         #expect(f.apply(to: sample).map(\.name) == ["IMG_1.ARW", "Other.ARW"])
         #expect(f.summary == "1 to 3 stars")

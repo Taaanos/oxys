@@ -27,10 +27,10 @@ public enum SortKey: String, Sendable, CaseIterable {
 /// What the filter and sort bar holds (M-20). `isOn` is ⌘L: turning it off keeps the settings.
 public struct PhotoFilter: Sendable, Equatable {
     public var isOn = true
-    /// 0 means no minimum. Rejects never pass a minimum above 0.
-    public var minStars = 0
-    /// 5 means no maximum. A maximum below 5 (like a minimum above 0) leaves rejects out.
-    public var maxStars = 5
+    /// Which star ratings pass (1 to 5); empty means any. Rejects never pass a non-empty set.
+    public var stars: Set<Int> = []
+    /// Where a `⇧` range starts: the last star clicked.
+    public private(set) var starAnchor: Int?
     /// Any of these labels; empty means any photo.
     public var labels: Set<ColorLabel> = []
     public var rejects: RejectFilter = .showAll
@@ -43,30 +43,43 @@ public struct PhotoFilter: Sendable, Equatable {
 
     /// True when some filter setting would hide photos.
     public var hasCriteria: Bool {
-        minStars > 0 || maxStars < 5 || !labels.isEmpty || rejects != .showAll || !trimmedSearch.isEmpty
+        !stars.isEmpty || !labels.isEmpty || rejects != .showAll || !trimmedSearch.isEmpty
     }
 
     /// True when the list is being narrowed right now.
     public var isNarrowing: Bool { isOn && hasCriteria }
 
-    /// A click on star `n` in the bar: exactly that many stars. With `extend` (⇧) and a star already chosen, the
-    /// range runs between the first star and `n`; with `orMore` (⌥) it is `n` or more. A click on the only lit
-    /// star clears the row.
-    public mutating func clickStar(_ n: Int, extend: Bool = false, orMore: Bool = false) {
-        if extend, minStars > 0 {
-            let anchor = minStars
-            minStars = min(anchor, n)
-            maxStars = max(anchor, n)
+    /// A click on star `n` in the bar: exactly that many stars. `⌘` adds or removes it (1 star and 3 stars), `⇧` makes
+    /// a range from the last star clicked, `⌥` is `n` or more. A click on the only lit star clears the row.
+    public mutating func clickStar(_ n: Int, extend: Bool = false, toggle: Bool = false, orMore: Bool = false) {
+        if toggle {
+            if !stars.insert(n).inserted { stars.remove(n) }
+        } else if extend, let anchor = starAnchor {
+            stars = Set(min(anchor, n)...max(anchor, n))
+            return
         } else if orMore {
-            minStars = n
-            maxStars = 5
-        } else if minStars == n, maxStars == n {
-            minStars = 0
-            maxStars = 5
+            stars = Set(n...5)
+        } else if stars == [n] {
+            stars = []
         } else {
-            minStars = n
-            maxStars = n
+            stars = [n]
         }
+        starAnchor = stars.isEmpty ? nil : n
+    }
+
+    /// `⌥⌘N`: `n` stars or more; 0 clears.
+    public mutating func setMinimumStars(_ n: Int) {
+        stars = n > 0 ? Set(n...5) : []
+        starAnchor = n > 0 ? n : nil
+    }
+
+    private var starsSummary: String {
+        let sorted = stars.sorted()
+        guard let first = sorted.first, let last = sorted.last else { return "" }
+        let contiguous = sorted.count == last - first + 1
+        if sorted.count == 1 { return first == 1 ? "1 star" : "\(first) stars" }
+        if contiguous { return last == 5 ? "\(first) stars or more" : "\(first) to \(last) stars" }
+        return sorted.dropLast().map(String.init).joined(separator: ", ") + " and \(last) stars"
     }
 
     public var isDefaultSort: Bool { sortKey == .captureTime && ascending }
@@ -76,7 +89,7 @@ public struct PhotoFilter: Sendable, Equatable {
     public func matches(_ photo: Photo) -> Bool {
         guard isNarrowing else { return true }
         let d = photo.decision
-        if minStars > 0 || maxStars < 5, d.isReject || d.stars < minStars || d.stars > maxStars { return false }
+        if !stars.isEmpty, d.isReject || !stars.contains(d.stars) { return false }
         if !labels.isEmpty, !(d.label.map(labels.contains) ?? false) { return false }
         switch rejects {
         case .showAll: break
@@ -110,12 +123,7 @@ public struct PhotoFilter: Sendable, Equatable {
     /// "≥3 stars, red or yellow, no rejects, “IMG”", for VoiceOver and the bar.
     public var summary: String {
         var parts: [String] = []
-        if minStars > 0 || maxStars < 5 {
-            if minStars == maxStars { parts.append(minStars == 1 ? "1 star" : "\(minStars) stars") }
-            else if maxStars == 5 { parts.append("\(minStars) stars or more") }
-            else if minStars == 0 { parts.append("\(maxStars) stars or fewer") }
-            else { parts.append("\(minStars) to \(maxStars) stars") }
-        }
+        if !stars.isEmpty { parts.append(starsSummary) }
         if !labels.isEmpty {
             parts.append(ColorLabel.allCases.filter(labels.contains).map { $0.name.lowercased() }.joined(separator: " or "))
         }

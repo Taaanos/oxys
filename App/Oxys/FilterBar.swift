@@ -59,16 +59,17 @@ struct FilterBar: View {
     private func stars(_ filter: PhotoFilter) -> some View {
         HStack(spacing: 2) {
             ForEach(1...5, id: \.self) { n in
-                let lit = filter.minStars > 0 && n >= filter.minStars && n <= filter.maxStars
+                let lit = filter.stars.contains(n)
                 Button {
-                    // A click is that star alone; ⇧-click after it makes a range (2, then ⇧5, is 2 to 5); ⌥-click is "or more".
+                    // A click is that star alone; ⌘-click adds or removes one (1 and 3); ⇧-click makes a range (2, then ⇧5, is 2 to 5); ⌥-click is "or more".
                     let flags = NSEvent.modifierFlags
-                    model.setFilter { $0.clickStar(n, extend: flags.contains(.shift), orMore: flags.contains(.option)) }
+                    model.setFilter { $0.clickStar(n, extend: flags.contains(.shift), toggle: flags.contains(.command),
+                                                   orMore: flags.contains(.option)) }
                 } label: {
                     Image(systemName: lit ? "star.fill" : "star").foregroundStyle(lit ? Color.yellow : .secondary)
                 }
                 .buttonStyle(.borderless)
-                .help("\(n == 1 ? "1 star" : "\(n) stars"). ⇧-click for a range, ⌥-click for \(n) or more (⌥⌘\(n))")
+                .help("\(n == 1 ? "1 star" : "\(n) stars"). ⌘-click to add another, ⇧-click for a range, ⌥-click for \(n) or more (⌥⌘\(n))")
                 .accessibilityLabel(n == 1 ? "1 star" : "\(n) stars")
                 .accessibilityAddTraits(lit ? .isSelected : [])
             }
