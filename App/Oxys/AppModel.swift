@@ -113,6 +113,11 @@ final class AppModel {
         commands.register("nav.up") { [unowned self] _ in grid.move(.up) }
         commands.register("nav.down") { [unowned self] _ in grid.move(.down) }
         registerSelection()
+        commands.register("file.reveal", isAvailable: { [unowned self] in !folder.cullTargets.isEmpty }) { [unowned self] _ in
+            let urls = folder.cullTargets
+            NSWorkspace.shared.activateFileViewerSelecting(urls)
+            announce(urls.count == 1 ? "Revealed 1 file in Finder" : "Revealed \(urls.count.formatted()) files in Finder")
+        }
         registerFilter()
         commands.register("view.loupe") { [unowned self] _ in commands.mode = .loupe }
         commands.register("view.grid") { [unowned self] _ in commands.mode = .grid }

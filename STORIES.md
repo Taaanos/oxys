@@ -75,7 +75,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-18 | Info overlay and inspector | M-16, M-17 | built, not checked in the live app |
 | M-19 | Selection | M-12 | built, not checked in the live app |
 | M-20 | Filter and sort bar | M-19 | built, not checked in the live app |
-| M-21 | Reveal in Finder | M-19 | todo |
+| M-21 | Reveal in Finder | M-19 | built (live Finder check pending) |
 | M-22 | Settings window | M-05 | todo |
 | M-23 | Cheat sheet and menu audit | M-05 and all MVP commands | todo |
 | M-24 | Keyboard-only and accessibility pass | all MVP UI | todo |
@@ -1112,7 +1112,15 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - [ ] Works from Grid and Loupe.
 
 **Open questions**
-1. Reveal the sidecars too? *Proposed:* no. RAW+JPEG pairs reveal both images (V-10).
+1. Reveal the sidecars too? **Decided** as proposed: no. RAW+JPEG pairs reveal both images (V-10).
+
+**Built (decisions and results)**
+- `file.reveal` (`⌘R`, Photo menu, every mode) passes `folder.cullTargets` (the selection in screen order, or the active photo when nothing is selected) to one `NSWorkspace.activateFileViewerSelecting` call, so a single Finder window opens. Disabled with no photos; announces "Revealed N files in Finder".
+- The command and key already existed in the key-routing spike's keymap, so the router sends `⌘R` here unchanged.
+
+**Checked**
+- All packages pass; Release build clean.
+- **Not checked** (this session cannot drive the window): 500 files selected opening one Finder window with exactly those files highlighted, and Grid and Loupe in the live app.
 
 ### M-22 · Settings window
 

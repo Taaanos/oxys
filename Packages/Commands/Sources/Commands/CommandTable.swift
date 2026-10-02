@@ -213,6 +213,10 @@ public struct CommandTable: Sendable {
         Command("cull.label.blue", "Blue Label", menu: .init(.photo, group: 3), modes: cull, requires: .photos, shiftAdvances: true,
                 keys: [Shortcut(.position(.digit9)), Shortcut(.position(.keypad9))]),
         Command("cull.label.purple", "Purple Label", menu: .init(.photo, group: 3), modes: cull, requires: .photos),
+
+        // Reveal (M-21): one Finder window with the selection (or the active photo) highlighted.
+        Command("file.reveal", "Reveal in Finder", menu: .init(.photo, group: 4), requires: .photos,
+                keys: [Shortcut(.position(.r), [.command])]),
     ])
 
     private static let grid: Set<ViewMode> = [.grid]
