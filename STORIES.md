@@ -1248,7 +1248,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - `OXYS_PERF_LOG` (`Perf.record`, `PerfTool log`) and an in-app driver (`PerfBench`, `OXYS_BENCH=<scenario>`, `scripts/perf-bench.sh`, `make perf-bench`) that runs a scenario through the key commands and prints p50 and p95 per interval. It replaces Instruments for the gate.
 - Two fixes found by the gate: `FramePipeline(transientFactor:)` counts the working memory of loads in flight against the budget (peak 4.6 GB to 3.4 GB), and the histogram runs beside the texture upload (cold frame load p50 184 ms to 137 ms).
 
-**Result:** passes: launch, folder open, scan list, next image prefetched, no stale frame, Grid 60 fps, sidecar writes, idle CPU. **Misses (not fixed here):** next image cold (p95 232 ms on the 24 MP set), capture times for 5,000 files (3.7 s), cull feedback, overlay toggles and zoom (p95 above one frame), and memory (3.4 GB footprint against a 2 GB budget). Each has a fix proposal in the document; the memory and cold-load fixes need their own stories.
+**Result:** passes: launch, folder open, scan list, next image prefetched, no stale frame, Grid 60 fps, sidecar writes, idle CPU. **Misses (not fixed here):** next image cold (p95 232 ms on the 24 MP set), capture times for 5,000 files (3.7 s), cull feedback, overlay toggles and zoom (p95 above one frame), and memory (3.4 GB footprint against a 2 GB budget). Each has a fix proposal in the document and a backlog item: B-13 (cold frames), B-14 (memory), B-15 (main-thread frame work), B-16 (capture times), B-17 (slowest Mac and slow media), B-18 (Loupe idle CPU).
 
 **Checked**
 - Unit tests pass (Imaging 35, Diagnostics 11). Release build clean. `make sidecar-stress` passes.
@@ -1641,6 +1641,12 @@ These are not broken into stories yet. The right column shows what each one buil
 | B-10 | Group by day and place | v1.x | M-16 GPS, M-12 | |
 | B-11 | Battery-friendly mode | v1.x | M-04 | Smaller prefetch window, cheaper overlays |
 | B-12 | Opt-in XMP embedding in JPEGs | v1.x? | V-16 | See V-16/Q1 |
+| B-13 | Faster cold frames | v1.x | M-26, M-04 | Cold next image p95 was 232 ms at 24 MP (target 100 ms). Show a screen-size decode first, then the 8192 px frame; upload without the mip chain until the frame is idle. Re-measure with `make perf-bench SCENARIO=nav-cold` |
+| B-14 | Memory within the budget | v1.x | M-26, M-04 | Footprint peaked at 3.4 GB against a 2 GB budget. Cap decode size to the screen unless zoomed, load one frame at a time while a key is held, release freed heap after a scrub (`malloc_zone_pressure_relief`). Check with `scrub` |
+| B-15 | Main-thread frame work | v1.x | M-26, M-14 | Cull feedback (p95 41 ms), overlay toggles (36 ms) and zoom (36 ms) miss one display frame while a frame loads. Move the texture upload off the main thread; then look at the zoom draw path |
+| B-16 | Faster capture times | v1.x | M-26, M-01 | 5,000 files take 3.7 s (target 3 s). More parallel reads, or cache times by path, size and date. The list itself is already 82 ms |
+| B-17 | Gate on the slowest Mac and slow media | v1.x | M-26, G-3, G-11 | Run the M-26 scenarios on a base M1 with 8 GB, an SD card and an SMB share, with real 1,000-frame shoots instead of clones. Report only on slow media |
+| B-18 | Zero idle CPU in Loupe | v1.x | M-26 | 0.18% with nothing changing (Grid: 0.01%). Find what wakes the process |
 | L-01 | Sharpness score badge | Later | V-06 | Reuses the peaking kernels |
 | L-02 | RAW-level histogram and clipping stats | Later | V-02, V-04 | Needs sensor data before white balance |
 | L-03 | Waveform, RGB parade, vectorscope | Later | M-17 | |
