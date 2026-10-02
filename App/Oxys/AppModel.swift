@@ -134,6 +134,10 @@ final class AppModel {
             NSWorkspace.shared.activateFileViewerSelecting(urls)
             announce(urls.count == 1 ? "Revealed 1 file in Finder" : "Revealed \(urls.count.formatted()) files in Finder")
         }
+        commands.outsideClick = { [unowned self] in
+            defer { showCheatSheet = false }
+            return showCheatSheet
+        }
         registerFilter()
         commands.register("help.cheatsheet") { [unowned self] _ in showCheatSheet.toggle() }
         commands.register("view.loupe") { [unowned self] _ in commands.mode = .loupe }

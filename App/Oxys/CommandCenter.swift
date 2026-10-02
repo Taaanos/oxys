@@ -21,6 +21,9 @@ final class CommandCenter {
     var mode: ViewMode = .loupe
     /// Offered every bare or `⌥` key first (M-18): code, shift, option. True when the inspector used the key.
     @ObservationIgnored var inspectorKey: (UInt16, Bool, Bool) -> Bool = { _, _, _ in false }
+    /// A click on the window behind a sheet (the sheet is modal, so the window would only beep): return true to
+    /// dismiss the sheet.
+    @ObservationIgnored var outsideClick: () -> Bool = { false }
     /// Bumped when the input source changes, so menus re-read the key labels.
     private(set) var layoutRevision = 0
 
@@ -118,9 +121,13 @@ final class CommandCenter {
 
     func start() {
         guard monitor == nil else { return }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .leftMouseDown]) { [weak self] event in
             // Local monitors run on the main thread, but the closure type is not isolated.
             nonisolated(unsafe) let event = event
+            if event.type == .leftMouseDown {
+                if event.window?.attachedSheet != nil { MainActor.assumeIsolated { _ = self?.outsideClick() } }
+                return event
+            }
             let consumed = MainActor.assumeIsolated { self?.route(event) == true }
             return consumed ? nil : event
         }
