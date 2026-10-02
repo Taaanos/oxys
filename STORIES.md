@@ -84,7 +84,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | **Phase 2** | **v1.0** | | |
 | V-01 | Maker notes: lens and AF point | M-16, F-03 | built (Sony, Canon CR2 and DNG, Fujifilm match the reference on the corpus; Nikon and CR3 only on built files; the live `Z` check is pending) |
 | V-02 | Develop the RAW on demand | F-06, M-04, M-14 | done |
-| V-03 | RAW modes and automatic RAW at 1:1 | V-02 | todo |
+| V-03 | RAW modes and automatic RAW at 1:1 | V-02 | done |
 | V-04 | LibRaw fallback | F-06, V-02, G-2 | parked |
 | V-05 | Truth badge | V-02 | todo |
 | V-06 | Focus peaking | M-15 | todo |
@@ -1342,12 +1342,23 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - In Always mode, neighbors decode in the background within the memory cap.
 
 **Acceptance criteria**
-- [ ] Every "Done when" of the PRD's RAW decode option holds.
-- [ ] Always mode keeps up with key-repeat browsing (embedded previews show while neighbors develop).
+- [x] Every "Done when" of the PRD's RAW decode option holds.
+- [x] Always mode keeps up with key-repeat browsing (embedded previews show while neighbors develop).
 
 **Open questions**
 1. In Never mode, do `R` and `⇧R` still work for a single frame, or are they disabled? *Proposed:* disabled, and the menu item says why.
 2. How many neighbors decode in Always mode? *Proposed:* one ahead and one behind; the 5-decode memory cap has the last word.
+
+**Result (built)**
+- **Decided**: both open questions as proposed. In Never mode `R` and `⇧R` do nothing, and their menu items are disabled with the reason in the title ("RAW decode is Never in Settings"). In Always mode one neighbor ahead (in the direction of travel) and one behind develop; the 5-decode cap has the last word.
+- **Setting**: General has "RAW decode" (Never, On demand, Always; key `rawMode`, default On demand) and "Automatic RAW at 1:1" (key `rawAutoActual`, default on, disabled in Never). Changing the setting to Never at run time puts the photo back on its preview and ends the `⇧R` session.
+- **Automatic RAW at 1:1**: when a RAW shows its preview and the zoom is past Fit and at 100% or more of the preview's pixels, the RAW develops if the preview's long side is shorter than the sensor's (the EXIF dimensions). An unknown sensor size counts as "shorter". A RAW sent back to the preview with `R` stays there, so the zoom does not develop it again.
+- **`⇧R`** (`zoom.rawAlways`, "Always Show RAW" in View): the session is Always, and again returns to On demand. It is not saved. In Always mode `R` sends the photo on screen back to its preview and `R` again develops it.
+- **Neighbors**: they start only after the photo on screen has finished (the cache runs one decode at a time) and stop when the cursor moves, so the previews never wait on them. Imaging has `RawMode` and `RawPolicy` (pure rules, 5 tests).
+- **Measured** (`develop-always` on `hires-1000`, all DNG, release build): 300 held steps at 33 ms: `key-to-frame` p50 11 ms, p95 41 ms, max 71 ms, so previews keep up while neighbors develop (324 `raw-develop` marks, p50 29 ms, p95 287 ms). After a step with a pause, the RAW is on screen in p50 0.7 ms (`raw-ready`, 20 steps, none timed out): the neighbor ahead was ready. Footprint peak 3.9 GB, above the 2.7 GB seen in V-02's bench because two caches each hold their own budget; recorded, not fixed here.
+- **Not checked**: `make ui-walk` (no Accessibility permission here); the live `⇧R` and 1:1 behavior by eye; Settings with VoiceOver.
+- **Bench**: scenario `develop-always` (`⇧R`, 300 held steps at 33 ms, then 20 steps with a pause; `raw-ready` is step to RAW on screen).
+
 
 ### V-04 · LibRaw fallback
 

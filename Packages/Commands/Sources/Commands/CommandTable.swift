@@ -165,6 +165,9 @@ public struct CommandTable: Sendable {
         // decodes, `R` cancels. Moving to another photo cancels it too.
         Command("zoom.raw", "Show RAW", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
                 kind: .toggle, keys: [Shortcut(.position(.r))]),
+        // `⇧R` (V-03): develop every RAW this session, and back to On demand. Never mode turns `R` and `⇧R` off.
+        Command("zoom.rawAlways", "Always Show RAW", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
+                kind: .toggle, keys: [Shortcut(.position(.r), [.shift])]),
 
         // Info on the image (M-18). `I` cycles off, filename and stars, plus EXIF, plus histogram; `⇧I` toggles the
         // histogram on its own. `⌥⌘I` opens the inspector (every mode); "Move Focus to Inspector" puts the keyboard

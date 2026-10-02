@@ -1,3 +1,4 @@
+import Imaging
 import Sidecar
 import SwiftUI
 
@@ -16,6 +17,8 @@ struct SettingsView: View {
 
 private struct GeneralPane: View {
     @AppStorage("prefetchBudgetMB") private var budgetMB = 0
+    @AppStorage("rawMode") private var rawMode = RawMode.default.rawValue
+    @AppStorage("rawAutoActual") private var rawAutoActual = true
     /// What the slider and field show while Automatic is on, and what returns when it is switched off.
     @State private var manualMB = 2048
 
@@ -40,6 +43,13 @@ private struct GeneralPane: View {
 
     var body: some View {
         Form {
+            Picker("RAW decode", selection: $rawMode) {
+                ForEach(RawMode.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
+            }
+            Toggle("Automatic RAW at 1:1", isOn: $rawAutoActual)
+                .disabled(rawMode == RawMode.never.rawValue)
+            Text("Never shows embedded previews only. On demand develops with R, and at 1:1 when the preview has fewer pixels than the sensor. Always develops every RAW, and its neighbors in the background. ⇧R switches to Always until you quit.")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Toggle("Choose the frame cache size automatically", isOn: isAutomatic)
             LabeledContent("Frame cache") {
                 HStack {

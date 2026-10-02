@@ -1,6 +1,7 @@
 import Canvas
 import AppKit
 import Commands
+import Imaging
 import Library
 import Metadata
 import Observation
@@ -174,8 +175,15 @@ final class AppModel {
         commands.register("zoom.fit") { [unowned self] _ in loupe.setZoom(.fit) }
         commands.register("zoom.in") { [unowned self] _ in loupe.stepZoom(.in) }
         commands.register("zoom.out") { [unowned self] _ in loupe.stepZoom(.out) }
-        commands.register("zoom.raw", isOn: { [unowned self] in loupe.developState != .preview }) { [unowned self] _ in
+        commands.register("zoom.raw", isOn: { [unowned self] in loupe.developState != .preview },
+                          isAvailable: { [unowned self] in loupe.canDevelop },
+                          title: { [unowned self] in loupe.canDevelop ? "Show RAW" : "Show RAW (off: RAW decode is Never in Settings)" }) { [unowned self] _ in
             loupe.toggleRaw()
+        }
+        commands.register("zoom.rawAlways", isOn: { [unowned self] in loupe.rawMode == .always },
+                          isAvailable: { [unowned self] in loupe.canDevelop },
+                          title: { [unowned self] in loupe.canDevelop ? "Always Show RAW" : "Always Show RAW (off: RAW decode is Never in Settings)" }) { [unowned self] _ in
+            loupe.toggleAlwaysRaw()
         }
         commands.register("zoom.sticky", isOn: { [unowned self] in loupe.stickyZoom }) { [unowned self] _ in
             loupe.stickyZoom.toggle()

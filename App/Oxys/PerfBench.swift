@@ -89,6 +89,19 @@ enum PerfBench {
                 commands.perform("zoom.raw"); await settle(.milliseconds(200))
                 commands.perform("nav.next"); await settle(.milliseconds(500))
             }
+        case "develop-always":
+            // ⇧R, then key-repeat browsing (the previews must keep up while neighbors develop), then steps with a
+            // pause: the neighbor ahead should be developed, so `raw-ready` after a step is short (V-03).
+            commands.perform("zoom.rawAlways"); await settle(.milliseconds(500))
+            await held(commands, steps: 300, every: .milliseconds(33))
+            await settle(.seconds(3))
+            for _ in 0..<20 {
+                let began = ContinuousClock.now
+                commands.perform("nav.next")
+                while loupe.developState != .raw, began.duration(to: .now) < .seconds(15) { try? await Task.sleep(for: .milliseconds(1)) }
+                if loupe.developState == .raw { Perf.record("raw-ready", ms(began.duration(to: .now))) } else { Perf.record("raw-timeout", 1) }
+                await settle(.seconds(2))
+            }
         case "develop-cancel":
             // R and then on to the next photo before the decode ends: `raw-wasted` must not appear in the log.
             for _ in 0..<30 {

@@ -92,6 +92,19 @@ final class LoupeController {
     @ObservationIgnored private var rawWanted: Set<URL> = []
     @ObservationIgnored private var developingURL: URL?
     @ObservationIgnored private var developTask: Task<Void, Never>?
+    /// The neighbors developing in the background (V-03, Always mode). Runs only once the photo on screen is done.
+    @ObservationIgnored private var neighborTask: Task<Void, Never>?
+    @ObservationIgnored private var rawNeighbors: [Photo] = []
+    /// `⇧R` (V-03): this session develops every RAW. Not saved; a new launch returns to the setting.
+    private(set) var sessionAlways = false
+    /// In Always mode, photos the user sent back to the preview with `R`; they stay there until `R` again.
+    @ObservationIgnored private var previewHeld: Set<URL> = []
+    /// The General setting (V-03) and the mode in force, which `⇧R` can lift to Always.
+    var rawSetting: RawMode {
+        UserDefaults.standard.string(forKey: "rawMode").flatMap(RawMode.init(rawValue:)) ?? .default
+    }
+    var rawMode: RawMode { RawPolicy.effective(setting: rawSetting, sessionAlways: sessionAlways) }
+    private var autoRawAtActual: Bool { UserDefaults.standard.object(forKey: "rawAutoActual") as? Bool ?? true }
     /// At most 5 developed RAWs, within the frame budget (V-02).
     @ObservationIgnored private let rawCache = RawFrameCache<LoupeFrame>(maxCount: 5, maxBytes: LoupeController.memoryBudget)
 
@@ -111,7 +124,10 @@ final class LoupeController {
     /// request again so the new one is never blank; the frame is usually cached, so this is instant.
     @ObservationIgnored weak var canvas: LoupeView? {
         didSet {
-            canvas?.onZoomChange = { [weak self] info in self?.zoomInfo = info }
+            canvas?.onZoomChange = { [weak self] info in
+                self?.zoomInfo = info
+                self?.developAtActualSizeIfNeeded()
+            }
             canvas?.stickyZoom = stickyZoom
             guard let canvas, canvas !== oldValue, let last = lastRequest else { return }
             Task { await load(last.photo, in: last.folder) }
@@ -169,8 +185,21 @@ final class LoupeController {
         pipeline = FramePipeline(budget: Self.memoryBudget, transientFactor: 2.5) { key in try FrameLoader.load(key, thumbnails: thumbnails) }
         budgetObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.applyBudget() }
+            MainActor.assumeIsolated {
+                self?.applyBudget()
+                self?.applyRawSetting()
+            }
         }
+    }
+
+    /// The setting went to Never (V-03): the session leaves Always and the photo on screen goes back to its preview.
+    private func applyRawSetting() {
+        guard rawSetting == .never, sessionAlways || developState != .preview || !rawWanted.isEmpty else { return }
+        sessionAlways = false
+        rawWanted = []
+        stopDeveloping()
+        if developState == .raw, let photo = shown, let canvas { showPreviewAgain(of: photo, canvas: canvas) }
+        developState = developState == .raw ? .raw : .preview
     }
 
     private func applyBudget() {
@@ -184,6 +213,8 @@ final class LoupeController {
         lastPreviewLongSide = nil
         stopDeveloping()
         rawWanted = []
+        previewHeld = []
+        rawNeighbors = []
         rawCache.removeAll()
         developState = .preview
         canvas?.resetZoom()
@@ -204,6 +235,10 @@ final class LoupeController {
         let index = folder.currentIndex
         let direction: PrefetchPlan.Direction = if let index, let last = lastIndex, index < last { .backward } else { .forward }
         lastIndex = index
+        rawNeighbors = index.map { i in
+            RawPolicy.neighbors(of: i, count: folder.visible.count, forward: direction == .forward)
+                .map { folder.visible[$0] }.filter { $0.format.isRaw }
+        } ?? []
         let slow = await pipeline.isSlow
         let neighborIndices = index.map {
             plan.indices(current: $0, count: folder.visible.count, direction: direction, slow: slow)
@@ -262,9 +297,15 @@ final class LoupeController {
         canvas.show(frame.image, keyToFrame: token, sameZoom: same)
         FrameLog.record(cursor: folder.currentURL, displayed: photo.url, kind: "preview")
         // Back on a photo that was in RAW mode: its decode is still cached, or the mode lapses (V-02/Q1).
-        if rawWanted.contains(photo.url) {
+        // In Always mode every RAW is wanted, unless sent back to the preview with `R` (V-03).
+        let always = rawMode == .always && photo.format.isRaw && !previewHeld.contains(photo.url)
+        if rawWanted.contains(photo.url) || always {
             if let developed = rawCache.cached(target) {
                 present(developed, of: photo, canvas: canvas)
+                developNeighbors(after: photo)
+            } else if always {
+                rawWanted.insert(photo.url)
+                develop(photo)
             } else {
                 rawWanted.remove(photo.url)
             }
@@ -283,6 +324,7 @@ final class LoupeController {
     /// `R`: the RAW over the preview, and back. Pressed while it decodes, it cancels.
     func toggleRaw() {
         guard isActive, let canvas, canvas.window != nil, let photo = shown, failure == nil else { return }
+        guard RawPolicy.allowsDevelop(rawSetting) else { return }
         guard photo.format.isRaw else {
             announce("\(photo.name) is not a RAW file")
             return
@@ -290,15 +332,71 @@ final class LoupeController {
         switch developState {
         case .preview:
             rawWanted.insert(photo.url)
+            previewHeld.remove(photo.url)
             develop(photo)
         case .developing:
             rawWanted.remove(photo.url)
+            previewHeld.insert(photo.url)
             stopDeveloping()
             developState = .preview
             announce("RAW cancelled, showing the preview")
         case .raw:
             rawWanted.remove(photo.url)
+            previewHeld.insert(photo.url)
+            neighborTask?.cancel()
             showPreviewAgain(of: photo, canvas: canvas)
+        }
+    }
+
+    /// Whether `R` and `⇧R` work: not in Never mode (V-03/Q1). The menu says why when they do not.
+    var canDevelop: Bool { RawPolicy.allowsDevelop(rawSetting) }
+
+    /// `⇧R`: every RAW develops this session, and back to On demand.
+    func toggleAlwaysRaw() {
+        guard isActive, let toggled = RawPolicy.toggledSession(setting: rawSetting, sessionAlways: sessionAlways) else { return }
+        sessionAlways = toggled
+        previewHeld = []
+        if toggled {
+            announce("Always develop RAW")
+            guard let photo = shown, photo.format.isRaw, failure == nil else { return }
+            switch developState {
+            case .preview:
+                rawWanted.insert(photo.url)
+                develop(photo)
+            case .raw: developNeighbors(after: photo)
+            case .developing: break
+            }
+        } else {
+            neighborTask?.cancel()
+            announce("RAW on demand")
+        }
+    }
+
+    /// 1:1 with a preview that has fewer pixels than the sensor develops the RAW (V-03). Runs on each zoom change.
+    private func developAtActualSizeIfNeeded() {
+        guard developState == .preview, let zoom = zoomInfo, let photo = shown, failure == nil, !previewHeld.contains(photo.url),
+              RawPolicy.developsAtActualSize(
+                mode: rawMode, automatic: autoRawAtActual, isRaw: photo.format.isRaw, isFit: zoom.level.isFit,
+                percent: zoom.percent, previewLongEdge: shownPixels.map { max($0.width, $0.height) },
+                sensorLongEdge: RawPolicy.longEdge(ofDimensions: exif?.dimensions)) else { return }
+        rawWanted.insert(photo.url)
+        develop(photo)
+    }
+
+    /// Always mode: one neighbor ahead and one behind develop while the photo on screen is idle. Only one
+    /// decode runs at a time, and moving on cancels this (V-03/Q2).
+    private func developNeighbors(after photo: Photo) {
+        neighborTask?.cancel()
+        neighborTask = nil
+        guard rawMode == .always, !rawNeighbors.isEmpty else { return }
+        let keys = rawNeighbors.map(FrameLoader.key(for:))
+        let minLongEdge = max(512, shownPixels.map { max($0.width, $0.height) } ?? 0)
+        let cache = rawCache
+        neighborTask = Task { [weak self] in
+            for key in keys where !cache.contains(key) {
+                guard !Task.isCancelled, let self, shown?.url == photo.url, rawMode == .always else { return }
+                _ = try? await cache.develop(key) { try FrameLoader.develop($0, minLongEdge: minLongEdge) }
+            }
         }
     }
 
@@ -321,6 +419,7 @@ final class LoupeController {
             switch result {
             case .success(let frame?):
                 present(frame, of: photo, canvas: canvas)
+                developNeighbors(after: photo)
             case .success(nil):
                 developState = .preview
             case .failure:
@@ -335,6 +434,8 @@ final class LoupeController {
     private func stopDeveloping() {
         developTask?.cancel()
         developTask = nil
+        neighborTask?.cancel()
+        neighborTask = nil
         developingURL = nil
         rawCache.cancelInflight()
     }
