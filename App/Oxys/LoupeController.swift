@@ -122,7 +122,7 @@ final class LoupeController {
         isActive = active
         if !active {
             shown = nil
-            exif = nil
+            setExif(nil)
             histogram = nil
             shownPixels = nil
             failure = nil
@@ -271,16 +271,22 @@ final class LoupeController {
     /// background read. A read that finishes after the photo changed is dropped.
     private func updateExif(for photo: Photo) {
         if let hit = exifCache.cached(photo.url) {
-            exif = hit
+            setExif(hit)
             return
         }
-        exif = nil
+        setExif(nil)
         let cache = exifCache, url = photo.url
         Task { [weak self] in
             let info = await Task.detached(priority: .userInitiated) { cache.info(for: url) }.value
             guard let self, shown?.url == url else { return }
-            exif = info
+            setExif(info)
         }
+    }
+
+    /// Keeps the canvas's AF anchor (V-01) in step with the EXIF on screen, so `Z` goes to the point the camera focused on.
+    private func setExif(_ info: ExifInfo?) {
+        exif = info
+        canvas?.focusAnchor = info?.maker?.focusAnchor.map { CGPoint(x: $0.x, y: $0.y) }
     }
 
     /// EXIF of any photo, for the inspector when Grid is in front (M-18). Shares the cache with the Loupe panel.

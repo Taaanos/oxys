@@ -63,7 +63,11 @@ struct InspectorView: View {
         var copyText: String { value }
     }
 
-    private var exifRows: [Row] { (exif?.fields ?? []).map { Row(id: "exif.\($0.label)", label: $0.label, value: $0.value) } }
+    /// The EXIF rows, then the AF rows from the maker note (V-01), which say "AF data not available" for a brand we do not read.
+    private var exifRows: [Row] {
+        guard let exif else { return [] }
+        return (exif.fields + exif.afFields).map { Row(id: "exif.\($0.label)", label: $0.label, value: $0.value) }
+    }
 
     private var sidecarRows: [Row] {
         guard let photo else { return [] }

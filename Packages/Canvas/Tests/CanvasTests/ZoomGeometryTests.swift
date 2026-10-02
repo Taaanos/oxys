@@ -127,3 +127,39 @@ import Testing
         #expect(abs(back.x - c.x) < 0.001 && abs(back.y - c.y) < 0.001)
     }
 }
+
+@Suite struct ZoomAnchorTests {
+    let view = CGSize(width: 3000, height: 2000)
+    let pointer = ZoomAnchor.Spot(image: CGPoint(x: 0.2, y: 0.3), view: CGPoint(x: 700, y: 500))
+    let focus = CGPoint(x: 0.75, y: 0.4)
+
+    @Test func pointerOverTheImageWinsOverTheFocusPoint() {
+        #expect(ZoomAnchor.resolve(pointer: pointer, focus: focus, leavingFit: true, viewSize: view) == pointer)
+    }
+
+    @Test func pointerOffTheImageUsesTheFocusPointAtTheMiddle() {
+        let spot = ZoomAnchor.resolve(pointer: nil, focus: focus, leavingFit: true, viewSize: view)
+        #expect(spot == ZoomAnchor.Spot(image: focus, view: CGPoint(x: 1500, y: 1000)))
+    }
+
+    @Test func withoutFocusDataTheMiddleStaysPut() {
+        #expect(ZoomAnchor.resolve(pointer: nil, focus: nil, leavingFit: true, viewSize: view) == nil)
+    }
+
+    @Test func zoomingWhileAlreadyZoomedDoesNotJumpToTheFocusPoint() {
+        #expect(ZoomAnchor.resolve(pointer: nil, focus: focus, leavingFit: false, viewSize: view) == nil)
+    }
+
+    @Test func aFocusPointOutsideTheImageIsIgnored() {
+        #expect(ZoomAnchor.resolve(pointer: nil, focus: CGPoint(x: 1.2, y: 0.5), leavingFit: true, viewSize: view) == nil)
+    }
+
+    @Test func theFocusPointLandsInTheMiddleOfTheViewAt1to1() {
+        let image = CGSize(width: 6000, height: 4000)
+        let spot = ZoomAnchor.resolve(pointer: nil, focus: focus, leavingFit: true, viewSize: view)!
+        let center = ZoomGeometry.center(keeping: spot.image, under: spot.view, imageSize: image, viewSize: view, scale: 1)
+        let rect = ZoomGeometry.rect(imageSize: image, viewSize: view, scale: 1, center: center)
+        let onScreen = CGPoint(x: rect.minX + focus.x * rect.width, y: rect.minY + focus.y * rect.height)
+        #expect(abs(onScreen.x - 1500) <= 1 && abs(onScreen.y - 1000) <= 1)
+    }
+}

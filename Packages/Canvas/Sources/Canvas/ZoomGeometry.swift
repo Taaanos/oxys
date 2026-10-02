@@ -102,3 +102,21 @@ public enum ZoomGeometry {
         return self.center(of: rect(imageSize: imageSize, viewSize: viewSize, scale: scale, center: moved), viewSize: viewSize)
     }
 }
+
+/// Which image point a zoom keeps in place (V-01): the point under the pointer when the pointer is over the image,
+/// otherwise, when leaving Fit, the camera's AF point brought to the middle of the view, otherwise nothing (the
+/// middle of the view stays where it is).
+public enum ZoomAnchor {
+    public struct Spot: Equatable, Sendable {
+        /// The image point, 0...1 from the top left of the upright image.
+        public var image: CGPoint
+        /// Where it stays, in drawable pixels.
+        public var view: CGPoint
+    }
+
+    public static func resolve(pointer: Spot?, focus: CGPoint?, leavingFit: Bool, viewSize: CGSize) -> Spot? {
+        if let pointer { return pointer }
+        guard leavingFit, let focus, (0...1).contains(focus.x), (0...1).contains(focus.y) else { return nil }
+        return Spot(image: focus, view: CGPoint(x: viewSize.width / 2, y: viewSize.height / 2))
+    }
+}

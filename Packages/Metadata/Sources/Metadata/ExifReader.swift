@@ -8,6 +8,8 @@ public enum ExifReader {
     public static func read(from url: URL) -> ExifInfo? {
         guard let properties = properties(of: url) else { return nil }
         var info = parse(properties)
+        info.maker = MakerNoteReader.read(from: url)
+        if info.lens == nil { info.lens = info.maker?.lens }
         if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize { info.fileSize = ExifFormat.fileSize(size) }
         return info
     }

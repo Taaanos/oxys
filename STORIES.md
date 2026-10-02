@@ -82,7 +82,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-25 | MVP gate: interoperability and data safety | M-07 to M-11 | in progress (automated parts done; the Lightroom Classic, RawTherapee and ART matrix waits for you: `docs/m25-interop-matrix.md`) |
 | M-26 | MVP gate: performance | all MVP | done (gate not met: 6 misses) |
 | **Phase 2** | **v1.0** | | |
-| V-01 | Maker notes: lens and AF point | M-16, F-03 | todo |
+| V-01 | Maker notes: lens and AF point | M-16, F-03 | built (Sony, Canon CR2 and DNG, Fujifilm match the reference on the corpus; Nikon and CR3 only on built files; the live `Z` check is pending) |
 | V-02 | Develop the RAW on demand | F-06, M-04, M-14 | todo |
 | V-03 | RAW modes and automatic RAW at 1:1 | V-02 | todo |
 | V-04 | LibRaw fallback | F-06, V-02, G-2 | parked |
@@ -1281,6 +1281,16 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 
 **Open questions**
 1. Which brands are required for v1.0? *Proposed:* Sony, Canon, Nikon and Fujifilm (the test-matrix brands); others show "AF data not available".
+
+**Result (built)**
+- **Decided**: V-01/Q1 as proposed. `MakerNoteReader` (Metadata package, which now depends on Containers for `ByteReader`) reads ARW, CR2, NEF and DNG through the Exif IFD, DNG through Adobe's `MakN` copy in DNGPrivateData, CR3 through its `CMT1` to `CMT3` boxes, and RAF through the Exif of its embedded JPEG. It runs inside `ExifReader.read`, so it shares the cache and the prefetch warm-up.
+- **Lens**: EXIF `LensModel` first, then the maker note's own name (Canon `0x0095`), then a name composed from `LensInfo` (Nikon `0x0084` also). We have no lens-ID tables: a body that records only a numeric lens ID shows the composed text, for example "9.4-25.7mm f/1.8-2.8".
+- **AF point**: Sony `0x2027` FocusLocation; Canon AFInfo2 `0x0026` (points in focus, else selected; y counts up, which a marked preview of the corpus EOS 7D file confirmed); Nikon AFInfo2 `0x00B7` version 01xx; Fujifilm `0x1023` FocusPixel against the Exif image size. Points are fractions of the camera's own frame in sensor orientation, so they do not depend on the size of the preview or the RAW. `AFPoint.upright(orientation:)` maps them to the upright picture (all eight orientations tested). With several points, `Z` uses their middle.
+- **Not read**: Canon's older `AFInfo` (`0x0012`), Nikon AFInfo2 version 03xx (Z bodies), Sony bodies without `0x2027`, and every other brand. They show "AF data not available" and `Z` falls back to the middle of the view.
+- **`Z` anchor**: `ZoomAnchor.resolve` in Canvas: the pointer when it is over the image, else (only when leaving Fit) the AF point brought to the middle of the view, else the middle stays. Zooming in steps with `=` and `−` does not jump to the AF point. `LoupeController.setExif` hands the anchor to the canvas with the EXIF.
+- **Inspector**: "AF mode" (Canon) and "AF point" rows follow the EXIF rows, with percent from the top left and the camera's pixel position.
+- **Checked**: `ExifCheck` with `PREVIEW_ORACLE` compares the AF point with the reference on the corpus: both Sony ARW files, the Sony DNG, the Canon EOS 7D CR2, the Canon 5D Mark III DNG and the Fujifilm X-M1 RAF all match (the Sony DNG and Canon DNG only after reading the `MakN` copy). 45 Metadata tests (built Sony, Canon, Nikon, Fujifilm, RAF, CR3 and DNG files, a fuzz pass over damaged files) and 6 `ZoomAnchor` tests pass.
+- **Not checked**: no Nikon NEF and no CR3 in `TestData/`, so those two decoders are tested on built files only, from the format documentation (Nikon's offsets in particular are unverified). Fetching `Canon EOS R6 Mark III` (already in `scripts/corpus.tsv`) and a Nikon sample would close this. The live `Z` check with the pointer outside the image has not been run in the app. The Fujifilm point is read against the Exif size of the embedded JPEG (1920 × 1280 on the X-M1), as the reference does.
 
 ### V-02 · Develop the RAW on demand
 

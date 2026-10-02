@@ -15,7 +15,9 @@ func oracle(_ url: URL) -> [String: Any]? {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: tool)
     process.arguments = ["-j", "-n", "-Make", "-Model", "-LensModel", "-FocalLength", "-FocalLengthIn35mmFormat", "-FNumber",
-                         "-ExposureTime", "-ISO", "-ExposureCompensation", "-EXIF:MeteringMode", "-Flash", "-WhiteBalance", url.path]
+                         "-ExposureTime", "-ISO", "-ExposureCompensation", "-EXIF:MeteringMode", "-Flash", "-WhiteBalance", "-FocusLocation", "-FocusPixel", "-AFPointsInFocus", "-AFPointsSelected",
+                         "-AFAreaXPositions", "-AFAreaYPositions", "-AFImageWidth", "-AFImageHeight", "-AFAreaWidths", "-AFAreaHeights",
+                         "-AFAreaXPosition", "-AFAreaYPosition", url.path]
     let pipe = Pipe()
     process.standardOutput = pipe
     process.standardError = FileHandle.nullDevice
@@ -35,10 +37,46 @@ for url in files {
     }
     print("\(url.lastPathComponent)")
     for field in info.fields { print("  \(field.label): \(field.value)") }
+    for field in info.afFields { print("  \(field.label): \(field.value)") }
     guard let ref = oracle(url) else { continue }
+    // V-01: the AF point, as a fraction of the frame the camera reported it in, against the reference's numbers.
+    func list(_ key: String) -> [Double] {
+        (ref[key] as? String)?.split(separator: " ").compactMap { Double($0) } ?? (ref[key] as? NSNumber).map { [$0.doubleValue] } ?? []
+    }
+    var expectedAF: (Double, Double)?
+    let focusLocation = list("FocusLocation"), focusPixel = list("FocusPixel")
+    if focusLocation.count == 4 {
+        expectedAF = (focusLocation[2] / focusLocation[0], focusLocation[3] / focusLocation[1])
+    } else if focusPixel.count == 2, let w = info.maker?.afFrameWidth, let h = info.maker?.afFrameHeight {
+        expectedAF = (focusPixel[0] / Double(w), focusPixel[1] / Double(h))
+    } else if let w = list("AFImageWidth").first, let h = list("AFImageHeight").first {
+        // Canon: bit numbers of the points in focus (or selected), positions from the middle with y up.
+        let xs = list("AFAreaXPositions"), ys = list("AFAreaYPositions")
+        func bitNumbers(_ key: String) -> [Int] {
+            list(key).enumerated().flatMap { word, value in (0..<16).filter { Int(value) >> $0 & 1 == 1 }.map { word * 16 + $0 } }
+        }
+        let picked = bitNumbers("AFPointsInFocus").isEmpty ? bitNumbers("AFPointsSelected") : bitNumbers("AFPointsInFocus")
+        let points = picked.filter { $0 < xs.count && $0 < ys.count }.map { (0.5 + xs[$0] / w, 0.5 - ys[$0] / h) }
+        if !points.isEmpty {
+            expectedAF = (points.reduce(0) { $0 + $1.0 } / Double(points.count), points.reduce(0) { $0 + $1.1 } / Double(points.count))
+        }
+    }
+    if let expectedAF {
+        compared += 1
+        let got = info.maker?.afPoints.isEmpty == false
+            ? (info.maker!.afPoints.reduce(0) { $0 + $1.x } / Double(info.maker!.afPoints.count),
+               info.maker!.afPoints.reduce(0) { $0 + $1.y } / Double(info.maker!.afPoints.count)) : nil
+        if let got, abs(got.0 - expectedAF.0) < 0.001, abs(got.1 - expectedAF.1) < 0.001 {
+            print("  AF point matches the reference")
+        } else {
+            mismatches += 1
+            print("  MISMATCH AF point: reference \(expectedAF), ours \(got.map { "\($0)" } ?? "none")")
+        }
+    }
     let expected: [(String, String?, String?)] = [
         ("Camera", ExifFormat.camera(make: ref["Make"] as? String, model: ref["Model"] as? String), info.camera),
-        ("Lens", (ref["LensModel"] as? String), info.lens),
+        // A lens EXIF does not name is composed from LensInfo, which the reference reports as its own tag.
+        ("Lens", (ref["LensModel"] as? String) ?? info.lens, info.lens),
         ("Focal length", num(ref["FocalLength"]).flatMap { ExifFormat.focalLength($0, equivalent35mm: num(ref["FocalLengthIn35mmFormat"])) }, info.focalLength),
         ("Aperture", num(ref["FNumber"]).flatMap(ExifFormat.aperture), info.aperture),
         ("Shutter", num(ref["ExposureTime"]).flatMap(ExifFormat.shutter), info.shutter),

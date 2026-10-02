@@ -25,6 +25,9 @@ public final class LoupeView: NSView {
     private var returnScale: CGFloat?
     /// Called when the zoom level the info strip shows changes.
     public var onZoomChange: ((ZoomInfo?) -> Void)?
+    /// Where the camera focused in the upright picture (0...1, top-left origin), for the photo on screen; nil when the
+    /// file does not say. The zoom goes here when the pointer is not over the image.
+    public var focusAnchor: CGPoint?
     /// Sticky zoom (M-15): a different photo keeps the zoom level and the spot. Off, it opens at Fit.
     public var stickyZoom = true
     /// Scales the image's size for zoom geometry. A thumbnail standing in for a preview is smaller than the
@@ -133,21 +136,26 @@ public final class LoupeView: NSView {
         }
     }
 
-    /// Changes the level, keeping the image point under the pointer (or the middle of the view).
+    /// Changes the level, keeping the image point under the pointer. With the pointer off the image, a zoom from
+    /// Fit goes to the camera's AF point (V-01); otherwise the middle of the view stays where it is.
     private func change(to level: ZoomLevel, image: PreparedImage) {
         let size = drawableSize
         let imageSize = zoomSize(of: image)
         let old = currentRect(image: image, size: size)
-        var point = CGPoint(x: size.width / 2, y: size.height / 2)
-        if let p = pointerInPixels(), old.contains(p) { point = p }
-        let u = old.width > 0 && old.height > 0
-            ? CGPoint(x: (point.x - old.minX) / old.width, y: (point.y - old.minY) / old.height)
-            : CGPoint(x: 0.5, y: 0.5)
+        func imagePoint(at point: CGPoint) -> CGPoint {
+            old.width > 0 && old.height > 0
+                ? CGPoint(x: (point.x - old.minX) / old.width, y: (point.y - old.minY) / old.height)
+                : CGPoint(x: 0.5, y: 0.5)
+        }
+        let pointerSpot = pointerInPixels().flatMap { old.contains($0) ? ZoomAnchor.Spot(image: imagePoint(at: $0), view: $0) : nil }
+        let middle = CGPoint(x: size.width / 2, y: size.height / 2)
+        let spot = ZoomAnchor.resolve(pointer: pointerSpot, focus: focusAnchor, leavingFit: zoom == .fit, viewSize: size)
+            ?? ZoomAnchor.Spot(image: imagePoint(at: middle), view: middle)
         zoom = level
         if level == .fit {
             zoomCenter = CGPoint(x: 0.5, y: 0.5)
         } else {
-            zoomCenter = ZoomGeometry.center(keeping: u, under: point, imageSize: imageSize, viewSize: size,
+            zoomCenter = ZoomGeometry.center(keeping: spot.image, under: spot.view, imageSize: imageSize, viewSize: size,
                                              scale: currentScale(image: image, size: size))
         }
         window?.invalidateCursorRects(for: self)

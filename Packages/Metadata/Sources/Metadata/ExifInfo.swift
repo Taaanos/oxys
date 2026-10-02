@@ -39,8 +39,13 @@ public struct ExifInfo: Sendable, Equatable {
     public var dimensions: String?
     public var fileSize: String?
     public var gps: GPS?
+    /// What the maker note adds (V-01): the AF point, and a lens name when EXIF has none.
+    public var maker: MakerNoteInfo?
 
     public init() {}
+
+    /// AF rows for the inspector; empty until the maker note has been read.
+    public var afFields: [Field] { maker?.afFields ?? [Field("AF point", "AF data not available")] }
 
     public var fields: [Field] {
         var out: [Field] = []
