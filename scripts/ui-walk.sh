@@ -1,7 +1,7 @@
 #!/bin/zsh
 # M-24: walks the core workflow (open, first pass, narrow, hand off) with key events only, no pointer events,
 # then checks the sidecars. Needs Accessibility permission for the terminal (System Events sends the keys).
-# Usage: scripts/ui-walk.sh [path/to/Oxys.app]
+# Usage: [KEY_DELAY=seconds between keys, default 0.4] scripts/ui-walk.sh [path/to/Oxys.app]
 set -eu
 cd "$(dirname "$0")/.."
 APP=${1:-build/Build/Products/Release/Oxys.app}
@@ -10,7 +10,7 @@ WORK=$(mktemp -d)/walk
 mkdir -p "$WORK"
 cp "$SRC/DSC01014.ARW" "$SRC/DSC09025.ARW" "$SRC/DSC00204.dng" "$WORK/"
 
-key() { osascript -e "tell application \"System Events\" to tell process \"Oxys\" to key code $1 ${2:-}"; sleep 0.4; }
+key() { osascript -e "tell application \"System Events\" to tell process \"Oxys\" to key code $1 ${2:-}"; sleep "${KEY_DELAY:-0.4}"; }
 # Key codes (physical keys): 36 Return, 124 →, 7 X, 20 digit 3, 23 digit 5.
 pkill -x Oxys 2>/dev/null || true
 open "$APP"
@@ -39,6 +39,7 @@ pkill -x Oxys || true
 
 fail=0
 count=$(ls "$WORK"/*.xmp 2>/dev/null | wc -l | tr -d ' ')
-[ "$count" -ge 3 ] || { echo "FAIL: expected 3 sidecars, found $count"; fail=1; }
+[ "$count" -ge 3 ] || { echo "FAIL: expected 3 sidecars (ratings 3, -1, 5), found $count"; fail=1; }
+for r in 3 -1 5; do grep -lq "xmp:Rating=\"$r\"" "$WORK"/*.xmp 2>/dev/null || { echo "FAIL: no sidecar with rating $r"; fail=1; }; done
 for x in "$WORK"/*.xmp; do echo "$(basename "$x"): $(grep -o 'xmp:Rating="[-0-9]*"' "$x") $(grep -o 'xmp:Label="[A-Za-z]*"' "$x")"; done
 [ $fail -eq 0 ] && echo "PASS" || exit 1
