@@ -100,6 +100,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-16 | Interop guidance | M-22, F-04 | todo |
 | V-17 | Distribution | G-2 | todo |
 | V-19 | Optional lens correction for RAW | V-02, M-22 | todo (spike done: `docs/spikes/lens-correction.md`) |
+| V-20 | Film strip in Loupe | M-12, M-13, M-04 | todo |
 | V-18 | v1.0 gate | all v1.0, P-11 | todo |
 | **Phase 2b** | **Performance** (build before V-18) | | |
 | P-01 | Performance gate tool and a real shoot | M-26 | done (criterion 1 not met: the M-26 table does not reproduce; cold rows run warm, no `purge`) |
@@ -1830,6 +1831,63 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 
 **Open questions**
 None. Support is read from `isLensCorrectionSupported` when each file is developed, so we keep no list of cameras.
+
+### V-20 · Film strip in Loupe
+
+**Depends on:** M-12, M-13, M-04
+
+> As a photographer who judges one frame at a time in Loupe, I want a row of small thumbnails under the picture, so that I can see where I am in a burst and which neighbors I already rated, without going back to Grid.
+
+**Why:** Loupe shows one frame. To see context, the user must press `G` and leave the frame. The film strip gives position and decision state in one glance. It is an indicator, not a second Grid.
+
+**Scope**
+- A single horizontal row of thumbnails under the picture in Loupe, centered on the active photo. It shows the filtered list (`FolderModel.visible`) in the current sort order.
+- The strip never overlays the photo. It has its own band of fixed height below the picture, and the picture area is the window minus the toolbar, the filter bar, the inspector and this band. Fit uses the smaller area, so the whole photo stays visible. The peaking and clipping overlays, the histogram, the info plate and the badges (truth badge, auto-advance) sit inside the picture area, above the band.
+- Each cell shows the thumbnail and the Grid badge strip (stars, label letter, reject mark, "R+J" for a pair). The active cell has a ring. A cell never relies on color alone.
+- Thumbnails come from a `GridThumbnailLoader` of its own and the shared disk cache (M-12), at a 160 px edge (about 80 pt at 2x). The loader for the strip runs at lower priority than the frame load (M-04, P-05).
+- A click on a cell makes it the active photo. Nothing else is clickable: no selection, no drag, no context menu, no filter bar.
+- The strip never takes keyboard focus. Arrow keys and all cull keys work as before.
+- The command `view.filmstrip` (View menu, toggle, Loupe only) shows and hides it. The state is remembered across launches. Off at first launch.
+- `⇥` hides the strip with the other panels (M-13) and restores it. Moving the pointer does not show it.
+- When the active photo changes, the strip moves with a cut, not an animation.
+- The pure function that gives the index range to show around the active photo lives in `Library`, with unit tests.
+- Not in this story: Compare, Grid, multi-row strips, a vertical strip, drag to reorder, selection from the strip, a size setting.
+
+**Acceptance criteria**
+- [ ] `view.filmstrip` is in the command table with the proposed key, in the View menu and in the cheat sheet. It toggles the strip, and the state persists.
+- [ ] The active cell is centered, or at the start or end of the list when there are not enough neighbors. The ring is always on the active photo.
+- [ ] A rating, label or reject key press changes the badge on the active cell in the same frame as the Loupe badge.
+- [ ] A click on a cell opens that photo in Loupe. Arrow keys still move the image after the click.
+- [ ] With the strip on, `make perf-gate FOLDER=TestData/bench/24mp-1000` for `nav-cold` and `nav-warm` is not worse than with the strip off (same limits as P-03 and P-05). Thumbnail loads are cancelled when the active photo changes.
+- [ ] A signpost covers a strip refresh (the want-list change to the first cell drawn).
+- [ ] Idle CPU is zero with the strip on (P-09).
+- [ ] With the strip on, no pixel of the photo is under the strip: the picture area ends at the strip's top edge, and Fit shows the whole photo in that area. Turning the strip on or off while at Fit refits at once. At 1:1 or another zoom, the point at the center of the picture area stays at the center, and no key press is needed.
+- [ ] The info plate, badges and histogram are never under the strip, at every window size down to the minimum.
+- [ ] `⇥` hides and restores the strip. Hiding the strip leaves the picture size correct.
+- [ ] Each cell has a VoiceOver label with the Grid phrase ("name, 3 stars, red label"), the active cell says so, and the strip is one container labeled "Film strip".
+- [ ] Reduce Motion needs no special case, because the strip never animates.
+- [ ] A folder with one photo, with a filter that hides all but one photo, and a folder that is still loading all show a correct strip (no crash, no empty gap).
+- [ ] Nothing is written into the photo folders.
+
+**Open questions**
+1. Default on or off? *Proposed:* off. The PRD says "content first" and a bright strip beside the photo can bias exposure judgments.
+2. Position? *Proposed:* bottom, one row. A side strip takes width from the picture, which is the short side on most monitors for landscape frames.
+3. Key? *Proposed:* `⌥⌘F`. It is free in the command table (`⌘F` is find by filename). Check the keymap and the Lightroom default map before the build.
+4. Show it in Compare? *Proposed:* no. Compare has two panes and its own pair logic (V-08).
+5. Thumbnail size? *Proposed:* 64 pt high at 2x (128 px edge), fixed. Grid's disk cache holds only 512 px and 1024 px edges (`GridThumbnailLoader` picks one by cell size), so a strip needs an edge of its own or must reuse 512.
+6. Does the strip scroll with a cut or follow the pointer wheel? *Proposed:* it follows the active photo only. A wheel or trackpad scroll moves the strip without changing the active photo, and the strip returns to the active photo on the next key press.
+7. Does it show photos filtered out? *Proposed:* no. It shows `visible` only, as Loupe's arrow keys do.
+
+**Decisions** (V-20)
+- Question 1 **decided** as proposed: off at first launch, and the state is remembered after that.
+- Question 2 **decided** as proposed: bottom, one row.
+- Question 3 **accepted** as proposed: `⌥⌘F`. It is not in the command table today. Check the keymap files and the Lightroom default map before the build.
+- Question 4 **accepted** as proposed: Loupe only, not Compare.
+- Question 5 **decided**: a new 160 px edge, not the 512 px Grid edge. It is small in memory and on disk. A folder not yet seen in Grid decodes each preview once, at low priority. The strip has its own loader, so it does not share the Grid's 256 MB cache budget.
+- Question 6 **accepted** as proposed: the strip follows the active photo. A wheel or trackpad scroll moves the strip only, and the next key press brings it back.
+- Question 7 **accepted** as proposed: it shows `visible` only.
+- **No overlay (user decision).** The strip is layout, not a layer: it sits in the `VStack` in `FolderView` under the mode `ZStack`, so the Loupe view's bounds shrink. The Loupe view must handle the resize (refit, keep the zoom center) without a flash of a stale frame. Grid and Compare do not show the strip, so their space does not change.
+- Risk to check first: the thumbnail loader uses `.userInitiated` priority. With a held arrow key the strip must not compete with the frame load. Give the strip's loader a lower priority from the start. If the perf gate still shows a loss, pause strip loads while keys repeat.
 
 ### V-18 · v1.0 gate
 
