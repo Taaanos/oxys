@@ -135,7 +135,7 @@ final class AppModel {
             announce(urls.count == 1 ? "Revealed 1 file in Finder" : "Revealed \(urls.count.formatted()) files in Finder")
         }
         registerFilter()
-        commands.register("help.cheatsheet") { [unowned self] _ in showCheatSheet = true }
+        commands.register("help.cheatsheet") { [unowned self] _ in showCheatSheet.toggle() }
         commands.register("view.loupe") { [unowned self] _ in commands.mode = .loupe }
         commands.register("view.grid") { [unowned self] _ in commands.mode = .grid }
         commands.register("view.chrome", title: { [unowned self] in chromeHidden ? "Show Toolbar" : "Hide Toolbar" }) { [unowned self] _ in

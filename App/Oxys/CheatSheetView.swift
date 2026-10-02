@@ -18,7 +18,8 @@ struct CheatSheetView: View {
                 Text("Keyboard Shortcuts").font(.title3.bold())
                 Text(center.mode.rawValue.capitalized).foregroundStyle(.secondary)
                 Spacer()
-                Text("? or Esc to close").font(.callout).foregroundStyle(.secondary)
+                Button("Close") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
             }
             .padding([.horizontal, .top], 20)
             .padding(.bottom, 10)
@@ -43,7 +44,6 @@ struct CheatSheetView: View {
         }
         .frame(minWidth: 520, idealWidth: 560, minHeight: 360, idealHeight: 620)
         .onAppear { focused = true }
-        .onKeyPress(.escape) { dismiss(); return .handled }
         .onKeyPress(characters: ["?"]) { _ in dismiss(); return .handled }
     }
 
