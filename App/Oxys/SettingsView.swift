@@ -33,7 +33,7 @@ private struct GeneralPane: View {
     @AppStorage("extractExactBytes") private var extractExactBytes = false
     /// What the stepper shows while Automatic is on, and what returns when it is switched off.
     @State private var manualRawCount = LoupeController.automaticRawCount
-    private static let maxRawCount = 20
+    private static let maxRawCount = 1000
 
     private var isRawCountAutomatic: Binding<Bool> {
         Binding(get: { rawCount == 0 },
@@ -110,10 +110,24 @@ private struct GeneralPane: View {
             Text("Memory used to keep decoded frames ready for the next photos. Automatic is 2 GB, or a quarter of the RAM when that is less.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Toggle("Choose the number of cached RAW frames automatically", isOn: isRawCountAutomatic)
-            Stepper("Cached RAW frames: \(rawCountValue.wrappedValue)", value: rawCountValue, in: 1...Self.maxRawCount)
-                .disabled(rawCount == 0)
-                .accessibilityLabel("Cached RAW frames")
-                .accessibilityValue("\(rawCountValue.wrappedValue)")
+            LabeledContent("Cached RAW frames") {
+                HStack {
+                    // Exponential: the slider position is the logarithm of the count, so 1 to 20 keep room.
+                    Slider(value: Binding(get: { log(Double(rawCountValue.wrappedValue)) / log(Double(Self.maxRawCount)) },
+                                          set: { rawCountValue.wrappedValue = Int((pow(Double(Self.maxRawCount), $0)).rounded()) }),
+                           in: 0...1)
+                        .frame(minWidth: 140)
+                        .accessibilityLabel("Cached RAW frames")
+                        .accessibilityValue("\(rawCountValue.wrappedValue) frames")
+                    TextField("Frames", value: rawCountValue, format: .number.grouping(.never))
+                        .labelsHidden()
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 64)
+                        .accessibilityLabel("Cached RAW frames, number")
+                    Text("frames").foregroundStyle(.secondary)
+                }
+            }
+            .disabled(rawCount == 0)
             Text("How many developed RAW frames stay in memory. Automatic is \(LoupeController.automaticRawCount). The frame cache size above is the limit: if the frames do not fit in it, the oldest ones go first, whatever this number is.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }

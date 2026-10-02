@@ -1961,7 +1961,7 @@ The code changes the M-26 diagnosis in two places, found while planning this pha
 > As a photographer, I want the app to stay inside the memory budget I set, also with RAWs developing, so that the Mac does not swap during a cull.
 
 **Scope**
-- One budget for the preview frame cache, the RAW cache (5 decodes by default, a Settings value from 1 to 20 that the byte budget always limits) and the loads in flight. Today `RawFrameCache` has its own budget (V-03 peaked at 3.9 GB). Done outside this story: the RAW cache follows a change of the size or count setting at once (`rawCacheCount`, `RawFrameCache.setLimits`); the shared budget is still open.
+- One budget for the preview frame cache, the RAW cache (5 decodes by default, a Settings value from 1 to 1000 that the byte budget always limits) and the loads in flight. Today `RawFrameCache` has its own budget (V-03 peaked at 3.9 GB). Done outside this story: the RAW cache follows a change of the size or count setting at once (`rawCacheCount`, `RawFrameCache.setLimits`); the shared budget is still open.
 - While a navigation key is held: load the target only, no prefetch; prefetch starts again on key-up.
 - A memory-pressure source (`DispatchSource.makeMemoryPressureSource`): on warning, keep the current frame and its 2 neighbors; on critical, the current frame only.
 - `malloc_zone_pressure_relief` after a scrub, when the pipeline is idle.

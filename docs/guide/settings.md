@@ -16,7 +16,7 @@ Press `⌘,` to open Settings. It has four tabs: General, Editors, Analysis, and
 
 **Frame cache size** is the memory Oxys uses to keep decoded photos ready. Automatic is 2 GB, or one quarter of your RAM if that is less. To choose a size, turn Automatic off and use the slider. On a Mac with little memory, choose a smaller size.
 
-**Cached RAW frames** is how many developed RAWs stay in memory. Automatic is 5. To choose a number, turn Automatic off and use the stepper (1 to 20). The frame cache size is the higher limit: if the frames do not fit in it, the oldest ones go first, whatever the number is.
+**Cached RAW frames** is how many developed RAWs stay in memory. Automatic is 5. To choose a number, turn Automatic off and use the slider or type a number (1 to 1000). The frame cache size is the higher limit: if the frames do not fit in it, the oldest ones go first, whatever the number is.
 
 **Extract exact bytes, without the RAW's EXIF and XMP** is off by default. `⇧⌘E` copies the largest embedded JPEG of each RAW. By default the JPEG also gets the RAW's EXIF (with GPS and the maker note) and your rating and label as XMP. The image data does not change. Turn this on to get the embedded bytes and nothing else. The creation and modification dates, permissions, and extended attributes are copied in both modes. See [Extract embedded JPEGs](filtering.md#extract-embedded-jpegs).
 
