@@ -285,6 +285,25 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(handle(KeyInput(keyCode: f, modifiers: [.shift], timestamp: 6), .grid).isEmpty)
 }
 
+@Test func hAndSToggleClippingAndHoldRelease() {
+    var router = KeyRouter(keymap: resolve(nil).keymap)
+    func handle(_ key: PhysicalKey, _ mods: KeyModifiers = [], down: Bool = true, at t: Double, _ mode: ViewMode = .loupe) -> [RoutedAction] {
+        router.handle(KeyInput(keyCode: key.rawValue, modifiers: mods, isDown: down, timestamp: t), mode: mode, focus: .canvas).actions
+    }
+    // Tap: down toggles, a quick up does nothing more. Hold: released on key-up.
+    #expect(handle(.h, at: 0) == [.perform("overlay.highlights")])
+    #expect(handle(.h, down: false, at: 0.05).isEmpty)
+    #expect(handle(.h, at: 1) == [.perform("overlay.highlights")])
+    #expect(handle(.h, down: false, at: 2) == [.releaseHold("overlay.highlights")])
+    #expect(handle(.s, at: 3) == [.perform("overlay.shadows")])
+    #expect(handle(.s, down: false, at: 4) == [.releaseHold("overlay.shadows")])
+    // ⌥H opens the thresholds, and neither key works in Grid.
+    #expect(handle(.h, [.option], at: 5) == [.perform("overlay.clippingThresholds")])
+    _ = handle(.h, [.option], down: false, at: 5.05)
+    #expect(handle(.h, at: 6, .grid).isEmpty)
+    #expect(handle(.s, at: 7, .grid).isEmpty)
+}
+
 @Test func exifKeysLiveInLoupeOnly() {
     var router = KeyRouter(keymap: resolve(nil).keymap)
     func press(_ key: PhysicalKey, _ mode: ViewMode, _ mods: KeyModifiers = [], at t: Double) -> [RoutedAction] {

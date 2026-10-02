@@ -33,6 +33,8 @@ public final class LoupeGPU: @unchecked Sendable {
     private let ciContext: CIContext
     /// Focus peaking (V-06); nil only if its shaders failed to build, in which case the overlay is simply absent.
     let peaking: PeakingGPU?
+    /// Highlight and shadow clipping (V-07); nil only if its shaders failed to build.
+    let clipping: ClippingGPU?
 
     private init?() {
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue(),
@@ -62,6 +64,7 @@ public final class LoupeGPU: @unchecked Sendable {
         guard let nearestSampler = device.makeSamplerState(descriptor: nearest) else { return nil }
         (self.device, self.queue, self.pipeline, self.sampler, self.nearestSampler) = (device, queue, pipeline, sampler, nearestSampler)
         peaking = PeakingGPU(device: device, vertex: vertex, pixelFormat: Self.pixelFormat)
+        clipping = ClippingGPU(device: device, vertex: vertex, pixelFormat: Self.pixelFormat)
         ciContext = CIContext(mtlCommandQueue: queue, options: [
             .workingColorSpace: CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3) as Any,
             .cacheIntermediates: false,

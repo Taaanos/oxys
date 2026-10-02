@@ -39,6 +39,8 @@ public enum PerfInterval: String, CaseIterable, Sendable {
     case rawWasted = "raw-wasted"
     /// A peaking command → the overlay is on screen (V-06; one display frame, 16 ms at 60 Hz). The first frame also runs the analysis.
     case peaking = "peaking"
+    /// A clipping command → the overlay is on screen (V-07; one display frame). The first frame also runs the analysis.
+    case clipping = "clipping"
 
     /// Signpost names must be static strings, so the raw value is repeated here.
     var signpostName: StaticString {
@@ -60,6 +62,7 @@ public enum PerfInterval: String, CaseIterable, Sendable {
         case .rawDevelop: "raw-develop"
         case .rawWasted: "raw-wasted"
         case .peaking: "peaking"
+        case .clipping: "clipping"
         }
     }
 }

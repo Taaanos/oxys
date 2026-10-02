@@ -40,6 +40,12 @@ public final class LoupeView: NSView {
     /// Focus peaking (V-06); nil is off. Set with ``setPeaking(_:token:)``.
     public private(set) var peaking: PeakingStyle?
     private var peakingMask: PeakingMask?
+    /// Clipping overlays (V-07); nil is off. Set with ``setClipping(_:token:)``.
+    public private(set) var clipping: ClippingStyle?
+    private var clippingMask: ClippingMask?
+    /// Told, on the main thread, how much of the frame is clipped, or nil when there is nothing to report (overlay
+    /// off, a stand-in, no picture). Called once per analysis, not per frame.
+    public var onClippingStats: (@MainActor (ClippingStats?) -> Void)?
     /// A thumbnail stand-in is not the picture: peaking on it would flash marks that the real frame then replaces.
     private var isStandIn = false
 
@@ -84,7 +90,8 @@ public final class LoupeView: NSView {
         self.image = image
         self.isStandIn = isStandIn
         sizeFactor = zoomSizeFactor
-        if image == nil { peakingMask = nil }
+        if image == nil { peakingMask = nil; clippingMask = nil }
+        if clipping != nil { onClippingStats?(nil) }
         if !stickyZoom && !(sameZoom && image != nil) { resetZoom() }
         render()
     }
@@ -104,6 +111,48 @@ public final class LoupeView: NSView {
         } else if let token {
             Perf.end(token)
         }
+    }
+
+    /// Turns the clipping overlays on with `style`, off with nil, or changes them. `token` (a `clipping` interval) ends
+    /// when the result is presented. Which marks are drawn, the stripes and the colors need no new analysis; a change
+    /// of thresholds does.
+    public func setClipping(_ style: ClippingStyle?, token: Perf.Token? = nil) {
+        guard style != clipping else { if let token { Perf.end(token) }; return }
+        clipping = style
+        if style == nil || style?.marks.isEmpty == true { clippingMask = nil; onClippingStats?(nil) }
+        if image != nil, window != nil {
+            if let token {
+                if let stale = pendingToken { Perf.end(stale) }
+                pendingToken = token
+            }
+            render()
+        } else if let token {
+            Perf.end(token)
+        }
+    }
+
+    /// The mask and parameters for this frame, encoding the analysis into `buffer` when the picture or thresholds changed.
+    private func clippingPass(for image: PreparedImage, gpu: LoupeGPU, buffer: any MTLCommandBuffer) -> (mask: ClippingMask, params: ClipParams, gpu: ClippingGPU)? {
+        guard let style = clipping, !style.marks.isEmpty, !isStandIn, let clippingGPU = gpu.clipping else { return nil }
+        let mask: ClippingMask
+        if let cached = clippingMask, cached.source === image.texture, cached.thresholds == style.thresholds {
+            mask = cached
+        } else if let made = clippingGPU.makeMask(for: image, thresholds: style.thresholds, reusing: clippingMask, in: buffer) {
+            clippingMask = made
+            mask = made
+            buffer.addCompletedHandler { [weak self] _ in
+                let stats = made.stats()
+                DispatchQueue.main.async {
+                    guard let self, self.clippingMask === made else { return }
+                    self.onClippingStats?(stats)
+                }
+            }
+        } else {
+            return nil
+        }
+        let flags: UInt32 = (style.marks.contains(.highlights) ? 1 : 0) | (style.marks.contains(.shadows) ? 2 : 0) | (style.pattern ? 4 : 0)
+        return (mask, ClipParams(highlightColor: ClippingGPU.highlightColor, shadowColor: ClippingGPU.shadowColor,
+                                 levels: UInt32(mask.levels), flags: flags), clippingGPU)
     }
 
     /// The mask and parameters for this frame, encoding the analysis into `buffer` when the picture or mode changed.
@@ -410,6 +459,7 @@ public final class LoupeView: NSView {
         // The analysis is a compute pass, so it is encoded before the render pass and shares its command buffer:
         // turning peaking on costs no more than one frame.
         let peakingPass = image.flatMap { self.peakingPass(for: $0, gpu: gpu, buffer: buffer) }
+        let clippingPass = image.flatMap { self.clippingPass(for: $0, gpu: gpu, buffer: buffer) }
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = drawable.texture
         pass.colorAttachments[0].loadAction = .clear
@@ -432,6 +482,13 @@ public final class LoupeView: NSView {
                 encoder.setVertexBytes(&quad, length: MemoryLayout<Quad>.stride, index: 0)
                 encoder.setFragmentTexture(pass.mask.texture, index: 0)
                 encoder.setFragmentBytes(&pass.params, length: MemoryLayout<PeakParams>.stride, index: 0)
+                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+            }
+            if var pass = clippingPass {
+                encoder.setRenderPipelineState(pass.gpu.overlay)
+                encoder.setVertexBytes(&quad, length: MemoryLayout<Quad>.stride, index: 0)
+                encoder.setFragmentTexture(pass.mask.texture, index: 0)
+                encoder.setFragmentBytes(&pass.params, length: MemoryLayout<ClipParams>.stride, index: 0)
                 encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
             }
         }

@@ -21,6 +21,16 @@ struct LoupeScreen: View {
             if let badge = loupe.badge { CullBadge(badge: badge) }
             if let truth = loupe.truthBadge { TruthBadgeView(badge: truth) }
             if let peaking = loupe.peakingLabel { PeakingBadgeView(label: peaking) }
+            if let clipping = loupe.clippingLabel { ClippingReadout(label: clipping) }
+            // Anchor for the `⌥H` popover: the corner where the readout sits.
+            Color.clear.frame(width: 1, height: 1)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                .padding(.bottom, 34)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .popover(isPresented: Bindable(loupe).showClippingPopover, arrowEdge: .trailing) {
+                    ClippingThresholdsPopover { loupe.showClippingPopover = false }
+                }
             if loupe.showExif, let exif = loupe.exif, loupe.failure == nil {
                 ExifPanel(info: exif, focused: Bindable(loupe).focusedExifField)
             }

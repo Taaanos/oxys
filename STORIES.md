@@ -88,7 +88,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-04 | LibRaw fallback | F-06, V-02, G-2 | parked (closed: not needed for v1.0) |
 | V-05 | Truth badge | V-02 | done |
 | V-06 | Focus peaking | M-15 | done |
-| V-07 | Highlight and shadow clipping | M-17 | todo |
+| V-07 | Highlight and shadow clipping | M-17 | done |
 | V-08 | Compare: layout and culling | M-13, M-19 | todo |
 | V-09 | Compare: linked zoom and EXIF differences | V-08, M-15, M-16 | todo |
 | V-10 | RAW+JPEG pairs | M-08, M-21 | todo |
@@ -1471,14 +1471,28 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - The source (Preview or RAW) is labeled on screen.
 
 **Acceptance criteria**
-- [ ] The readout equals an independent pixel count on synthetic test images.
-- [ ] Toggles within one frame at 24 MP.
-- [ ] Thresholds survive a relaunch.
+- [x] The readout equals an independent pixel count on synthetic test images.
+- [x] Toggles within one frame at 24 MP. (Measured by bench, not a Metal frame capture.)
+- [ ] Thresholds survive a relaunch. (Stored as user defaults; relaunch not run.)
 
 **Open questions**
-1. What counts as clipped: any channel past the threshold, all channels, or luminance? *Proposed:* any channel for highlights (which also reveals single-channel clipping), all channels for shadows; revisit against the reference tools.
-2. Overlay colors. *Proposed:* red for highlights, blue for shadows, with a pattern option for color-blind users.
-3. A percentage of the whole frame or of the visible part when zoomed? *Proposed:* the whole frame.
+1. What counts as clipped: any channel past the threshold, all channels, or luminance? **Decided** as proposed: any channel for highlights, all channels for shadows. Not yet compared with the reference tools.
+2. Overlay colors. **Decided** as proposed: red for highlights, blue for shadows, with a stripes option (the two kinds slant in opposite directions, so color is not the only sign).
+3. A percentage of the whole frame or of the visible part when zoomed? **Decided** as proposed: the whole frame, counted on source pixels.
+
+**Built (decisions and results)**
+- `Canvas`: `ClippingThresholds` (whole percents, highlight 50...100 and shadow 0...50 so they cannot cross; defaults 98 and 2), `ClippingMarks`, `ClippingStyle`, `ClippingStats` (counts, percents, text such as "0.4%", "12%", "<0.1%"). Thresholds are compared as 8-bit values: 98% is a channel of 250 or more (249.9 rounded up), 2% is 5 or less (5.1 rounded down). The shader compares half a level inside the cut, so an 8-bit and a 16-bit float texture agree.
+- `ClippingGPU`: one compute pass writes a two-channel map (red 1 = highlight, green 1 = shadow) for every source pixel and counts both kinds (SIMD sum, then threadgroup atomic, then one global atomic per group). A second pass builds levels with the *maximum* of each block: unlike peaking, one clipped pixel is what the photographer wants to see, so a small blown spot survives zooming out. The overlay is a third draw of the quad, in the same command buffer as the frame, so a toggle is one frame. The map does not depend on which of H and S is on, so switching them needs no new analysis; only new thresholds or a new picture do.
+- The count comes back through the command buffer's completion handler and is kept only if the mask is still current (no stale numbers after a fast move). A thumbnail stand-in gets no overlay and no readout.
+- Commands: `overlay.highlights` (`H`) and `overlay.shadows` (`S`), both tap toggles and show only while held; `overlay.clippingThresholds` (`⌥H`). Loupe only, as for peaking. Neither is on in Grid. On or off is not remembered across launches; thresholds and stripes are.
+- Readout bottom left, one row per overlay that is on ("Highlights 0.4%", "Shadows 12%") and the source (Preview, RAW or File) under it, above the peaking label when both show. Icon and words. VoiceOver reads "Clipping, Highlights 0.4%, on the preview"; each toggle is announced with the number.
+- `⌥H` popover: two whole-percent fields (typing, ↑ and ↓ by 1, a stepper), a stripes toggle, Defaults, Done (Return) and Esc to close. Focus starts in the highlight field. The same values are in Settings → Analysis.
+- Signpost `clipping` (command to presented frame). Bench scenarios `clipping` and `clipping-still`.
+
+**Checked**
+- Unit tests: `Canvas` 61 (new 14: default and extreme thresholds, range and no crossing, percent text, **readout equals an independent per-pixel count** on random images at four odd sizes and four threshold pairs, any-channel and all-channel rules, flat gray and all-white frames, overlay rendered offscreen at 1:1, each mark alone, a one-pixel blown spot kept at 8x zoomed out, stripes leave gaps), `Commands` 52 (new: H and S tap and hold, `⌥H`, none in Grid). Release build clean, arm64.
+- `make perf-bench SCENARIO=clipping-still` (24 MP, 100 toggles): on p50 8.5 ms, p95 32.6 ms; off p50 8.3 ms. The same run of `peaking-still` gives 11.5 ms on and 8.1 ms off, so on this machine a toggle costs about one display frame, and the 8 ms floor is the display, not the analysis. The p95 has the same slow tail as V-06 (the step after about 45 toggles).
+- **Not checked:** a Metal frame capture; the overlay in the live window (this session captures a black screen; the offscreen renders use the same shaders); that the thresholds survive a relaunch (they are plain user defaults read when the overlay is built, but I did not quit and restart the app); the `⌥H` popover with the keyboard and VoiceOver in the live app; the readout against FastRawViewer or another reference tool on real photos (the 20-image trust check in the PRD is still open); `make ui-walk`.
 
 ### V-08 · Compare: layout and culling
 

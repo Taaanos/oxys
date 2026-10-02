@@ -119,6 +119,33 @@ enum PerfBench {
                     await settle(.milliseconds(250))
                 }
             }
+        case "clipping":
+            // H and S on and off (`clipping-on` is the command to the next display frame; the first one runs the
+            // analysis), then browsing with both overlays on.
+            for _ in 0..<40 {
+                for id in ["clipping-on", "clipping-off"] {
+                    let began = ContinuousClock.now
+                    commands.perform("overlay.highlights")
+                    await DisplayTick.next()
+                    Perf.record(id, ms(began.duration(to: .now)))
+                    await settle(.milliseconds(250))
+                }
+                commands.perform("nav.next"); await settle(.milliseconds(300))
+            }
+            commands.perform("overlay.highlights"); commands.perform("overlay.shadows"); await settle(.milliseconds(300))
+            await held(commands, steps: 300, every: .milliseconds(33))
+            commands.perform("overlay.highlights"); commands.perform("overlay.shadows")
+        case "clipping-still":
+            // The overlay on and off on one photo: the cost of the analysis and the draw alone.
+            for _ in 0..<100 {
+                for id in ["clipping-on", "clipping-off"] {
+                    let began = ContinuousClock.now
+                    commands.perform("overlay.highlights")
+                    await DisplayTick.next()
+                    Perf.record(id, ms(began.duration(to: .now)))
+                    await settle(.milliseconds(150))
+                }
+            }
         case "peaking-view":
             // The overlay stays on for 40 s so a screenshot can look at it. `OXYS_BENCH_ZOOM=1` goes to 1:1 first.
             if environment["OXYS_BENCH_ZOOM"] == "1" { commands.perform("zoom.actual"); await settle(.milliseconds(500)) }

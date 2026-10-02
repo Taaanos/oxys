@@ -98,13 +98,16 @@ private struct SidecarsPane: View {
     }
 }
 
-/// How the analysis overlays look (V-06 focus peaking; V-07's clipping thresholds will join here).
+/// How the analysis overlays look (V-06 focus peaking, V-07 clipping).
 private struct AnalysisPane: View {
     @AppStorage(PeakingSettings.modeKey) private var mode = PeakingMode.edges.rawValue
     @AppStorage(PeakingSettings.redKey) private var red = Double(PeakingStyle.defaultColor.x)
     @AppStorage(PeakingSettings.greenKey) private var green = Double(PeakingStyle.defaultColor.y)
     @AppStorage(PeakingSettings.blueKey) private var blue = Double(PeakingStyle.defaultColor.z)
     @AppStorage(PeakingSettings.sensitivityKey) private var sensitivity = PeakingStyle.defaultSensitivity
+    @AppStorage(ClippingSettings.highlightKey) private var highlight = ClippingThresholds.defaultHighlight
+    @AppStorage(ClippingSettings.shadowKey) private var shadow = ClippingThresholds.defaultShadow
+    @AppStorage(ClippingSettings.patternKey) private var pattern = false
 
     private var color: Binding<Color> {
         Binding(get: { Color(.sRGB, red: red, green: green, blue: blue) },
@@ -137,6 +140,18 @@ private struct AnalysisPane: View {
                 Text("Strict marks only the strongest edges. Loose marks faint ones too. Magenta is rare in photos, so it stands out.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Button("Reset to Defaults") { PeakingSettings.reset() }
+            }
+            Section("Highlight and shadow clipping") {
+                Stepper(value: $highlight, in: ClippingThresholds.highlightRange) {
+                    LabeledContent("Highlights from", value: "\(highlight)%")
+                }
+                Stepper(value: $shadow, in: ClippingThresholds.shadowRange) {
+                    LabeledContent("Shadows up to", value: "\(shadow)%")
+                }
+                Toggle("Stripes instead of solid color", isOn: $pattern)
+                Text("H marks highlights in red and S marks shadows in blue. A highlight has any channel at or above its threshold; a shadow has all channels at or below. ⌥H in Loupe opens the same values.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Button("Reset to Defaults") { ClippingSettings.reset() }
             }
         }
         .formStyle(.grouped)

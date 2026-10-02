@@ -176,6 +176,15 @@ public struct CommandTable: Sendable {
         Command("overlay.peakingMode", "Peaking Mode", menu: .init(.view, group: 5), modes: loupe, requires: .photos,
                 keys: [Shortcut(.position(.f), [.shift])]),
 
+        // Clipping (V-07). `H` marks blown highlights, `S` blocked shadows; each toggles and shows only while held.
+        // `⌥H` opens the thresholds popover. The percentages persist (Settings → Analysis has them too).
+        Command("overlay.highlights", "Highlight Clipping", menu: .init(.view, group: 5), modes: loupe, requires: .photos,
+                kind: .toggleOrHold, keys: [Shortcut(.position(.h))]),
+        Command("overlay.shadows", "Shadow Clipping", menu: .init(.view, group: 5), modes: loupe, requires: .photos,
+                kind: .toggleOrHold, keys: [Shortcut(.position(.s))]),
+        Command("overlay.clippingThresholds", "Clipping Thresholds…", menu: .init(.view, group: 5), modes: loupe, requires: .photos,
+                keys: [Shortcut(.position(.h), [.option])]),
+
         // Info on the image (M-18). `I` cycles off, filename and stars, plus EXIF, plus histogram; `⇧I` toggles the
         // histogram on its own. `⌥⌘I` opens the inspector (every mode); "Move Focus to Inspector" puts the keyboard
         // there, since `⇥` belongs to the toolbar. In Loupe `↑` and `↓` walk the EXIF values (M-16), `⌘C` copies the

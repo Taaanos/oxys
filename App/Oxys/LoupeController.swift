@@ -145,6 +145,82 @@ final class LoupeController {
         if mode != peakingMode { peakingMode = mode }
         canvas?.setPeaking(peakingOn ? PeakingSettings.style : nil)
     }
+    // MARK: clipping (V-07)
+
+    /// `H` and `S`. Not remembered across launches; the thresholds are (`ClippingSettings`).
+    private(set) var highlightsOn = false
+    private(set) var shadowsOn = false
+    /// The `⌥H` popover is open.
+    var showClippingPopover = false
+    /// The clipped share of the whole frame, for the picture on screen; nil until the analysis is back.
+    private(set) var clippingStats: ClippingStats?
+
+    struct ClippingLabel: Equatable {
+        struct Row: Equatable { let title: String, value: String, symbol: String }
+        let rows: [Row]
+        let source: String
+        let stackedOverPeaking: Bool
+        var spoken: String {
+            "Clipping, " + rows.map { "\($0.title) \($0.value)" }.joined(separator: ", ") + ", on the \(source.lowercased())"
+        }
+    }
+    /// The readout: one row per overlay that is on. Nil when nothing is painted or the numbers are not back yet.
+    var clippingLabel: ClippingLabel? {
+        guard highlightsOn || shadowsOn, !showingStandIn, failure == nil, let photo = shown, let stats = clippingStats else { return nil }
+        let source = !photo.format.isRaw ? "File" : developState == .raw ? "RAW" : "Preview"
+        var rows: [ClippingLabel.Row] = []
+        if highlightsOn { rows.append(.init(title: "Highlights", value: stats.highlightText, symbol: "sun.max.fill")) }
+        if shadowsOn { rows.append(.init(title: "Shadows", value: stats.shadowText, symbol: "moon.fill")) }
+        return ClippingLabel(rows: rows, source: source, stackedOverPeaking: peakingLabel != nil)
+    }
+
+    /// `H`: highlight clipping on or off. A held `H` calls this again on release.
+    func toggleHighlights() {
+        guard canClip else { return }
+        let token = Perf.begin(.clipping)
+        highlightsOn.toggle()
+        applyClipping(token: token)
+        announce(clippingPhrase("Highlight clipping", on: highlightsOn, stats: clippingStats?.highlightText))
+    }
+
+    /// `S`: shadow clipping on or off. A held `S` calls this again on release.
+    func toggleShadows() {
+        guard canClip else { return }
+        let token = Perf.begin(.clipping)
+        shadowsOn.toggle()
+        applyClipping(token: token)
+        announce(clippingPhrase("Shadow clipping", on: shadowsOn, stats: clippingStats?.shadowText))
+    }
+
+    func toggleClippingPopover() {
+        guard isActive else { return }
+        showClippingPopover.toggle()
+    }
+
+    private func clippingPhrase(_ name: String, on: Bool, stats: String?) -> String {
+        on ? "\(name) on" + (stats.map { ", \($0) of the frame" } ?? "") : "\(name) off"
+    }
+
+    private var canClip: Bool { isActive && canvas?.window != nil && shown != nil && failure == nil }
+
+    private var clippingStyle: ClippingStyle? {
+        var marks: ClippingMarks = []
+        if highlightsOn { marks.insert(.highlights) }
+        if shadowsOn { marks.insert(.shadows) }
+        return marks.isEmpty ? nil : ClippingStyle(marks: marks, thresholds: ClippingSettings.thresholds, pattern: ClippingSettings.pattern)
+    }
+
+    private func applyClipping(token: Perf.Token? = nil) {
+        if clippingStyle == nil { clippingStats = nil }
+        canvas?.setClipping(clippingStyle, token: token)
+    }
+
+    /// Settings changed (thresholds, stripes): the canvas redraws, and the numbers come back for the new thresholds.
+    private func applyClippingSettings() {
+        guard highlightsOn || shadowsOn else { return }
+        canvas?.setClipping(clippingStyle)
+    }
+
     /// Photos the user switched to RAW with `R`. A photo comes back as RAW while its decode is still in the
     /// cache (V-02/Q1); one that was evicted comes back as the preview.
     @ObservationIgnored private var rawWanted: Set<URL> = []
@@ -188,6 +264,8 @@ final class LoupeController {
             }
             canvas?.stickyZoom = stickyZoom
             canvas?.setPeaking(peakingOn ? PeakingSettings.style : nil)
+            canvas?.onClippingStats = { [weak self] in self?.clippingStats = $0 }
+            canvas?.setClipping(clippingStyle)
             guard let canvas, canvas !== oldValue, let last = lastRequest else { return }
             Task { await load(last.photo, in: last.folder) }
         }
@@ -249,6 +327,7 @@ final class LoupeController {
                 self?.applyBudget()
                 self?.applyRawSetting()
                 self?.applyPeakingSettings()
+                self?.applyClippingSettings()
             }
         }
     }

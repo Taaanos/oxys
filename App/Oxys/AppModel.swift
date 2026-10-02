@@ -194,6 +194,15 @@ final class AppModel {
         commands.register("overlay.peakingMode", title: { [unowned self] in "Peaking Mode: \(loupe.peakingMode.title) (switch to \(loupe.peakingMode.other.title))" }) { [unowned self] _ in
             loupe.switchPeakingMode()
         }
+        commands.register("overlay.highlights", isOn: { [unowned self] in loupe.highlightsOn }) { [unowned self] _ in
+            loupe.toggleHighlights()
+        }
+        commands.register("overlay.shadows", isOn: { [unowned self] in loupe.shadowsOn }) { [unowned self] _ in
+            loupe.toggleShadows()
+        }
+        commands.register("overlay.clippingThresholds") { [unowned self] _ in
+            loupe.toggleClippingPopover()
+        }
         commands.register("info.cycle", title: { [unowned self] in "Cycle Info (now \(loupe.infoLevel.title))" }) { [unowned self] _ in
             loupe.cycleInfo()
         }
