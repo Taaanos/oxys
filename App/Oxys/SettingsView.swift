@@ -29,7 +29,26 @@ private struct GeneralPane: View {
     @AppStorage("rawAutoActual") private var rawAutoActual = true
     @AppStorage("pairRawJpeg") private var pairRawJpeg = true
     @AppStorage("autoAdvance") private var autoAdvance = false
+    @AppStorage("rawCacheCount") private var rawCount = 0
     @AppStorage("extractExactBytes") private var extractExactBytes = false
+    /// What the stepper shows while Automatic is on, and what returns when it is switched off.
+    @State private var manualRawCount = LoupeController.automaticRawCount
+    private static let maxRawCount = 20
+
+    private var isRawCountAutomatic: Binding<Bool> {
+        Binding(get: { rawCount == 0 },
+                set: { rawCount = $0 ? 0 : manualRawCount })
+    }
+
+    private var rawCountValue: Binding<Int> {
+        Binding(get: { rawCount == 0 ? LoupeController.automaticRawCount : rawCount },
+                set: { value in
+                    let clamped = min(max(value, 1), Self.maxRawCount)
+                    manualRawCount = clamped
+                    if rawCount != 0 { rawCount = clamped }
+                })
+    }
+
     /// What the slider and field show while Automatic is on, and what returns when it is switched off.
     @State private var manualMB = 2048
 
@@ -90,9 +109,17 @@ private struct GeneralPane: View {
             .disabled(budgetMB == 0)
             Text("Memory used to keep decoded frames ready for the next photos. Automatic is 2 GB, or a quarter of the RAM when that is less.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Toggle("Choose the number of cached RAW frames automatically", isOn: isRawCountAutomatic)
+            Stepper("Cached RAW frames: \(rawCountValue.wrappedValue)", value: rawCountValue, in: 1...Self.maxRawCount)
+                .disabled(rawCount == 0)
+                .accessibilityLabel("Cached RAW frames")
+                .accessibilityValue("\(rawCountValue.wrappedValue)")
+            Text("How many developed RAW frames stay in memory. Automatic is \(LoupeController.automaticRawCount). The frame cache size above is the limit: if the frames do not fit in it, the oldest ones go first, whatever this number is.")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .formStyle(.grouped)
-        .onAppear { if budgetMB > 0 { manualMB = budgetMB } }
+        .onAppear { if budgetMB > 0 { manualMB = budgetMB }
+            if rawCount > 0 { manualRawCount = rawCount } }
     }
 }
 

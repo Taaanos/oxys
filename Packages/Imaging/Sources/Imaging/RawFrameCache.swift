@@ -27,15 +27,27 @@ public final class RawFrameCache<Frame: Sendable>: Sendable {
         var inflight: Inflight?
         var clock: UInt64 = 0
         var nextID: UInt64 = 0
+        var maxCount: Int
+        var maxBytes: Int
     }
 
-    private let state = Mutex(State())
-    public let maxCount: Int
-    public let maxBytes: Int
+    private let state: Mutex<State>
 
     public init(maxCount: Int = 5, maxBytes: Int = .max) {
-        self.maxCount = maxCount
-        self.maxBytes = maxBytes
+        state = Mutex(State(maxCount: max(1, maxCount), maxBytes: maxBytes))
+    }
+
+    public var maxCount: Int { state.withLock { $0.maxCount } }
+    public var maxBytes: Int { state.withLock { $0.maxBytes } }
+
+    /// New limits (the settings changed). Frames over them go at once, least recently used first. The bytes limit
+    /// is the higher one: a large count never keeps more than `maxBytes`.
+    public func setLimits(maxCount: Int, maxBytes: Int) {
+        state.withLock { s in
+            s.maxCount = max(1, maxCount)
+            s.maxBytes = maxBytes
+            evict(&s)
+        }
     }
 
     public var count: Int { state.withLock { $0.entries.count } }
@@ -106,7 +118,7 @@ public final class RawFrameCache<Frame: Sendable>: Sendable {
 
     private func evict(_ s: inout State) {
         func total() -> Int { s.entries.values.reduce(0) { $0 + $1.cost } }
-        while s.entries.count > 1, s.entries.count > maxCount || total() > maxBytes,
+        while s.entries.count > 1, s.entries.count > s.maxCount || total() > s.maxBytes,
               let oldest = s.entries.min(by: { $0.value.tick < $1.value.tick })?.key {
             s.entries[oldest] = nil
         }

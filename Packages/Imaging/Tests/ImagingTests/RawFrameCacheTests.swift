@@ -121,3 +121,26 @@ func aDNGNamedTiffIsDevelopedThroughAContainerHint() throws {
     defer { try? FileManager.default.removeItem(at: url) }
     #expect(throws: RawDevelopError.unsupported) { try RawDeveloper.neutralFilter(for: url, minLongEdge: 1024) }
 }
+
+@Test func rawCacheLowerCountEvictsTheLeastRecentlyUsedAtOnce() async throws {
+    let cache = RawFrameCache<Int>(maxCount: 5)
+    for n in 1...5 { _ = try await cache.develop(key(n)) { _ in loaded(n) } }
+    cache.setLimits(maxCount: 2, maxBytes: .max)
+    #expect(cache.count == 2)
+    #expect(cache.contains(key(4)) && cache.contains(key(5)))
+}
+
+@Test func rawCacheBytesLimitWinsOverAHighCount() async throws {
+    let cache = RawFrameCache<Int>(maxCount: 10, maxBytes: 25)
+    for n in 1...6 { _ = try await cache.develop(key(n)) { _ in loaded(n, cost: 10) } }
+    #expect(cache.count == 2)
+}
+
+@Test func rawCacheRaisingLimitsKeepsEverythingAndCountIsAtLeastOne() async throws {
+    let cache = RawFrameCache<Int>(maxCount: 3)
+    for n in 1...3 { _ = try await cache.develop(key(n)) { _ in loaded(n) } }
+    cache.setLimits(maxCount: 10, maxBytes: .max)
+    #expect(cache.count == 3 && cache.maxCount == 10)
+    cache.setLimits(maxCount: 0, maxBytes: .max)
+    #expect(cache.maxCount == 1 && cache.count == 1)
+}

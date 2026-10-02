@@ -333,7 +333,7 @@ Speed is the feature: with the fastest system key repeat (roughly 30 steps a sec
 | Grid scrolling | 60 fps with 10,000 files, thumbnails from disk cache | Instruments |
 | Sidecar write | Never blocks input; 1,000 decisions in a minute write without a dropped key | Stress script |
 | Extraction | Within 20% of a plain Finder copy of the same bytes | Timed on 500 files |
-| Memory | Prefetch cache capped (default 2 GB, adjustable); at most 5 full-resolution RAW decodes held | Allocations instrument |
+| Memory | Prefetch cache capped (default 2 GB, adjustable); full-resolution RAW decodes held: 5 by default, adjustable, always within the cache cap | Allocations instrument |
 | Idle | 0% CPU when nothing is changing | Activity Monitor |
 
 **How the pipeline meets them:** read the embedded preview with memory-mapped I/O; prefetch a window of frames each side of the cursor in the direction of travel; give every request a token and cancel stale ones so the newest target always wins; decode on background queues and hand finished textures to Metal without copies (unified memory on Apple silicon).

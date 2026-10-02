@@ -278,8 +278,8 @@ final class LoupeController {
     }
     var rawMode: RawMode { RawPolicy.effective(setting: rawSetting, sessionAlways: sessionAlways) }
     private var autoRawAtActual: Bool { UserDefaults.standard.object(forKey: "rawAutoActual") as? Bool ?? true }
-    /// At most 5 developed RAWs, within the frame budget (V-02).
-    @ObservationIgnored let rawCache = RawFrameCache<LoupeFrame>(maxCount: 5, maxBytes: LoupeController.memoryBudget)
+    /// The developed RAWs: the count from Settings (5 by default), within the frame budget, which wins (V-02).
+    @ObservationIgnored let rawCache = RawFrameCache<LoupeFrame>(maxCount: LoupeController.rawCacheCount, maxBytes: LoupeController.memoryBudget)
 
     /// The confirmation over the canvas after a cull key; nil when it has timed out.
     struct Badge: Equatable {
@@ -347,6 +347,15 @@ final class LoupeController {
         return automaticBudget
     }
 
+    /// How many developed RAWs stay in memory when Settings is on Automatic.
+    static let automaticRawCount = 5
+
+    /// The `rawCacheCount` default when it is above 0, else `automaticRawCount`. The frame budget limits it further.
+    static var rawCacheCount: Int {
+        if let n = UserDefaults.standard.object(forKey: "rawCacheCount") as? Int, n > 0 { return n }
+        return automaticRawCount
+    }
+
     /// What "automatic" means: 2 GB, or a quarter of the RAM when that is less. Settings shows it (M-22).
     static var automaticBudget: Int { min(2 << 30, Int(ProcessInfo.processInfo.physicalMemory / 4)) }
 
@@ -384,6 +393,7 @@ final class LoupeController {
 
     private func applyBudget() {
         let pipeline = pipeline, budget = Self.memoryBudget
+        rawCache.setLimits(maxCount: Self.rawCacheCount, maxBytes: budget)
         Task { await pipeline.setBudget(budget) }
     }
 
