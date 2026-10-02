@@ -454,7 +454,7 @@ public final class LoupeView: NSView {
         window?.makeFirstResponder(self)
         onClick?()
         if event.clickCount == 2 {
-            toggleZoom(token: Perf.begin(.zoom))
+            setZoom(zoom == .fit ? .actual : .fit, token: Perf.begin(.zoom))
             return
         }
         dragging = zoom != .fit
