@@ -96,7 +96,7 @@ public final class LoupeView: NSView {
         if image == nil { peakingMask = nil; clippingMask = nil }
         if clipping != nil { onClippingStats?(nil) }
         if !stickyZoom && !(sameZoom && image != nil) { resetZoom() }
-        render()
+        render(deferAnalysis: true)
     }
 
     /// Turns focus peaking on with `style`, off with nil, or changes its look. `token` (a `peaking` interval) ends when
@@ -135,11 +135,14 @@ public final class LoupeView: NSView {
     }
 
     /// The mask and parameters for this frame, encoding the analysis into `buffer` when the picture or thresholds changed.
-    private func clippingPass(for image: PreparedImage, gpu: LoupeGPU, buffer: any MTLCommandBuffer) -> (mask: ClippingMask, params: ClipParams, gpu: ClippingGPU)? {
+    private func clippingPass(for image: PreparedImage, gpu: LoupeGPU, buffer: any MTLCommandBuffer, deferAnalysis: Bool) -> (mask: ClippingMask, params: ClipParams, gpu: ClippingGPU)? {
         guard let style = clipping, !style.marks.isEmpty, !isStandIn, let clippingGPU = gpu.clipping else { return nil }
         let mask: ClippingMask
         if let cached = clippingMask, cached.source === image.texture, cached.thresholds == style.thresholds {
             mask = cached
+        } else if deferAnalysis {
+            needsAnalysis = true
+            return nil
         } else if let made = clippingGPU.makeMask(for: image, thresholds: style.thresholds, reusing: clippingMask, in: buffer) {
             clippingMask = made
             mask = made
@@ -159,13 +162,16 @@ public final class LoupeView: NSView {
     }
 
     /// The mask and parameters for this frame, encoding the analysis into `buffer` when the picture or mode changed.
-    private func peakingPass(for image: PreparedImage, gpu: LoupeGPU, buffer: any MTLCommandBuffer) -> (mask: PeakingMask, params: PeakParams, gpu: PeakingGPU)? {
+    private func peakingPass(for image: PreparedImage, gpu: LoupeGPU, buffer: any MTLCommandBuffer, deferAnalysis: Bool) -> (mask: PeakingMask, params: PeakParams, gpu: PeakingGPU)? {
         guard let style = peaking, !isStandIn, let peakingGPU = gpu.peaking else { return nil }
         let threshold = PeakingThreshold.stored(sensitivity: style.sensitivity, mode: style.mode)
         let mask: PeakingMask
         if let cached = peakingMask, cached.source === image.texture, cached.mode == style.mode {
             peakingGPU.rebuildPyramid(of: cached, threshold: threshold, in: buffer)
             mask = cached
+        } else if deferAnalysis {
+            needsAnalysis = true
+            return nil
         } else if let made = peakingGPU.makeMask(for: image, mode: style.mode, threshold: threshold, reusing: peakingMask, in: buffer) {
             peakingMask = made
             mask = made
@@ -463,8 +469,17 @@ public final class LoupeView: NSView {
 
     // MARK: drawing
 
-    private func render() {
+    /// Set by the overlay passes when a new picture needs its analysis and the frame went out without it.
+    private var needsAnalysis = false
+    private var analysisInFlight = false
+
+    /// With `deferAnalysis`, a picture that has no mask yet is drawn bare, and the analysis runs in a command buffer
+    /// of its own that redraws when it is done: the photo is on screen as fast as it is without overlays, and the
+    /// overlay follows. Without it (turning an overlay on), the analysis shares the frame's buffer.
+    private func render(deferAnalysis: Bool = false) {
         guard let gpu, window != nil else { return }
+        let deferAnalysis = deferAnalysis || analysisInFlight
+        needsAnalysis = false
         let scale = window?.backingScaleFactor ?? 1
         let pixelSize = CGSize(width: (bounds.width * scale).rounded(), height: (bounds.height * scale).rounded())
         guard pixelSize.width >= 1, pixelSize.height >= 1 else { return }
@@ -483,8 +498,8 @@ public final class LoupeView: NSView {
         guard let drawable = layer.nextDrawable(), let buffer = gpu.queue.makeCommandBuffer() else { return }
         // The analysis is a compute pass, so it is encoded before the render pass and shares its command buffer:
         // turning peaking on costs no more than one frame.
-        let peakingPass = image.flatMap { self.peakingPass(for: $0, gpu: gpu, buffer: buffer) }
-        let clippingPass = image.flatMap { self.clippingPass(for: $0, gpu: gpu, buffer: buffer) }
+        let peakingPass = image.flatMap { self.peakingPass(for: $0, gpu: gpu, buffer: buffer, deferAnalysis: deferAnalysis) }
+        let clippingPass = image.flatMap { self.clippingPass(for: $0, gpu: gpu, buffer: buffer, deferAnalysis: deferAnalysis) }
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = drawable.texture
         pass.colorAttachments[0].loadAction = .clear
@@ -533,6 +548,25 @@ public final class LoupeView: NSView {
             buffer.present(drawable)
             buffer.commit()
         }
+        if needsAnalysis, let image, !analysisInFlight { analyzeThenRedraw(image, gpu: gpu) }
+    }
+
+    /// Runs the overlay analysis for `image` behind the frame already presented, then draws again.
+    private func analyzeThenRedraw(_ image: PreparedImage, gpu: LoupeGPU) {
+        needsAnalysis = false
+        guard let buffer = gpu.queue.makeCommandBuffer() else { return }
+        analysisInFlight = true
+        _ = peakingPass(for: image, gpu: gpu, buffer: buffer, deferAnalysis: false)
+        _ = clippingPass(for: image, gpu: gpu, buffer: buffer, deferAnalysis: false)
+        buffer.addCompletedHandler { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.analysisInFlight = false
+                // If a newer picture arrived meanwhile, it was drawn bare and its analysis starts now.
+                self.render(deferAnalysis: self.image?.texture !== image.texture)
+            }
+        }
+        buffer.commit()
     }
 }
 
