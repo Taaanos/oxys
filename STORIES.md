@@ -1633,7 +1633,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Question 1 **decided** as proposed. The cull handler in `AppModel` computes `advance = autoAdvance != (⇧ held)`, so one rule covers Grid, Loupe and Compare. In Compare the active side moves on (V-08/Q4).
 - `A` is the command `cull.autoAdvance` (Photo menu, toggle, a physical key, every mode). It is not a `⇧` twin command. VoiceOver says "Auto-advance on" or "Auto-advance off".
 - State: `AppModel.autoAdvance`, stored in the `autoAdvance` default (off at first launch). Settings → General has the same switch; the model follows changes made there.
-- Indicator: an "Auto-advance" plate at the top left of the window in every mode. It is in the window, not the toolbar, so it stays visible when `⇥` hides the toolbar. Icon and text, with a VoiceOver label that also says what `⇧` does.
+- Indicator: an "Auto-advance" plate at the bottom right of the picture, under the truth badge (V-05), in Loupe and in each Compare pane; the truth badge moves up to make room. In Grid, which has no truth badge, the plate sits bottom right on the info strip row. It is in the window, not the toolbar, so it stays visible when `⇥` hides the toolbar. Icon and text, with a VoiceOver label that also says what `⇧` does.
 - Applies to rating, label and reject keys, and to the `[` and `]` rating steps, as `⇧` does today.
 
 **Checked**

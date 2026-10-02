@@ -47,7 +47,7 @@ private struct ComparePaneView: View {
                 ErrorTile(name: pane.shown?.name ?? "", message: failure)
             }
             if let badge = compare.badge, badge.side == pane.side { CullBadge(badge: .init(id: badge.id, decision: badge.decision, photoName: badge.photoName)) }
-            if let truth = pane.truthBadge { TruthBadgeView(badge: truth) }
+            if pane.truthBadge != nil || model.autoAdvance { TruthBadgeView(badge: pane.truthBadge, autoAdvance: model.autoAdvance) }
             if let photo = pane.shown, pane.failure == nil {
                 if let peaking = loupe.peakingLabel(for: photo, developed: pane.developState == .raw) { PeakingBadgeView(label: peaking) }
                 if let clipping = loupe.clippingLabel(for: photo, developed: pane.developState == .raw, stats: pane.clippingStats) {

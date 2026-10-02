@@ -19,7 +19,7 @@ struct LoupeScreen: View {
                 ErrorTile(name: loupe.shown?.name ?? "", message: failure)
             }
             if let badge = loupe.badge { CullBadge(badge: badge) }
-            if let truth = loupe.truthBadge { TruthBadgeView(badge: truth) }
+            if loupe.truthBadge != nil || model.autoAdvance { TruthBadgeView(badge: loupe.truthBadge, autoAdvance: model.autoAdvance) }
             if let peaking = loupe.peakingLabel { PeakingBadgeView(label: peaking) }
             if let clipping = loupe.clippingLabel { ClippingReadout(label: clipping) }
             // Anchor for the `⌥H` popover: the corner where the readout sits.
