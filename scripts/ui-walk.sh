@@ -10,7 +10,7 @@ WORK=$(mktemp -d)/walk
 mkdir -p "$WORK"
 cp "$SRC/DSC01014.ARW" "$SRC/DSC09025.ARW" "$SRC/DSC00204.dng" "$WORK/"
 
-key() { osascript -e "tell application \"System Events\" to tell process \"Oxys\" to key code $1 $2"; sleep 0.4; }
+key() { osascript -e "tell application \"System Events\" to tell process \"Oxys\" to key code $1 ${2:-}"; sleep 0.4; }
 # Key codes (physical keys): 36 Return, 124 →, 7 X, 20 digit 3, 23 digit 5.
 pkill -x Oxys 2>/dev/null || true
 open "$APP"
