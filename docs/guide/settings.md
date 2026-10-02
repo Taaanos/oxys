@@ -1,6 +1,6 @@
 # Settings
 
-Press `⌘,` to open Settings. It has four tabs: General, Editors, Analysis, and Sidecars.
+Press `⌘,` to open Settings. It has five tabs: General, Editors, Peaking, Clipping, and Sidecars.
 
 ## General
 
@@ -24,20 +24,18 @@ Press `⌘,` to open Settings. It has four tabs: General, Editors, Analysis, and
 
 This list holds the apps that `⌘E` and `⌥⌘E` can open photos in. Lightroom Classic, RawTherapee, and ART are in it already. Choose the default editor, add other apps, or remove the ones you added. An app that is not installed stays in the list but is dimmed. If you choose no default, `⌘E` uses the first installed editor.
 
-## Analysis
-
-**Focus peaking**
+## Peaking
 
 - **Mode:** Edges or Fine detail. In Loupe, `⇧F` changes it.
 - **Color:** magenta by default.
 - **Sensitivity:** from Strict to Loose. Strict marks only the strongest edges. Loose also marks faint edges.
 
-**Highlight and shadow clipping**
+## Clipping
 
 - The highlight percentage and the shadow percentage. The defaults are 98% and 2%. `⌥H` opens the same values.
 - **Stripes instead of solid color:** Oxys draws the marks as stripes. You can see the photo through them.
 
-Each section has a **Reset to Defaults** button.
+Each of these two tabs has a **Reset to Defaults** button.
 
 ## Sidecars
 

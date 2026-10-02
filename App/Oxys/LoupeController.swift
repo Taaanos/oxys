@@ -98,7 +98,7 @@ final class LoupeController {
 
     // MARK: focus peaking (V-06)
 
-    /// The overlay is on. Not remembered across launches; the mode, color and sensitivity are (Settings → Analysis).
+    /// The overlay is on. Not remembered across launches; the mode, color and sensitivity are (Settings → Peaking).
     private(set) var peakingOn = false
     private(set) var peakingMode = PeakingSettings.mode
     /// A thumbnail stands in for the preview: peaking waits for the real frame.
@@ -174,7 +174,7 @@ final class LoupeController {
         canvas.setClipping(clippingStyle)
     }
 
-    /// Settings changed (color, sensitivity, or the mode in the Analysis pane): the canvas redraws with them.
+    /// Settings changed (color, sensitivity, or the mode in the Peaking pane): the canvas redraws with them.
     private func applyPeakingSettings() {
         let mode = PeakingSettings.mode
         if mode != peakingMode { peakingMode = mode }

@@ -1,7 +1,7 @@
 import Canvas
 import Foundation
 
-/// The stored settings for focus peaking (V-06), read by Loupe and edited in Settings → Analysis. Each is a user
+/// The stored settings for focus peaking (V-06), read by Loupe and edited in Settings → Peaking. Each is a user
 /// default, so a change applies to the open window at once.
 enum PeakingSettings {
     static let modeKey = "peakingMode"

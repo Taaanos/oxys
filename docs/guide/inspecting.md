@@ -62,7 +62,7 @@ Press `F` to mark the parts that are in focus.
 
 - **Tap** `F` to turn peaking on or off. **Hold** `F` to see it only while you press the key.
 - Press `⇧F` to change the mode. **Edges** marks the outlines of sharp areas. **Fine detail** marks small detail and texture. It also shows more noise. If peaking is off, `⇧F` turns it on.
-- Change the color and sensitivity in **Settings ▸ Analysis**. The default color is magenta. Magenta is rare in photos.
+- Change the color and sensitivity in **Settings ▸ Peaking**. The default color is magenta. Magenta is rare in photos.
 
 The badge shows if the marks come from the preview or from the RAW.
 
@@ -76,7 +76,7 @@ The badge shows if the marks come from the preview or from the RAW.
 
 A pixel is a highlight when any channel is at or above the highlight threshold. A pixel is a shadow when all channels are at or below the shadow threshold. The defaults are 98% and 2%. Change them in steps of 1%.
 
-A readout shows how much of the photo is clipped. It also shows the source of the data. Small blown spots stay visible when you zoom out. To see the photo through the marks, turn on **Stripes instead of solid color** in Settings ▸ Analysis.
+A readout shows how much of the photo is clipped. It also shows the source of the data. Small blown spots stay visible when you zoom out. To see the photo through the marks, turn on **Stripes instead of solid color** in Settings ▸ Clipping.
 
 ## Information on the photo
 

@@ -15,7 +15,8 @@ struct SettingsView: View {
         TabView {
             GeneralPane().tabItem { Label("General", systemImage: "gearshape") }
             EditorsPane(store: model.editors).tabItem { Label("Editors", systemImage: "square.and.pencil") }
-            AnalysisPane().tabItem { Label("Analysis", systemImage: "scope") }
+            PeakingPane().tabItem { Label("Peaking", systemImage: "scope") }
+            ClippingPane().tabItem { Label("Clipping", systemImage: "circle.lefthalf.filled") }
             SidecarsPane().tabItem { Label("Sidecars", systemImage: "doc.text") }
         }
         .frame(width: 500)
@@ -132,6 +133,7 @@ private struct GeneralPane: View {
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .formStyle(.grouped)
+        .fixedSize(horizontal: false, vertical: true)
         .onAppear { if budgetMB > 0 { manualMB = budgetMB }
             if rawCount > 0 { manualRawCount = rawCount } }
     }
@@ -153,19 +155,17 @@ private struct SidecarsPane: View {
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .formStyle(.grouped)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
-/// How the analysis overlays look (V-06 focus peaking, V-07 clipping).
-private struct AnalysisPane: View {
+/// Settings → Peaking (V-06): how the focus-peaking overlay looks.
+private struct PeakingPane: View {
     @AppStorage(PeakingSettings.modeKey) private var mode = PeakingMode.edges.rawValue
     @AppStorage(PeakingSettings.redKey) private var red = Double(PeakingStyle.defaultColor.x)
     @AppStorage(PeakingSettings.greenKey) private var green = Double(PeakingStyle.defaultColor.y)
     @AppStorage(PeakingSettings.blueKey) private var blue = Double(PeakingStyle.defaultColor.z)
     @AppStorage(PeakingSettings.sensitivityKey) private var sensitivity = PeakingStyle.defaultSensitivity
-    @AppStorage(ClippingSettings.highlightKey) private var highlight = ClippingThresholds.defaultHighlight
-    @AppStorage(ClippingSettings.shadowKey) private var shadow = ClippingThresholds.defaultShadow
-    @AppStorage(ClippingSettings.patternKey) private var pattern = false
 
     private var color: Binding<Color> {
         Binding(get: { Color(.sRGB, red: red, green: green, blue: blue) },
@@ -199,6 +199,20 @@ private struct AnalysisPane: View {
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Button("Reset to Defaults") { PeakingSettings.reset() }
             }
+        }
+        .formStyle(.grouped)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Settings → Clipping: the thresholds behind the H and S overlays.
+private struct ClippingPane: View {
+    @AppStorage(ClippingSettings.highlightKey) private var highlight = ClippingThresholds.defaultHighlight
+    @AppStorage(ClippingSettings.shadowKey) private var shadow = ClippingThresholds.defaultShadow
+    @AppStorage(ClippingSettings.patternKey) private var pattern = false
+
+    var body: some View {
+        Form {
             Section("Highlight and shadow clipping") {
                 Stepper(value: $highlight, in: ClippingThresholds.highlightRange) {
                     LabeledContent("Highlights from", value: "\(highlight)%")
@@ -213,6 +227,7 @@ private struct AnalysisPane: View {
             }
         }
         .formStyle(.grouped)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 

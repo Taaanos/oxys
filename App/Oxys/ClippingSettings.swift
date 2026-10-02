@@ -2,7 +2,7 @@ import Canvas
 import Foundation
 
 /// The stored settings for the clipping overlays (V-07), read by Loupe and edited in the `⌥H` popover and in
-/// Settings → Analysis. Each is a user default, so a change applies to the open window at once.
+/// Settings → Clipping. Each is a user default, so a change applies to the open window at once.
 enum ClippingSettings {
     static let highlightKey = "clippingHighlight"
     static let shadowKey = "clippingShadow"
