@@ -91,8 +91,13 @@ public struct PreviewSource: Sendable {
     }
 
     /// Decodes the Loupe image, at most `maxPixelSize` on its long edge (nil: full size).
-    public func decodeLoupe(maxPixelSize: Int? = nil) throws(PreviewError) -> DecodedPreview {
-        try decode(wanting: nil, maxPixelSize: maxPixelSize)
+    ///
+    /// `deferred` (P-02): when the image needs no downscaling, the result is not decoded yet. ImageIO decodes it
+    /// into whatever bitmap the caller draws it into, so a caller that draws it once (the texture upload) never
+    /// holds a second full-size copy. A deferred image decodes on every draw; draw it once. A corrupt file shows
+    /// up at that draw, as a blank image, instead of here.
+    public func decodeLoupe(maxPixelSize: Int? = nil, deferred: Bool = false) throws(PreviewError) -> DecodedPreview {
+        try decode(wanting: nil, maxPixelSize: maxPixelSize, deferred: deferred)
     }
 
     /// Decodes the smallest image whose long edge is at least `longEdge`, downscaled to exactly that long edge
@@ -101,7 +106,7 @@ public struct PreviewSource: Sendable {
         try decode(wanting: longEdge, maxPixelSize: longEdge)
     }
 
-    private func decode(wanting gridEdge: Int?, maxPixelSize: Int?) throws(PreviewError) -> DecodedPreview {
+    private func decode(wanting gridEdge: Int?, maxPixelSize: Int?, deferred: Bool = false) throws(PreviewError) -> DecodedPreview {
         let token = Perf.begin(.decode)
         defer { Perf.end(token) }
         switch kind {
@@ -109,19 +114,21 @@ public struct PreviewSource: Sendable {
             guard let located else { throw .noPreview }
             let chosen = gridEdge.map(located.smallestAdequate) ?? located.largest
             guard let preview = chosen else { throw .noPreview }
-            return try decodeEmbedded(preview, info: located.info, maxPixelSize: maxPixelSize)
+            return try decodeEmbedded(preview, info: located.info, maxPixelSize: maxPixelSize, deferred: deferred)
         case .original:
-            return try decodeOriginal(gridEdge: gridEdge, maxPixelSize: maxPixelSize)
+            return try decodeOriginal(gridEdge: gridEdge, maxPixelSize: maxPixelSize, deferred: deferred)
         }
     }
 
     // MARK: Embedded JPEG
 
-    private func decodeEmbedded(_ preview: EmbeddedJPEG, info: ContainerInfo, maxPixelSize: Int?) throws(PreviewError) -> DecodedPreview {
+    private func decodeEmbedded(_ preview: EmbeddedJPEG, info: ContainerInfo, maxPixelSize: Int?,
+                                deferred: Bool) throws(PreviewError) -> DecodedPreview {
         let bytes = PreviewLocator.bytes(of: preview, in: data)
         guard let source = CGImageSourceCreateWithData(bytes as CFData, nil),
               let decoded = Self.thumbnail(of: source, maxPixelSize: maxPixelSize.map { min($0, preview.longEdge) },
-                                           fromEmbeddedThumbnail: false)
+                                           fromEmbeddedThumbnail: false,
+                                           deferringBelow: deferred ? preview.longEdge : nil)
         else { throw .corrupt }
         let space = Self.colorSpace(hasICC: preview.header.hasICCProfile,
                                     interop: preview.header.exifInteropIndex ?? info.interopIndex)
@@ -143,7 +150,7 @@ public struct PreviewSource: Sendable {
 
     // MARK: Originals
 
-    private func decodeOriginal(gridEdge: Int?, maxPixelSize: Int?) throws(PreviewError) -> DecodedPreview {
+    private func decodeOriginal(gridEdge: Int?, maxPixelSize: Int?, deferred: Bool) throws(PreviewError) -> DecodedPreview {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               CGImageSourceGetCount(source) > 0,
               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
@@ -153,7 +160,8 @@ public struct PreviewSource: Sendable {
         let raw = props[kCGImagePropertyOrientation] as? UInt32
         let orientation = raw.flatMap(CGImagePropertyOrientation.init(rawValue:)) ?? .up
         guard let decoded = Self.thumbnail(of: source, maxPixelSize: maxPixelSize.map { min($0, max(width, height)) },
-                                           fromEmbeddedThumbnail: gridEdge != nil)
+                                           fromEmbeddedThumbnail: gridEdge != nil,
+                                           deferringBelow: deferred ? max(width, height) : nil)
         else { throw .corrupt }
         // A JPEG with no ICC profile is sRGB, or Adobe RGB when its Exif says so. HEIC and TIFF carry their own.
         var image = decoded
@@ -168,7 +176,14 @@ public struct PreviewSource: Sendable {
 
     /// Decodes without applying orientation (callers get it separately). `fromEmbeddedThumbnail` lets ImageIO use
     /// the file's own thumbnail when it is big enough; if it is too small the full image is decoded instead.
-    static func thumbnail(of source: CGImageSource, maxPixelSize: Int?, fromEmbeddedThumbnail: Bool) -> CGImage? {
+    /// `deferringBelow`: the image's long edge when the caller wants an undecoded image; it applies only when
+    /// `maxPixelSize` does not shrink the image.
+    static func thumbnail(of source: CGImageSource, maxPixelSize: Int?, fromEmbeddedThumbnail: Bool,
+                          deferringBelow fullEdge: Int? = nil) -> CGImage? {
+        if let fullEdge, maxPixelSize.map({ $0 >= fullEdge }) ?? true {
+            // No ImageIO cache either: the default would keep the decoded pixels after the first draw.
+            return CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary)
+        }
         guard let maxPixelSize else {
             return CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
         }

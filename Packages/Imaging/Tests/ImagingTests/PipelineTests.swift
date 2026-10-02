@@ -209,3 +209,24 @@ private func solidImage(_ width: Int, _ height: Int) -> CGImage {
     try await Task.sleep(for: .milliseconds(100))
     #expect(await pipeline.cachedBytes <= 100)
 }
+
+@Test func aCancelledLoadKeepsItsReservationUntilItEnds() async throws {
+    // The load below ignores its cancellation for 200 ms, as a decode or an upload does. The pipeline must keep
+    // counting its working memory until it returns, not until it was cancelled.
+    let pipeline = FramePipeline<Int>(budget: 1_000, transientFactor: 2) { key in
+        // A detached task does not see the load's cancellation, so this wait runs its full length.
+        if number(key) == 1 { await Task.detached { try? await Task.sleep(for: .milliseconds(200)) }.value }
+        else { try await Task.sleep(for: .milliseconds(5)) }
+        return LoadedFrame(frame: number(key), cost: 100)
+    }
+    _ = try await pipeline.frame(for: key(0), prefetch: [])   // the pipeline now knows a frame costs 100
+    let slow = Task { try await pipeline.frame(for: key(1), prefetch: []) }
+    try await Task.sleep(for: .milliseconds(50))
+    _ = try await pipeline.frame(for: key(2), prefetch: [])   // cancels key 1; its task still runs
+    #expect(await pipeline.running >= 1)
+    #expect(await pipeline.budgetForCache <= 1_000 - 200)     // at least one load is reserved
+    _ = try await slow.value
+    for _ in 0..<100 where await pipeline.running > 0 { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(await pipeline.running == 0)
+    #expect(await pipeline.budgetForCache == 1_000)
+}

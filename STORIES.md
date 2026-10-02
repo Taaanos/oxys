@@ -102,7 +102,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-18 | v1.0 gate | all v1.0, P-11 | todo |
 | **Phase 2b** | **Performance** (build before V-18) | | |
 | P-01 | Performance gate tool and a real shoot | M-26 | done (criterion 1 not met: the M-26 table does not reproduce; cold rows run warm, no `purge`) |
-| P-02 | Decode once, into GPU memory | P-01 | todo |
+| P-02 | Decode once, into GPU memory | P-01 | done (criterion 2 met against the P-01 baseline, not against the stale 3.4 GB; see the story) |
 | P-03 | Screen-size frame first (cold next image) | P-02 | todo |
 | P-04 | One memory budget | P-02 | todo |
 | P-05 | Keys within one display frame while frames load | P-01 | todo |
@@ -1872,6 +1872,27 @@ The code changes the M-26 diagnosis in two places, found while planning this pha
 
 **Open questions**
 1. Is a linear texture made from a buffer fast enough to sample at Fit? *Proposed:* measure both; keep the blit if the linear texture costs more than 1 ms per draw.
+
+**Result (2 Oct 2026, Apple M4, Release build)**
+
+- Q1 **Decided, not measured:** the blit stays. A texture made from a buffer cannot have a mip chain, and Fit shrinks a 24 MP frame about 4 to 1; without mips that aliases. P-03 drops the mip chain for the screen-size frame and builds it for the full-size frame when the GPU is idle, so P-03 is the place to look at a linear texture again.
+- The preview now goes undecoded (`decodeLoupe(deferred: true)`, no ImageIO cache) into one shared buffer (`LoupeGPU.prepare(_:orientation:analyzing:)`). The buffer is the only full-size copy besides the texture. The histogram and the 512 px thumbnail (`CGImage.downscaled(longEdge:)`) come from the pixels in that buffer, beside the GPU copy. The thumbnail has the loupe preview's own pixels and orientation, not the smallest adequate embedded preview as before.
+- `FrameLoader.load` is `async`. The blit is awaited with `addCompletedHandler`; the histogram is a child task (`async let`). No pool thread blocks in the frame load. **Not done:** `prepare(developed:)` and `readback` (the RAW develop path, V-02) still call `waitUntilCompleted()`, and Core Image has no async render call. The develop closure in `RawFrameCache` is synchronous; P-10 takes it.
+- A cancelled task is checked after the decode and before the copy is queued. After the copy is queued it finishes first, so the buffer is never freed under the GPU.
+- `FramePipeline` counts `running` loads, not `inflight` ones: a cancelled load keeps its reservation until its task ends (test `aCancelledLoadKeepsItsReservationUntilItEnds`). `transientFactor` went from 2.5 to 1.5 (measured working memory of 24 MP frames: 0.8 to 1.2 times the frame).
+- A deferred JPEG is checked at the draw, not at the decode. A truncated file shows what ImageIO can decode, as the eager path did; a file whose header is unreadable still throws `corrupt`.
+- New scenario `load-memory` (`make perf-bench SCENARIO=load-memory`): 12 photos spread over the folder, one load at a time, a 1 ms sampler for the footprint peak. `load-working-mb` is peak less the footprint before less the finished frame. The ratio counts frames of 20 MB or more (a smaller frame is under the load's fixed overhead of a few MB). Added to `scripts/perf-targets.tsv` with a limit of 1.5.
+
+| Measure (`24mp-1000`) | Before | After |
+| --- | --- | --- |
+| Working memory of a load, as a multiple of the frame (5 frames of 112 and 167 MB): p50 / max | 1.54 / 1.95 | 0.80 / 1.20 (the 1.20 is the first load after start) |
+| `scrub` peak footprint | 5,572 MB (P-01) | 3,358 MB (one run) |
+| Cold next image, p95 | 257 ms (P-01) | 227 ms |
+| Prefetched next image, p95 | 63 ms (P-01) | 61 ms |
+| Stale frames, held key (24 MP, real set, 200 ms delay) | 0 | 0 of 239, 217, 404 |
+
+- Criterion 1 met. Criterion 3 met: no regression, both rows are a little better.
+- Criterion 2 is met against the P-01 baseline (5,572 MB, 2.2 GB lower) and **not** against the number the story names: the M-26 value of 3.4 GB did not reproduce in P-01, and 3,358 MB is the same figure. What is left (held-key prefetch, the heap that keeps what it freed) is P-04.
 
 ### P-03 · Screen-size frame first (cold next image)
 

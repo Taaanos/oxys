@@ -143,3 +143,56 @@ private func write(_ data: Data, named name: String) throws -> URL {
     let source = try PreviewSource.open(url, isRaw: false)
     #expect(throws: PreviewError.corrupt) { try source.decodeLoupe() }
 }
+
+// MARK: - P-02: deferred decode and scaling
+
+@Test func deferredDecodeKeepsSizeOrientationAndPixels() throws {
+    let url = try write(makeTIFFContainer(jpeg: makeJPEG(width: 1024, height: 683), orientation: 6), named: "p2a.dng")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let source = try PreviewSource.open(url, isRaw: true)
+    let eager = try source.decodeLoupe(maxPixelSize: 8192)
+    let deferred = try source.decodeLoupe(maxPixelSize: 8192, deferred: true)
+    #expect(deferred.image.width == eager.image.width && deferred.image.height == eager.image.height)
+    #expect(deferred.orientation == eager.orientation)
+    // Drawing the deferred image gives the pixels the eager one has.
+    func firstPixel(_ image: CGImage) -> [UInt8] {
+        var pixel = [UInt8](repeating: 0, count: 4)
+        pixel.withUnsafeMutableBytes { buffer in
+            let context = CGContext(data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                    space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+            context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        }
+        return pixel
+    }
+    #expect(firstPixel(deferred.image) == firstPixel(eager.image))
+}
+
+@Test func deferredDecodeStillScalesWhenTheLimitIsBelowTheImage() throws {
+    let url = try write(makeTIFFContainer(jpeg: makeJPEG(width: 1200, height: 800)), named: "p2b.dng")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let small = try PreviewSource.open(url, isRaw: true).decodeLoupe(maxPixelSize: 600, deferred: true)
+    #expect(max(small.image.width, small.image.height) == 600)
+}
+
+@Test func deferredDecodeOfAnOriginalWorks() throws {
+    let url = try write(makeJPEG(width: 640, height: 480, orientation: 8), named: "p2c.jpg")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let decoded = try PreviewSource.open(url, isRaw: false).decodeLoupe(maxPixelSize: 8192, deferred: true)
+    #expect(decoded.image.width == 640 && decoded.orientation == .left)
+}
+
+@Test func downscaledKeepsTheAspectAndNeverEnlarges() throws {
+    let big = try #require(makeImage(width: 3000, height: 2000))
+    let small = try #require(big.downscaled(longEdge: 512))
+    #expect(small.width == 512 && small.height == 341)
+    let same = try #require(small.downscaled(longEdge: 512))
+    #expect(same.width == 512)
+    let tallSource = try #require(makeImage(width: 1000, height: 4000))
+    let tall = try #require(tallSource.downscaled(longEdge: 400))
+    #expect(tall.width == 100 && tall.height == 400)
+}
+
+private func makeImage(width: Int, height: Int) -> CGImage? {
+    CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+              space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)?.makeImage()
+}

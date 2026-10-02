@@ -1,5 +1,7 @@
 import Canvas
+import CoreGraphics
 import CoreImage
+import ImageIO
 import Diagnostics
 import Foundation
 import Imaging
@@ -42,26 +44,33 @@ nonisolated enum FrameLoader {
         }
     }
 
-    static func load(_ key: FrameKey, thumbnails: DiskThumbnailCache) throws -> LoadedFrame<LoupeFrame> {
+    /// P-02: the preview is decoded once, straight into the upload buffer (it is handed over undecoded), and the
+    /// histogram and the 512 px thumbnail are made from the pixels in that buffer beside the GPU copy. Nothing
+    /// blocks a pool thread: the GPU copy is awaited. Cancellation is checked between the steps, and once more
+    /// after the decode, before the GPU copy is queued.
+    static func load(_ key: FrameKey, thumbnails: DiskThumbnailCache) async throws -> LoadedFrame<LoupeFrame> {
         do {
             try Task.checkCancellation()
             try simulateSlowRead()
             let source = try PreviewSource.open(key.url, isRaw: key.isRaw)
             try Task.checkCancellation()
-            let decoded = try source.decodeLoupe(maxPixelSize: 8192)
+            let decoded = try source.decodeLoupe(maxPixelSize: 8192, deferred: true)
             try Task.checkCancellation()
-            // The histogram runs beside the upload instead of after it; both only read the decoded image.
-            nonisolated(unsafe) var histogram: Histogram?
-            let group = DispatchGroup()
-            DispatchQueue.global(qos: .userInitiated).async(group: group) {
-                histogram = Perf.measure(.histogram) { Histogram.compute(decoded.image, source: .preview) }
+            guard let gpu = LoupeGPU.shared else { throw PreviewError.corrupt }
+            let thumbnailFile = thumbnails.fileURL(path: key.url.path, size: key.fileSize, modified: key.modified,
+                                                   longEdge: thumbnailEdge)
+            let needsThumbnail = !FileManager.default.fileExists(atPath: thumbnailFile.path)
+            let uploaded = try await gpu.prepare(decoded.image, orientation: decoded.orientation) { pixels in
+                (histogram: Perf.measure(.histogram) { Histogram.compute(pixels.image, source: .preview) },
+                 thumbnail: needsThumbnail ? pixels.image.downscaled(longEdge: thumbnailEdge) : nil)
             }
-            let prepared = LoupeGPU.shared?.prepare(decoded.image, orientation: decoded.orientation)
-            group.wait()
-            guard let prepared else { throw PreviewError.corrupt }
+            guard let (prepared, extras) = uploaded else { throw PreviewError.corrupt }
             let size = decoded.sourceDisplaySize
-            storeThumbnail(from: source, key: key, into: thumbnails)
-            return LoadedFrame(frame: LoupeFrame(image: prepared, width: size.width, height: size.height, histogram: histogram),
+            if let thumbnail = extras.thumbnail {
+                storeThumbnail(thumbnail, orientation: decoded.orientation, key: key, into: thumbnails)
+            }
+            return LoadedFrame(frame: LoupeFrame(image: prepared, width: size.width, height: size.height,
+                                                 histogram: extras.histogram),
                                cost: prepared.byteCost)
         } catch let error as PreviewError {
             throw error
@@ -73,12 +82,10 @@ nonisolated enum FrameLoader {
     }
 
     /// Writes the 512 px thumbnail once per file version, off the critical path.
-    private static func storeThumbnail(from source: PreviewSource, key: FrameKey, into cache: DiskThumbnailCache) {
+    private static func storeThumbnail(_ image: CGImage, orientation: CGImagePropertyOrientation, key: FrameKey,
+                                       into cache: DiskThumbnailCache) {
         Task.detached(priority: .background) {
-            let file = cache.fileURL(path: key.url.path, size: key.fileSize, modified: key.modified, longEdge: thumbnailEdge)
-            guard !FileManager.default.fileExists(atPath: file.path),
-                  let grid = try? source.decodeGrid(longEdge: thumbnailEdge) else { return }
-            cache.store(grid.image, orientation: grid.orientation, path: key.url.path, size: key.fileSize,
+            cache.store(image, orientation: orientation, path: key.url.path, size: key.fileSize,
                         modified: key.modified, longEdge: thumbnailEdge)
         }
     }

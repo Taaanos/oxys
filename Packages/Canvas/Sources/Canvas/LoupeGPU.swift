@@ -113,6 +113,68 @@ public final class LoupeGPU: @unchecked Sendable {
                              byteCost: width * height * 4 * 4 / 3)
     }
 
+    /// Pixels the caller may read while the upload runs: a `CGImage` over the staging buffer. Valid only inside
+    /// the `analyze` closure of `prepare(_:orientation:analyzing:)`.
+    public struct StagedPixels: @unchecked Sendable {
+        public let image: CGImage
+    }
+
+    /// The upload of P-02: draws `image` once, straight into a shared buffer (an undecoded image decodes right
+    /// into it, so the buffer is the only full-size copy besides the texture), then copies it into the
+    /// mipmapped texture on the GPU. `analyze` runs beside that copy on the pixels in the buffer, so a caller
+    /// gets a histogram or a thumbnail without a second decode. No thread blocks while the GPU works.
+    /// Throws `CancellationError` when the task was cancelled after the decode and before the copy was queued;
+    /// after that the copy finishes first, so the buffer is never freed under the GPU. Nil when the image is
+    /// empty, larger than the GPU allows, or could not be drawn.
+    public func prepare<Analysis: Sendable>(_ image: CGImage, orientation: CGImagePropertyOrientation,
+                                            analyzing analyze: @escaping @Sendable (StagedPixels) -> Analysis)
+        async throws -> (image: PreparedImage, analysis: Analysis)? {
+        let width = image.width, height = image.height
+        guard width > 0, height > 0, width <= 16384, height <= 16384 else { return nil }
+        let token = Perf.begin(.textureUpload)
+        defer { Perf.end(token) }
+
+        var colorSpace = image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
+        if colorSpace.model != .rgb { colorSpace = CGColorSpace(name: CGColorSpace.sRGB)! }
+        let bytesPerRow = width * 4
+        let bitmapInfo = CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue
+        guard let staging = device.makeBuffer(length: bytesPerRow * height, options: .storageModeShared),
+              let context = CGContext(data: staging.contents(), width: width, height: height, bitsPerComponent: 8,
+                                      bytesPerRow: bytesPerRow, space: colorSpace, bitmapInfo: bitmapInfo)
+        else { return nil }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        try Task.checkCancellation()
+
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: Self.pixelFormat, width: width,
+                                                                  height: height, mipmapped: true)
+        descriptor.usage = .shaderRead
+        descriptor.storageMode = .shared
+        guard let texture = device.makeTexture(descriptor: descriptor),
+              let buffer = queue.makeCommandBuffer(), let blit = buffer.makeBlitCommandEncoder(),
+              let provider = CGDataProvider(dataInfo: Unmanaged.passRetained(staging).toOpaque(), data: staging.contents(),
+                                            size: bytesPerRow * height, releaseData: { info, _, _ in
+                                                Unmanaged<AnyObject>.fromOpaque(info!).release()
+                                            }),
+              let view = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
+                                 bytesPerRow: bytesPerRow, space: colorSpace,
+                                 bitmapInfo: CGBitmapInfo(rawValue: bitmapInfo), provider: provider, decode: nil,
+                                 shouldInterpolate: false, intent: .defaultIntent)
+        else { return nil }
+        blit.copy(from: staging, sourceOffset: 0, sourceBytesPerRow: bytesPerRow, sourceBytesPerImage: bytesPerRow * height,
+                  sourceSize: MTLSize(width: width, height: height, depth: 1), to: texture, destinationSlice: 0,
+                  destinationLevel: 0, destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
+        blit.generateMipmaps(for: texture)
+        blit.endEncoding()
+
+        let staged = StagedPixels(image: view)
+        async let analysis = analyze(staged)
+        await buffer.completion()
+        let result = await analysis
+        let size = orientation.swapsAxes ? CGSize(width: height, height: width) : CGSize(width: width, height: height)
+        return (PreparedImage(texture: texture, orientation: orientation, colorSpace: colorSpace, displaySize: size,
+                              byteCost: width * height * 4 * 4 / 3), result)
+    }
+
     /// Renders `image` (upright, extent from the origin) straight into a mipmapped texture at its own pixel size,
     /// encoded as Display P3. Every texel is one pixel of `image`: nothing is resampled, which is what 1:1 needs.
     /// Throws `CancellationError` when the task was cancelled before the render started, and nil when the image is
@@ -200,4 +262,14 @@ public final class LoupeGPU: @unchecked Sendable {
         return float4(c.rgb, 1.0);
     }
     """
+}
+
+extension MTLCommandBuffer {
+    /// Commits the buffer and returns when the GPU is done with it, without blocking the calling thread.
+    func completion() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            addCompletedHandler { _ in continuation.resume() }
+            commit()
+        }
+    }
 }

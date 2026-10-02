@@ -42,6 +42,9 @@ public actor FramePipeline<Frame: Sendable> {
     }
 
     private var inflight: [FrameKey: Inflight] = [:]
+    /// Loads whose task has not ended. A cancelled load leaves `inflight` at once but keeps its memory until it
+    /// really returns (P-02), so the reservation counts these, not `inflight`.
+    private(set) var running = 0
     private var nextID: UInt64 = 0
     private var prefetchDriver: Task<Void, Never>?
     private let maxPrefetchConcurrency: Int
@@ -67,16 +70,18 @@ public actor FramePipeline<Frame: Sendable> {
 
     public var isSlow: Bool { averageLoad > Self.slowLoadThreshold }
     public var cachedBytes: Int { cache.totalCost }
+    /// What the cache may hold right now (for tests): the budget less the reservation of running loads.
+    var budgetForCache: Int { cache.budget }
 
     public func setBudget(_ bytes: Int) {
         requestedBudget = bytes
         applyBudget()
     }
 
-    /// The cache's share of the budget right now: what was asked for, less the working memory of the loads in
-    /// flight, but never under half of it.
+    /// The cache's share of the budget right now: what was asked for, less the working memory of the loads that
+    /// still run (cancelled ones included, until they end), but never under half of it.
     private func applyBudget() {
-        let reserve = Int(Double(inflight.count * lastCost) * transientFactor)
+        let reserve = Int(Double(running * lastCost) * transientFactor)
         cache.budget = max(requestedBudget - reserve, requestedBudget / 2)
     }
 
@@ -138,6 +143,7 @@ public actor FramePipeline<Frame: Sendable> {
         nextID += 1
         let id = nextID
         inflight[key] = Inflight(id: id, task: task)
+        running += 1
         applyBudget()
         // Files the result in the cache when it lands, independent of whoever is waiting for it.
         Task {
@@ -149,8 +155,9 @@ public actor FramePipeline<Frame: Sendable> {
 
     private func finished(_ key: FrameKey, id: UInt64, result: Result<LoadedFrame<Frame>, any Error>,
                           started: ContinuousClock.Instant) {
+        running -= 1
         // Only the request still registered may fill the cache; one cancelled and replaced must not.
-        guard inflight[key]?.id == id else { return }
+        guard inflight[key]?.id == id else { applyBudget(); return }
         inflight[key] = nil
         if case .success(let loaded) = result {
             lastCost = loaded.cost

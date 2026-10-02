@@ -3,6 +3,7 @@ import Canvas
 import Commands
 import Darwin
 import Diagnostics
+import Imaging
 import Library
 import Metadata
 
@@ -15,7 +16,8 @@ import Metadata
 /// `compare` (V-08: checks the pair rules, then steps both sides), `compare-link` (V-09: linked zoom and pan, overlays and `R` on both panes),
 /// `compare-view` (Compare stays up for 40 s, for a screenshot), `overlays`, `peaking` (V-06: F on and off, then browsing with it on),
 /// `peaking-still` (the overlay on one photo), `peaking-view` (stays up for 40 s; `OXYS_BENCH_ZOOM=1` goes to 1:1 first),
-/// `clipping` and `clipping-still` (the same for H and S, V-07), `grid` (scroll 10,000 files), `idle`.
+/// `clipping` and `clipping-still` (the same for H and S, V-07), `grid` (scroll 10,000 files), `idle`,
+/// `load-memory` (P-02: the working memory of one frame load).
 /// `scripts/perf-gate.sh` (P-01) runs the ones in `scripts/perf-targets.tsv` against the PRD limits.
 /// `OXYS_BENCH_DELAY_MS=<n>` makes every frame load wait n ms first, as slow media would (see `FrameLoader`).
 @MainActor
@@ -196,6 +198,8 @@ enum PerfBench {
             commands.perform("overlay.peaking")
         case "grid":
             await scrollGrid(model)
+        case "load-memory":
+            await loadMemory(model)
         case "idle":
             // Nothing happens for 30 s; the process's CPU time over that span is the idle cost.
             let before = cpuSeconds(), began = ContinuousClock.now
@@ -395,7 +399,58 @@ enum PerfBench {
         return s(usage.ru_utime) + s(usage.ru_stime)
     }
 
-    fileprivate static func footprintMB() -> Double {
+    /// P-02: the working memory of one frame load. Twelve photos spread over the folder load one at a time, straight
+    /// through `FrameLoader.load` (no cache, no prefetch); a 1 ms sampler keeps the footprint peak of each load.
+    /// `load-working-mb` is that peak less the footprint before the load and less the finished frame, so it is
+    /// the memory the load needs on top of its result. `load-working-ratio` divides it by the frame's cost (frames of 20 MB or more).
+    private static func loadMemory(_ model: AppModel) async {
+        model.loupe.reset()
+        await settle(.seconds(2))
+        let photos = model.folder.photos
+        guard photos.count >= 24 else { Perf.record("load-memory-folder-too-small", 1); return }
+        let keys = stride(from: 10, to: photos.count, by: photos.count / 12).prefix(12).map { FrameLoader.key(for: photos[$0]) }
+        for key in keys {
+            let base = footprintMB()
+            let sampler = PeakSampler()
+            sampler.start()
+            let cost = await Task.detached { () -> Int? in
+                (try? await FrameLoader.load(key, thumbnails: FrameLoader.sharedThumbnails))?.cost
+            }.value
+            let peak = sampler.stop()
+            guard let cost else { continue }
+            let frameMB = Double(cost) / 1_048_576
+            let working = max(0, peak - base - frameMB)
+            Perf.record("load-frame-mb", frameMB)
+            Perf.record("load-working-mb", working)
+            // Under 20 MB a frame is smaller than the load's fixed overhead (a few MB), so the ratio says nothing.
+            if frameMB >= 20 { Perf.record("load-working-ratio", working / frameMB) }
+            await settle(.milliseconds(500))
+        }
+    }
+
+    /// Polls `footprintMB` every millisecond on its own thread and keeps the highest value.
+    private nonisolated final class PeakSampler: @unchecked Sendable {
+        private let lock = NSLock()
+        private var peak = 0.0
+        private var running = false
+
+        func start() {
+            lock.withLock { running = true; peak = PerfBench.footprintMB() }
+            Thread.detachNewThread { [self] in
+                while lock.withLock({ running }) {
+                    let mb = PerfBench.footprintMB()
+                    lock.withLock { peak = max(peak, mb) }
+                    usleep(1000)
+                }
+            }
+        }
+
+        func stop() -> Double {
+            lock.withLock { running = false; return max(peak, PerfBench.footprintMB()) }
+        }
+    }
+
+    fileprivate nonisolated static func footprintMB() -> Double {
         var info = task_vm_info_data_t()
         var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
         let result = withUnsafeMutablePointer(to: &info) {
