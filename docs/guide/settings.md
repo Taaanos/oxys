@@ -1,8 +1,13 @@
 # Settings
 
-Press `⌘,` to open Settings. It has five tabs: General, Editors, Peaking, Clipping, and Sidecars.
+Press `⌘,` to open Settings. It has seven tabs: General, RAW, Memory, Editors, Peaking, Clipping, and Sidecars.
 
 ## General
+
+- **Advance after rating, label or reject:** off by default. When it is on, hold `⇧` with a key to apply it and stay on the photo. `A` switches it on and off.
+- **Show a RAW and its JPEG as one photo:** on by default. A RAW and a JPEG or HEIC with the same name in the same folder become one photo. You see the camera JPEG, and a rating goes to both files. Reveal in Finder selects both files. Switching this changes the open folder at once.
+
+## RAW
 
 **RAW decode** sets when Oxys decodes the full RAW. Without decoding, Oxys shows the preview.
 
@@ -14,11 +19,11 @@ Press `⌘,` to open Settings. It has five tabs: General, Editors, Peaking, Clip
 
 **Automatic RAW at 1:1** is on by default. It works in On demand mode. When you zoom to 1:1 and the preview has fewer pixels than the sensor, Oxys decodes the RAW. Then 1:1 shows real sensor detail.
 
-**Frame cache size** is the memory Oxys uses to keep decoded photos ready. Automatic is 2 GB, or one quarter of your RAM if that is less. To choose a size, turn Automatic off and use the slider. On a Mac with little memory, choose a smaller size.
+## Memory
 
-**Cached RAW frames** is how many developed RAWs stay in memory. Automatic is 5. To choose a number, turn Automatic off and use the slider or type a number (1 to 1000). The frame cache size is the higher limit: if the frames do not fit in it, the oldest ones go first, whatever the number is.
+**Frame cache** is the memory Oxys uses to keep decoded photos ready. Choose Automatic or Custom. Automatic is 2 GB, or one quarter of your RAM if that is less. On a Mac with little memory, choose a smaller size.
 
-**Extract exact bytes, without the RAW's EXIF and XMP** is off by default. `⇧⌘E` copies the largest embedded JPEG of each RAW. By default the JPEG also gets the RAW's EXIF (with GPS and the maker note) and your rating and label as XMP. The image data does not change. Turn this on to get the embedded bytes and nothing else. The creation and modification dates, permissions, and extended attributes are copied in both modes. See [Extract embedded JPEGs](filtering.md#extract-embedded-jpegs).
+**Cached RAW frames** is how many developed RAWs stay in memory. Choose Automatic (5) or Custom (1 to 1000). The frame cache size is the higher limit: if the frames do not fit in it, the oldest ones go first, whatever the number is.
 
 ## Editors
 

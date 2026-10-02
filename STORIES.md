@@ -1156,6 +1156,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - `SettingsView.swift` replaces the stub: a `TabView` with General (an Automatic toggle, plus a frame-cache slider and a number field that edit the same value in MB, clamped from 256 MB to the RAM size; 0 stays "automatic" in the defaults) and Sidecars (radio group `name.xmp` / `name.ext.xmp`, the RawTherapee "XMP sidecar style" hint, and a note that nothing is renamed). Keys, Analysis and Editors panes arrive with their stories.
 - Values are `@AppStorage`: `prefetchBudgetMB` (already applied live by the loupe controller) and `sidecarNaming`. `AppModel` sets `folder.sidecarNaming` at launch and on every defaults change, so a switch applies to the next write and read without a relaunch. The inspector already shows the sidecar file in use.
 - The `Settings` scene gives `⌘,` and the app-menu item; controls are standard, so Full Keyboard Access reaches them.
+- Later layout change: panes fit their content (no scrolling). Analysis is split into Peaking and Clipping, and General is split into General, RAW and Memory. Each cache limit is an Automatic/Custom picker (0 stays "automatic" in the defaults). "Extract exact bytes" has no switch; the `extractExactBytes` default still works through `defaults write`.
 
 **Checked**
 - Release build clean. No package logic changed.

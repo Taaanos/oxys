@@ -68,7 +68,7 @@ What you get:
   - **File attributes:** the creation date, the modification date, the permissions, and all extended attributes (Finder tags, Finder comments, "where from", and others). The copy has the same dates as the RAW.
 - If the embedded JPEG has its own XMP, Oxys keeps it. If the embedded JPEG has its own EXIF, the RAW's EXIF replaces it. Oxys keeps the orientation of the embedded JPEG.
 - If a maker note cannot be moved safely into the JPEG, Oxys leaves that one note out and lists the file in the summary. Oxys also lists a file whose attributes it could not copy.
-- To get exactly the embedded bytes, with no EXIF or XMP from the RAW, turn on **Extract exact bytes** in [Settings](settings.md#general). The file attributes are still copied.
+- To get exactly the embedded bytes, with no EXIF or XMP from the RAW, quit Oxys and run `defaults write dev.oxys.Oxys extractExactBytes -bool YES`. This has no switch in Settings. The file attributes are still copied.
 - Oxys never replaces a file. If `name.jpg` is there already, the new file is `name-1.jpg`, then `name-2.jpg`. The summary lists these names.
 - Oxys reads your RAW files and writes only into the folder you chose. Do not choose the folder that holds your photos if you want to keep it clean.
 
