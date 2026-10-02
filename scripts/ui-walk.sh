@@ -41,6 +41,9 @@ osascript -e "tell application \"System Events\" to tell process \"Oxys\" to key
 key 36; sleep 0.5; key 36; sleep 2
 # The folder opens in Grid. Return opens the active photo in Loupe.
 key 36
+# The capture-time re-sort moves the DNG (August) before the ARW files, and the current photo follows its file,
+# so go to the first photo of the final order before the first pass. Key code 115 is Home.
+key 115
 # 2. First pass: rate 3, next, reject, next, rate 5 with ⇧ (applies and advances).
 key 20            # 3
 snap "after 3"
@@ -48,7 +51,7 @@ key 124           # next
 key 7             # X
 snap "after X (next photo should be rejected)"
 key 124
-snap "after next (should show DSC00204)"
+snap "after next"
 key 23 "using shift down"   # ⇧5
 sleep 2           # the write queue settles
 # 4. Narrow: ⌥⌘3 shows 3 stars and more.
