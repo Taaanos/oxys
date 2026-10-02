@@ -32,6 +32,10 @@ final class AppModel {
     var cheatScroll = ScrollPosition()
     /// Kept by the sheet's scroll view so the keys can move it: current offset, visible height and content height.
     var cheatMetrics: (offset: CGFloat, page: CGFloat, content: CGFloat) = (0, 0, 0)
+    /// External editors (V-12) and the `⌥⌘E` chooser.
+    let editors = EditorStore()
+    var showEditorChooser = false
+    var editorChooserIndex = 0
     /// Auto-advance (V-11): rating, label and reject keys move to the next photo, and `⇧` turns that around.
     /// Set by `A` and by Settings → General; remembered across launches, off by default.
     var autoAdvance = UserDefaults.standard.bool(forKey: "autoAdvance") {
@@ -73,6 +77,48 @@ final class AppModel {
         case PhysicalKey.home.rawValue: scroll(to: 0)
         case PhysicalKey.end.rawValue: scroll(to: maxY)
         default: break
+        }
+    }
+
+    /// Keys while the editor chooser is up.
+    private func editorChooserKey(_ code: UInt16) {
+        let list = editors.editors
+        func move(_ step: Int) {
+            guard !list.isEmpty else { return }
+            var i = editorChooserIndex
+            for _ in list {
+                i = (i + step + list.count) % list.count
+                if editors.isInstalled(list[i]) { editorChooserIndex = i; return }
+            }
+        }
+        switch code {
+        case PhysicalKey.escape.rawValue: showEditorChooser = false
+        case PhysicalKey.downArrow.rawValue: move(1)
+        case PhysicalKey.upArrow.rawValue: move(-1)
+        case PhysicalKey.return.rawValue, 76: chooseEditor(at: editorChooserIndex)
+        default:
+            let digits: [PhysicalKey] = [.digit1, .digit2, .digit3, .digit4, .digit5, .digit6, .digit7, .digit8, .digit9]
+            if let n = digits.firstIndex(where: { $0.rawValue == code }) { chooseEditor(at: n) }
+        }
+    }
+
+    /// Opens the selection in the chooser's `index`th editor, then closes the chooser. A missing editor does nothing.
+    func chooseEditor(at index: Int) {
+        let list = editors.editors
+        guard list.indices.contains(index), editors.isInstalled(list[index]) else { return }
+        showEditorChooser = false
+        edit(in: list[index])
+    }
+
+    /// Flushes the sidecar writes, so the editor reads the newest values, then opens the selection (or the active
+    /// photo) in one call. A RAW+JPEG pair opens its RAW: the frame's own URL (V-10).
+    func edit(in editor: ExternalEditor) {
+        let urls = folder.cullTargets
+        guard !urls.isEmpty else { return }
+        folder.flushSidecarWrites()
+        let count = urls.count
+        editors.open(urls, in: editor) { [unowned self] error in
+            announce(error ?? (count == 1 ? "Opened 1 file in \(editor.name)" : "Opened \(count.formatted()) files in \(editor.name)"))
         }
     }
 
@@ -182,8 +228,20 @@ final class AppModel {
             announce(urls.count == 1 ? "Revealed 1 file in Finder" : "Revealed \(urls.count.formatted()) files in Finder")
         }
         registerFilter()
-        commands.modalActive = { [unowned self] in showCheatSheet }
-        commands.modalKey = { [unowned self] code, character in cheatSheetKey(code, character) }
+        commands.modalActive = { [unowned self] in showCheatSheet || showEditorChooser }
+        commands.modalKey = { [unowned self] code, character in
+            if showEditorChooser { editorChooserKey(code) } else { cheatSheetKey(code, character) }
+        }
+        // Edit (V-12): `⌘E` opens in the default editor, `⌥⌘E` asks which.
+        commands.register("file.edit", isAvailable: { [unowned self] in !folder.cullTargets.isEmpty && editors.defaultEditor != nil },
+                          title: { [unowned self] in editors.defaultEditor.map { "Edit in \($0.name)" } ?? "Edit in External Editor" }) { [unowned self] _ in
+            if let editor = editors.defaultEditor { edit(in: editor) }
+        }
+        commands.register("file.editIn", isAvailable: { [unowned self] in !folder.cullTargets.isEmpty && editors.defaultEditor != nil }) { [unowned self] _ in
+            let list = editors.editors
+            editorChooserIndex = editors.defaultEditor.flatMap { d in list.firstIndex { $0.id == d.id } } ?? 0
+            showEditorChooser = true
+        }
         commands.register("help.cheatsheet") { [unowned self] _ in showCheatSheet.toggle() }
         commands.register("view.loupe") { [unowned self] _ in commands.mode = .loupe }
         commands.register("view.grid") { [unowned self] _ in commands.mode = .grid }

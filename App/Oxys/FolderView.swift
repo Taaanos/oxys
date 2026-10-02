@@ -53,6 +53,7 @@ struct FolderView: View {
             if model.autoAdvance, folder.content == .photos { AutoAdvanceBadge() }
         }
         .overlay { if model.showCheatSheet { CheatSheetView(model: model) } }
+        .overlay { if model.showEditorChooser { EditorChooserView(model: model) } }
         .toolbar(id: "oxys.main") { ToolbarItems(model: model) }
         .toolbarVisibility(model.chromeHidden ? .hidden : .visible, for: .windowToolbar)
         .navigationTitle(folder.folder?.lastPathComponent ?? "Oxys")

@@ -20,7 +20,7 @@ struct OxysApp: App {
         }
 
         Settings {
-            SettingsView()
+            SettingsView(model: model)
         }
     }
 }

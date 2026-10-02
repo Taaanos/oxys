@@ -431,3 +431,10 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     // ⇧A is not a twin of anything: the toggle does not advance.
     #expect(CommandTable.standard["cull.autoAdvance"]?.shiftAdvances == false)
 }
+
+@Test func editCommandsHaveTheirKeys() {
+    let r = resolve(nil)
+    #expect(keys(r, "file.edit") == [Shortcut(.position(.e), [.command])])
+    #expect(keys(r, "file.editIn") == [Shortcut(.position(.e), [.command, .option])])
+    #expect(CommandTable.standard["file.edit"]?.menu?.menu == .photo)
+}

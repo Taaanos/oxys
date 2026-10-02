@@ -18,7 +18,10 @@ struct TableCommands: Commands {
         CommandGroup(replacing: .undoRedo) { TableItems(center: center, menu: .edit) }
         CommandGroup(after: .toolbar) { TableItems(center: center, menu: .view) }
         if center.table.hasItems(in: .photo) {
-            CommandMenu("Photo") { TableItems(center: center, menu: .photo) }
+            CommandMenu("Photo") {
+                TableItems(center: center, menu: .photo)
+                EditInMenu(model: model)
+            }
         }
         if center.table.hasItems(in: .filter) {
             CommandMenu("Filter") { TableItems(center: center, menu: .filter) }
@@ -71,6 +74,20 @@ private struct OpenRecentMenu: View {
             if !model.recentFolders.isEmpty { Divider() }
             Button("Clear Menu") { model.clearRecents() }
                 .disabled(model.recentFolders.isEmpty)
+        }
+    }
+}
+
+/// "Edit In" (V-12): one item per editor; the ones whose app is not installed are disabled, not hidden.
+private struct EditInMenu: View {
+    let model: AppModel
+
+    var body: some View {
+        Menu("Edit In") {
+            ForEach(model.editors.editors) { editor in
+                Button(editor.name) { model.edit(in: editor) }
+                    .disabled(model.folder.cullTargets.isEmpty || !model.editors.isInstalled(editor))
+            }
         }
     }
 }

@@ -262,6 +262,12 @@ public struct CommandTable: Sendable {
         Command("file.reveal", "Reveal in Finder", menu: .init(.photo, group: 4), requires: .photos,
                 keys: [Shortcut(.position(.r), [.command])]),
 
+        // External editors (V-12): `⌘E` opens in the default one, `⌥⌘E` picks. The "Edit In" submenu is built by the app.
+        Command("file.edit", "Edit in External Editor", menu: .init(.photo, group: 4), requires: .photos,
+                keys: [Shortcut(.position(.e), [.command])]),
+        Command("file.editIn", "Edit In…", menu: .init(.photo, group: 4), requires: .photos,
+                keys: [Shortcut(.position(.e), [.command, .option])]),
+
         // The cheat sheet (M-23): `?` in every mode. The Help menu search finds every item above by its title.
         Command("help.cheatsheet", "Keyboard Shortcuts", menu: .init(.help),
                 keys: [Shortcut(.character("?"))]),

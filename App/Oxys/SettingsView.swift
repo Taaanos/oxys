@@ -1,15 +1,20 @@
 import AppKit
 import Canvas
 import Imaging
+import Library
+import UniformTypeIdentifiers
 import Sidecar
 import SwiftUI
 
 /// The Settings window (`⌘,`, M-22). Panes arrive with their features; the MVP has General and Sidecars.
 /// Values live in user defaults and apply at once; the keymap keeps its own file (M-05).
 struct SettingsView: View {
+    let model: AppModel
+
     var body: some View {
         TabView {
             GeneralPane().tabItem { Label("General", systemImage: "gearshape") }
+            EditorsPane(store: model.editors).tabItem { Label("Editors", systemImage: "square.and.pencil") }
             AnalysisPane().tabItem { Label("Analysis", systemImage: "scope") }
             SidecarsPane().tabItem { Label("Sidecars", systemImage: "doc.text") }
         }
@@ -163,5 +168,50 @@ private struct AnalysisPane: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// Settings → Editors (V-12): the apps `⌘E` can open photos in. Missing ones stay listed and cannot be the default.
+private struct EditorsPane: View {
+    let store: EditorStore
+
+    var body: some View {
+        let defaultID = store.defaultEditor?.id
+        Form {
+            ForEach(store.editors) { editor in
+                let installed = store.isInstalled(editor)
+                HStack {
+                    Button {
+                        store.setDefault(editor.id)
+                    } label: {
+                        Image(systemName: editor.id == defaultID ? "largecircle.fill.circle" : "circle")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!installed)
+                    .accessibilityLabel("\(editor.name) is the default editor")
+                    .accessibilityValue(editor.id == defaultID ? "on" : "off")
+                    Text(editor.name)
+                    Spacer()
+                    if !installed { Text("Not installed").foregroundStyle(.secondary) }
+                    if !editor.isPreset {
+                        Button("Remove") { store.remove(editor.id) }
+                            .accessibilityLabel("Remove \(editor.name)")
+                    }
+                }
+                .opacity(installed ? 1 : 0.6)
+            }
+            Button("Add Editor…") { addEditor() }
+            Text("⌘E opens the selected photos in the default editor. ⌥⌘E asks which one. A RAW with its JPEG opens as the RAW. Oxys writes the newest ratings to the sidecars first. Lightroom Classic may only start, or ask to import, instead of opening the files.")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func addEditor() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Add"
+        if panel.runModal() == .OK, let url = panel.url { store.add(appAt: url) }
     }
 }

@@ -93,7 +93,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-09 | Compare: linked zoom and EXIF differences | V-08, M-15, M-16 | done (screen not looked at, VoiceOver and pointer drags unchecked) |
 | V-10 | RAW+JPEG pairs | M-08, M-21 | built, needs visual check (pairs shown in a live window, Lightroom reading the rating) |
 | V-11 | Auto-advance | M-06 | done |
-| V-12 | External editors | M-19, M-22 | todo |
+| V-12 | External editors | M-19, M-22 | built, needs a live check (ART first; RawTherapee and Lightroom Classic untested) |
 | V-13 | Extract embedded JPEGs | M-02, M-19 | todo |
 | V-14 | Key remapping and presets | M-22, M-23 | todo |
 | V-15 | Session resume | M-20 | todo |
@@ -1648,6 +1648,14 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 
 **Open questions**
 1. Do RawTherapee and ART do something useful with 100 files at once? *Proposed:* test it in the spike; if an editor only takes one file, send the active photo and say so.
+
+**Decisions and checks (built for ART first)**
+- `⌘E` opens the selection (or the active photo) in the default editor; `⌥⌘E` opens a keyboard chooser (`↑` `↓` `⏎`, or `1` to `9`, `Esc`). The Photo menu has an "Edit In" submenu. Missing apps are listed and disabled, never hidden.
+- The editor list is `EditorList` in `Library` (tested); `EditorStore` in the app finds apps by bundle ID, then by the preset's usual path, and saves the list as JSON in user defaults. Settings → Editors sets the default and adds or removes other apps. With no chosen default, the first installed editor is used.
+- Pending sidecar writes are flushed before the call (`FolderModel.flushSidecarWrites`). All files go in one `NSWorkspace.open(_:withApplicationAt:configuration:)` call. A RAW+JPEG pair opens its RAW.
+- Q1 (many files): spike with ART, 100 TIFFs from `bench/24mp-1000` through Launch Services in one call: ART started and stayed running. **Not checked:** what ART shows (queue or editor tabs). RawTherapee and Lightroom Classic not tested here; Settings says Lightroom may only start or show Import.
+- ART reads `.arp` files, not XMP. Oxys sidecars carry ratings for other apps, so ART shows the files but not Oxys ratings.
+- Unit tests: `EditorList` (presets, default fallback, add, remove, JSON), key table entries for `⌘E` and `⌥⌘E`.
 
 ### V-13 · Extract embedded JPEGs
 
