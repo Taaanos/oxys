@@ -9,6 +9,8 @@ import SwiftUI
 struct FilterBar: View {
     let model: AppModel
     @FocusState private var searchFocused: Bool
+    /// The last `⌘F` this bar acted on, so showing the bar later does not count as a new request.
+    @State private var handledFind = 0
 
     private static let swatches: [ColorLabel: Color] = [
         .red: .red, .yellow: .yellow, .green: .green, .blue: .blue, .purple: .purple,
@@ -52,8 +54,16 @@ struct FilterBar: View {
         .opacity(filter.isOn ? 1 : 0.6)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Filter and sort")
-        .onChange(of: model.findRequest) { searchFocused = true }
-        .onAppear { if model.findRequest > 0 { searchFocused = true } }
+        .onChange(of: model.findRequest) { handledFind = model.findRequest; searchFocused = true }
+        .onAppear {
+            if model.findRequest != handledFind {
+                handledFind = model.findRequest
+                searchFocused = true
+            } else {
+                // AppKit hands a new bar's first text field the keyboard; the keys belong to the photo unless ⌘F asked.
+                DispatchQueue.main.async { searchFocused = false; NSApp.keyWindow?.makeFirstResponder(nil) }
+            }
+        }
     }
 
     private func stars(_ filter: PhotoFilter) -> some View {

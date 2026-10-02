@@ -431,6 +431,7 @@ final class AppModel {
         commands.register("filter.enabled", isOn: { [unowned self] in folder.filter.isOn }) { [unowned self] _ in
             folder.toggleFilter()
             announceFilter(folder.filter.isOn ? "Filter on" : "Filter off")
+            releaseKeyboardFromFilterBar()
         }
         commands.register("filter.find") { [unowned self] _ in
             showFilterBar = true
@@ -483,6 +484,16 @@ final class AppModel {
     func setFilter(_ change: (inout PhotoFilter) -> Void) {
         folder.updateFilter { change(&$0); $0.isOn = true }
         announceFilter(nil)
+        releaseKeyboardFromFilterBar()
+    }
+
+    /// A click on the bar's stars, labels or pickers must not leave the keyboard in the search field: the keys belong
+    /// to the photo unless `⌘F` or a click in the field asked. Runs after SwiftUI has moved focus.
+    func releaseKeyboardFromFilterBar() {
+        DispatchQueue.main.async {
+            guard let window = NSApp.keyWindow, let editor = window.firstResponder as? NSTextView, editor.isFieldEditor else { return }
+            window.makeFirstResponder(nil)
+        }
     }
 
     private func announceFilter(_ lead: String?) {
