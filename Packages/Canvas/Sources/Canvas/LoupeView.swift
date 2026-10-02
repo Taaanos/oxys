@@ -27,6 +27,8 @@ public final class LoupeView: NSView {
     public var onZoomChange: ((ZoomInfo?) -> Void)?
     /// Called when a zoom or a pan moves the view (V-09): a key, a pinch, a scroll or a drag. Not called by
     /// ``apply(_:)``, so two linked canvases do not answer each other.
+    /// Called on a click, before a drag starts. Compare uses it to make the clicked pane the active one.
+    public var onClick: (@MainActor () -> Void)?
     public var onViewChange: (@MainActor (ViewState) -> Void)?
     /// Where the camera focused in the upright picture (0...1, top-left origin), for the photo on screen; nil when the
     /// file does not say. The zoom goes here when the pointer is not over the image.
@@ -430,6 +432,7 @@ public final class LoupeView: NSView {
 
     public override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+        onClick?()
         dragging = zoom != .fit
         if dragging { NSCursor.closedHand.push() }
     }

@@ -1536,6 +1536,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - The folder's current photo is always the active side's photo, so undo, the inspector, `E` and `G` need no Compare code. Undo puts the restored photo on its own side, or on the active side.
 - `⇥` is Compare's switch key. The bare `⇥` became its own command `view.chromeTab` (Grid and Loupe only); `⌥⌘T` hides the toolbar in every mode. The old test that said `⇥` hides the toolbar everywhere now says so for Grid and Loupe.
 - Logic is `ComparePair` in `Library` (21 tests). `CompareController` loads both panes through Loupe's frame pipeline, so a photo is decoded and cached once. The toolbar picker has a third segment. The cheat sheet has a Compare group.
+- A click on a pane makes it the active side (same as `⇥`); a click on the active pane does nothing, and dragging a zoomed pane still pans. Checked by unit test only, not by hand in the app.
 - Each pane has its own truth badge, decision, name, zoom and (when info is at EXIF level) a short EXIF line. `I` still sets the info level for both; it is Loupe-only for now.
 
 **Checked** (V-08)

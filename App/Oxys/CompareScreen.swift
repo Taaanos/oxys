@@ -42,7 +42,7 @@ private struct ComparePaneView: View {
         let folder = model.folder
         let loupe = model.loupe
         ZStack(alignment: .bottom) {
-            CompareCanvas(pane: pane)
+            CompareCanvas(pane: pane) { model.compare.activate(pane.side) }
             if let failure = pane.failure {
                 ErrorTile(name: pane.shown?.name ?? "", message: failure)
             }
@@ -95,12 +95,14 @@ private struct PaneTitle: View {
 
 private struct CompareCanvas: NSViewRepresentable {
     let pane: ComparePane
+    let onClick: @MainActor () -> Void
 
     func makeNSView(context: Context) -> LoupeView {
         let view = LoupeView()
         pane.canvas = view
+        view.onClick = onClick
         return view
     }
 
-    func updateNSView(_ view: LoupeView, context: Context) {}
+    func updateNSView(_ view: LoupeView, context: Context) { view.onClick = onClick }
 }

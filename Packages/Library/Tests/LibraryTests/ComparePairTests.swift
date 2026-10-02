@@ -41,6 +41,16 @@ import Testing
         #expect(ComparePair.start(selected: [], current: nil, in: []) == nil)
     }
 
+    @Test func activateSetsTheSideAndKeepsThePhotos() {
+        var p = pair(0, 3)
+        p.activate(.candidate)
+        #expect(p.active == .candidate)
+        p.activate(.candidate)
+        #expect(p.active == .candidate && p.select == urls[0] && p.candidate == urls[3])
+        p.activate(.select)
+        #expect(p.active == .select)
+    }
+
     // MARK: stepping
 
     @Test func stepMovesOnlyTheActiveSide() {

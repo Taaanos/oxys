@@ -63,6 +63,9 @@ public struct ComparePair: Equatable, Sendable {
         return pair
     }
 
+    /// A click on a pane.
+    public mutating func activate(_ side: Side) { active = side }
+
     /// `⇥`.
     public mutating func switchSide() { active = active.other }
 

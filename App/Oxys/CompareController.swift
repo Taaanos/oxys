@@ -283,6 +283,14 @@ final class CompareController {
         announceActive()
     }
 
+    /// A click on a pane makes it the active side.
+    func activate(_ side: ComparePair.Side) {
+        guard var next = pair, next.active != side else { return }
+        next.activate(side)
+        commit(next, token: nil)
+        announceActive()
+    }
+
     /// `↓`.
     func swap() {
         guard var next = pair else { return }
