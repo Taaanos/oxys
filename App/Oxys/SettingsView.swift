@@ -29,6 +29,7 @@ private struct GeneralPane: View {
     @AppStorage("rawAutoActual") private var rawAutoActual = true
     @AppStorage("pairRawJpeg") private var pairRawJpeg = true
     @AppStorage("autoAdvance") private var autoAdvance = false
+    @AppStorage("extractExactBytes") private var extractExactBytes = false
     /// What the slider and field show while Automatic is on, and what returns when it is switched off.
     @State private var manualMB = 2048
 
@@ -55,6 +56,9 @@ private struct GeneralPane: View {
         Form {
             Toggle("Advance to the next photo after every rating, label or reject", isOn: $autoAdvance)
             Text("Off by default. While it is on, hold ⇧ with a key to apply it and stay on the photo. The A key switches it on and off.")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Toggle("Extract exact bytes, without added EXIF", isOn: $extractExactBytes)
+            Text("⇧⌘E copies each RAW's largest embedded JPEG. Many previews have no EXIF block, so they would show sideways and without a date. Off (the default): Oxys adds a small EXIF block with the RAW's orientation, camera and date, and leaves the image data as it is. On: the file is the embedded stream and nothing else. A preview that has its own EXIF is never changed.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Toggle("Show a RAW and its JPEG as one photo", isOn: $pairRawJpeg)
             Text("A RAW and a JPEG or HEIC with the same name in the same folder become one photo. You see the camera JPEG, and a rating goes to the pair. Reveal in Finder selects both files. Switching this changes the open folder at once.")

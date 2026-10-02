@@ -4,7 +4,7 @@ BUILD_DIR := build
 APP       := $(BUILD_DIR)/Build/Products/Release/Oxys.app
 PACKAGES  := $(sort $(dir $(wildcard Packages/*/Package.swift)))
 
-.PHONY: build test check-arch launch-time corpus manifest bench-folders perf-bench perf-selftest perf-report sidecar-stress sidecar-gate ui-walk ui-walk-compare clean
+.PHONY: build test check-arch launch-time corpus manifest bench-folders perf-bench perf-selftest perf-report sidecar-stress extract-bench sidecar-gate ui-walk ui-walk-compare clean
 
 build:
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release \
@@ -49,6 +49,11 @@ perf-report:
 # M-08: 1,000 random decisions over a minute through the write queue, then every sidecar is checked.
 sidecar-stress:
 	cd Packages/Sidecar && swift run -c release SidecarStress stress 60 1000
+
+# V-13: extracts the embedded JPEGs of every RAW in FOLDER (default: the hires bench folder), times it against
+# `cp -R` of the same bytes. EXTRA=--exact for exact bytes; EXTRA=--verify with PREVIEW_ORACLE set compares with the oracle.
+extract-bench:
+	cd Packages/Library && swift run -c release ExtractBench $(abspath $(or $(FOLDER),TestData/bench/hires-1000)) $(EXTRA)
 
 # M-25: 10,000 real file writes with outside writers and killed writers; exits 1 on any damage.
 sidecar-gate:

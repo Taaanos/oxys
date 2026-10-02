@@ -268,6 +268,12 @@ public struct CommandTable: Sendable {
         Command("file.editIn", "Edit In…", menu: .init(.photo, group: 4), requires: .photos,
                 keys: [Shortcut(.position(.e), [.command, .option])]),
 
+        // Extract embedded JPEGs (V-13): `⇧⌘E` picks a folder and runs in the background; `⌘.` cancels it or closes its summary.
+        Command("file.extract", "Extract Embedded JPEGs…", menu: .init(.photo, group: 4), requires: .photos,
+                keys: [Shortcut(.position(.e), [.command, .shift])]),
+        Command("file.extractCancel", "Cancel or Close Extraction", menu: .init(.photo, group: 5),
+                keys: [Shortcut(.position(.period), [.command])]),
+
         // The cheat sheet (M-23): `?` in every mode. The Help menu search finds every item above by its title.
         Command("help.cheatsheet", "Keyboard Shortcuts", menu: .init(.help),
                 keys: [Shortcut(.character("?"))]),

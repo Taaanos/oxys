@@ -237,3 +237,33 @@ private struct TIFFBuilder {
     #expect(header.exifInteropIndex == "R03")
     #expect(header.width == 8)
 }
+
+// MARK: - Exif segment (V-13)
+
+@Test func exifSegmentRoundTripsThroughTheHeaderReader() throws {
+    let jpeg = makeJPEG(width: 160, height: 120)
+    let segment = try #require(ExifSegment.build(.init(make: "SONY", model: "ZV-1", orientation: 6, dateTimeOriginal: "2026:10:02 12:35:49")))
+    let out = try #require(ExifSegment.insert(segment, into: jpeg))
+    let header = try #require(JPEGHeader.parse(ByteReader(data: out), at: 0))
+    #expect(header.hasExif)
+    #expect(header.exifOrientation == 6)
+    #expect(header.width == 160 && header.height == 120)
+    // Only a segment was added: the rest of the stream is the same bytes.
+    #expect(out.count == jpeg.count + segment.count)
+    #expect(out.suffix(jpeg.count - 2) == jpeg.suffix(jpeg.count - 2))
+}
+
+@Test func exifSegmentNeedsSomethingToSayAndFitsTheMarker() throws {
+    #expect(ExifSegment.build(.init()) == nil)
+    #expect(ExifSegment.build(.init(orientation: 9)) == nil)
+    #expect(ExifSegment.build(.init(make: String(repeating: "x", count: 70_000))) == nil)
+}
+
+@Test func exifIsInsertedAfterJFIFAndRefusesNonJPEG() throws {
+    let jfif = Data([0xFF, 0xD8, 0xFF, 0xE0, 0, 4, 0x4A, 0x46, 0xFF, 0xDA, 0, 2, 0xFF, 0xD9])
+    let segment = try #require(ExifSegment.build(.init(orientation: 3)))
+    let out = try #require(ExifSegment.insert(segment, into: jfif))
+    #expect(out.prefix(8) == jfif.prefix(8))
+    #expect(out.dropFirst(8).prefix(segment.count) == segment)
+    #expect(ExifSegment.insert(segment, into: Data("not a jpeg".utf8)) == nil)
+}

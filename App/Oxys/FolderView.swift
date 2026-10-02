@@ -54,6 +54,7 @@ struct FolderView: View {
         }
         .overlay { if model.showCheatSheet { CheatSheetView(model: model) } }
         .overlay { if model.showEditorChooser { EditorChooserView(model: model) } }
+        .overlay(alignment: .bottomLeading) { if model.extract.isShowing { ExtractPlate(job: model.extract) } }
         .toolbar(id: "oxys.main") { ToolbarItems(model: model) }
         .toolbarVisibility(model.chromeHidden ? .hidden : .visible, for: .windowToolbar)
         .navigationTitle(folder.folder?.lastPathComponent ?? "Oxys")

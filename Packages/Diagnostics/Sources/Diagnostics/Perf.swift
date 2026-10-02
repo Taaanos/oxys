@@ -41,6 +41,8 @@ public enum PerfInterval: String, CaseIterable, Sendable {
     case peaking = "peaking"
     /// A clipping command → the overlay is on screen (V-07; one display frame). The first frame also runs the analysis.
     case clipping = "clipping"
+    /// Extracting one embedded JPEG (V-13): locate, read, add EXIF if needed, write. A job has one per file.
+    case extractFile = "extract-file"
 
     /// Signpost names must be static strings, so the raw value is repeated here.
     var signpostName: StaticString {
@@ -63,6 +65,7 @@ public enum PerfInterval: String, CaseIterable, Sendable {
         case .rawWasted: "raw-wasted"
         case .peaking: "peaking"
         case .clipping: "clipping"
+        case .extractFile: "extract-file"
         }
     }
 }

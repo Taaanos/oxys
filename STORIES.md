@@ -94,7 +94,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-10 | RAW+JPEG pairs | M-08, M-21 | built, needs visual check (pairs shown in a live window, Lightroom reading the rating) |
 | V-11 | Auto-advance | M-06 | done |
 | V-12 | External editors | M-19, M-22 | built, needs a live check (ART first; RawTherapee and Lightroom Classic untested) |
-| V-13 | Extract embedded JPEGs | M-02, M-19 | todo |
+| V-13 | Extract embedded JPEGs | M-02, M-19 | built, needs a live check (the ⇧⌘E panel and plate not clicked through; cold-cache time over the limit) |
 | V-14 | Key remapping and presets | M-22, M-23 | todo |
 | V-15 | Session resume | M-20 | todo |
 | V-16 | Interop guidance | M-22, F-04 | todo |
@@ -1678,6 +1678,20 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 1. The PRD asks for both "byte for byte" and "keep its EXIF", but embedded JPEGs often carry no EXIF or orientation. Copy them bare, or add the RAW's EXIF (which is no longer byte-for-byte)? *Proposed:* add the RAW's EXIF and orientation when the preview has none, leaving the image data untouched, since a sideways JPEG without a date is of little use; offer "exact bytes" as an option.
 2. Name collisions (an existing `name.jpg`, the camera JPEG of a pair, two cameras with the same file numbers)? *Proposed:* never overwrite; add a suffix (`name-1.jpg`) and list renamed files in the summary.
 3. JPEG and HEIC originals in the selection? *Proposed:* skip them and list them in the summary.
+
+**Decisions and checks**
+- `⇧⌘E` asks for a folder (the panel remembers the last one), then `ExtractJob` runs `EmbeddedJPEGExtractor.run` (in `Library`, tested) on a utility-priority task. A plate at the bottom left shows progress with Cancel, then the summary. It is not modal. `⌘.` (`file.extractCancel`) cancels a running job or closes the summary. Esc is not used, because the key router needs it.
+- Q1 **Decided as proposed:** when the preview has no Exif segment, `ExifSegment` (in `Containers`, tested) adds one with the RAW's orientation, make, model and `DateTimeOriginal`; the image data is untouched (a test checks the bytes after the segment). Settings → General has "Extract exact bytes" to turn it off. A preview that has its own Exif is never changed, even when it has no orientation: rewriting it would lose its other tags. **Not checked:** a corpus file whose preview has Exif without orientation.
+- The date comes from the RAW's TIFF structure in memory (`CaptureTime.dateTimeOriginalString`); ImageIO cost 2.5 ms a file and made 500 files 6 times slower than a copy. CR3 and RAF fall back to ImageIO.
+- Q2 **Decided as proposed:** never overwrite. The file is written to a hidden temp file in the folder, then renamed with `RENAME_EXCL`; a taken name gets `-1`, `-2`. Renamed files are listed.
+- Q3 **Decided as proposed:** JPEG, HEIC and TIFF originals are skipped and listed ("Not a RAW file").
+- RAW+JPEG pairs extract from the RAW (the frame's own URL). Files with no JPEG and read failures are listed, never skipped quietly.
+- Cancel is checked between files, and each file is written whole, so there is never a partial `.jpg` (test). A kill leaves at most a hidden `.oxys-partial` file.
+- Signpost: `extract-file` per file.
+- **Byte identity:** `make extract-bench EXTRA=--verify` with the reference extractor in `PREVIEW_ORACLE`: 10 of 10 DNG files from `hires-1000` identical in exact mode. Not run on other formats here.
+- **Speed**, 500 files of `hires-1000` (98 MB DNG, 334 MB of JPEGs), exact bytes, against `cp -R` of the same output: ratio 1.04 and 1.07 with warm caches. The first run after a cold cache was 1.26 and 1.72, over the 20% limit: `cp` reads data that was just written, while extraction reads the RAWs from disk. With EXIF added it is 1.07 warm. The criterion is **met warm, not met cold**; a Finder copy of a cold source would also read from disk, so a fair cold check is still to do on a real card.
+- Unit tests: `ExifSegment` (round trip through `JPEGHeader`, JFIF placement, limits), `CaptureTime.dateTimeOriginalString`, the extractor (exact bytes, added Exif, own Exif kept, name collisions, summary lists, cancel), key table entries.
+- Docs: guide pages `filtering.md`, `shortcuts.md`, `settings.md`, `troubleshooting.md` updated (and V-12's editors, which the guide lacked).
 
 ### V-14 · Key remapping and presets
 

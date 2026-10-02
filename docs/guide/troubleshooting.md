@@ -50,7 +50,6 @@ These features are planned. They are **not** in the app now:
 
 - **RAW+JPEG pairs as one photo.** A RAW and a JPEG with the same name show as two photos.
 - **Auto-advance after each rating.** Hold `⇧` with a cull key.
-- **Extract embedded JPEGs** (`⇧⌘E`).
 - **Change the keys** and key presets.
 - **Return to your place** when you open a folder again.
 - **Burst stacks, a focus-point overlay, lights out, a 3-up or 4-up view, progress statistics, a rejects folder, and a hot folder.**

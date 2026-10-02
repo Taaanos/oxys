@@ -43,6 +43,29 @@ Finder opens one window. It selects exactly those files. If you select nothing, 
 
 You can then drag the files to your editor. The `.xmp` sidecars stay next to the photos. Your ratings stay with them. See [Sidecars and other apps](sidecars.md).
 
+## Open photos in an editor
+
+1. Select the photos, or leave nothing selected to use the active photo.
+2. Press `⌘E` to open them in your default editor. Press `⌥⌘E` to choose an editor. In the list, use `↑` `↓` and `Return`, or press a number. Press `Esc` to close the list.
+
+The Photo menu also has an Edit In submenu. A RAW with a JPEG of the same name opens as the RAW. Oxys saves your choices to the sidecars first, so the editor reads the newest ratings. Add or remove editors in [Settings](settings.md#editors).
+
+## Extract embedded JPEGs
+
+Each RAW file has a JPEG inside it. Oxys can save these JPEGs as separate files. You can share them without a RAW converter.
+
+1. Select the photos, or leave nothing selected to use the active photo.
+2. Press `⇧⌘E`. Choose a folder. Make a new one if you need to.
+3. Oxys works in the background. A box at the bottom left shows progress. You can keep working. Press `Cancel` or `⌘.` to stop. The file in progress is finished, the next one is not started, and no partial file stays.
+4. When it ends, the box shows a summary. It lists the photos that have no embedded JPEG, the files that are not RAW (JPEG and HEIC are skipped), the files that failed, and the files that got a new name. Press `Show in Finder` to see the JPEGs. Press `Close` or `⌘.` to close the box.
+
+What you get:
+
+- The file is `name.jpg`. It is the largest JPEG inside the RAW. Oxys does not decode it or compress it again.
+- Many embedded JPEGs have no EXIF block. They would show sideways and have no date. Oxys then adds a small EXIF block with the RAW's orientation, camera make and model, and capture time. The image data does not change. If the embedded JPEG has its own EXIF, Oxys does not change it. To get the exact bytes with nothing added, turn on **Extract exact bytes** in [Settings](settings.md#general).
+- Oxys never replaces a file. If `name.jpg` is there already, the new file is `name-1.jpg`, then `name-2.jpg`. The summary lists these names.
+- Oxys reads your RAW files and writes only into the folder you chose. Do not choose the folder that holds your photos if you want to keep it clean.
+
 ## Reload the folder
 
 Oxys does not add new photos while the folder is open. If photos arrive, the window subtitle says "N new files, reload with ⌥⌘R". Press `⌥⌘R` to load them. Oxys removes photos from the view when they leave the folder.

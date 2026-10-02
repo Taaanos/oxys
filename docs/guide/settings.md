@@ -1,6 +1,6 @@
 # Settings
 
-Press `⌘,` to open Settings. It has three tabs.
+Press `⌘,` to open Settings. It has four tabs: General, Editors, Analysis, and Sidecars.
 
 ## General
 
@@ -15,6 +15,12 @@ Press `⌘,` to open Settings. It has three tabs.
 **Automatic RAW at 1:1** is on by default. It works in On demand mode. When you zoom to 1:1 and the preview has fewer pixels than the sensor, Oxys decodes the RAW. Then 1:1 shows real sensor detail.
 
 **Frame cache size** is the memory Oxys uses to keep decoded photos ready. Automatic is 2 GB, or one quarter of your RAM if that is less. To choose a size, turn Automatic off and use the slider. On a Mac with little memory, choose a smaller size.
+
+**Extract exact bytes, without added EXIF** is off by default. `⇧⌘E` copies the largest embedded JPEG of each RAW. When the JPEG has no EXIF block, Oxys adds one with the RAW's orientation, camera, and capture time. The image data does not change. Turn this on to get the embedded bytes and nothing else. See [Extract embedded JPEGs](filtering.md#extract-embedded-jpegs).
+
+## Editors
+
+This list holds the apps that `⌘E` and `⌥⌘E` can open photos in. Lightroom Classic, RawTherapee, and ART are in it already. Choose the default editor, add other apps, or remove the ones you added. An app that is not installed stays in the list but is dimmed. If you choose no default, `⌘E` uses the first installed editor.
 
 ## Analysis
 

@@ -35,6 +35,8 @@ final class AppModel {
     /// External editors (V-12) and the `⌥⌘E` chooser.
     let editors = EditorStore()
     var showEditorChooser = false
+    /// Extract embedded JPEGs (V-13).
+    let extract = ExtractJob()
     var editorChooserIndex = 0
     /// Auto-advance (V-11): rating, label and reject keys move to the next photo, and `⇧` turns that around.
     /// Set by `A` and by Settings → General; remembered across launches, off by default.
@@ -119,6 +121,29 @@ final class AppModel {
         let count = urls.count
         editors.open(urls, in: editor) { [unowned self] error in
             announce(error ?? (count == 1 ? "Opened 1 file in \(editor.name)" : "Opened \(count.formatted()) files in \(editor.name)"))
+        }
+    }
+
+    /// `⇧⌘E`: asks for a folder, then extracts each selected RAW's largest embedded JPEG there in the background.
+    /// A RAW+JPEG pair extracts from its RAW. JPEG and HEIC originals are skipped and listed in the summary.
+    func extractJPEGs() {
+        let sources = folder.cullTargets
+        guard !sources.isEmpty, !extract.isRunning else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Extract Here"
+        panel.message = sources.count == 1 ? "Choose a folder for the embedded JPEG" : "Choose a folder for \(sources.count.formatted()) embedded JPEGs"
+        if let last = UserDefaults.standard.string(forKey: "extractFolder") {
+            panel.directoryURL = URL(fileURLWithPath: last, isDirectory: true)
+        }
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        UserDefaults.standard.set(destination.path, forKey: "extractFolder")
+        announce(sources.count == 1 ? "Extracting 1 JPEG" : "Extracting \(sources.count.formatted()) JPEGs")
+        extract.start(sources, into: destination, exactBytes: UserDefaults.standard.bool(forKey: "extractExactBytes")) { [unowned self] summary in
+            announce(summary)
         }
     }
 
@@ -241,6 +266,13 @@ final class AppModel {
             let list = editors.editors
             editorChooserIndex = editors.defaultEditor.flatMap { d in list.firstIndex { $0.id == d.id } } ?? 0
             showEditorChooser = true
+        }
+        // Extract (V-13): `⇧⌘E` picks a folder and starts; `⌘.` cancels a running job, or closes its summary.
+        commands.register("file.extract", isAvailable: { [unowned self] in !folder.cullTargets.isEmpty && !extract.isRunning }) { [unowned self] _ in
+            extractJPEGs()
+        }
+        commands.register("file.extractCancel", isAvailable: { [unowned self] in extract.isShowing }) { [unowned self] _ in
+            if extract.isRunning { extract.cancel() } else { extract.dismiss() }
         }
         commands.register("help.cheatsheet") { [unowned self] _ in showCheatSheet.toggle() }
         commands.register("view.loupe") { [unowned self] _ in commands.mode = .loupe }

@@ -16,6 +16,20 @@ public enum CaptureTime {
                      offset: exif["OffsetTimeOriginal" as CFString] as? String)
     }
 
+    /// `DateTimeOriginal` exactly as the camera wrote it (`yyyy:MM:dd HH:mm:ss`), read from the TIFF structure of a RAW
+    /// already in memory: no file open, no decode. Nil for files that are not TIFF-based (CR3, RAF) or have no date;
+    /// ``read(from:)`` covers those through ImageIO. Used by Extract (V-13), where 2.5 ms a file would be most of the job.
+    public static func dateTimeOriginalString(in data: Data) -> String? {
+        guard let ifd0 = TIFFDirectory.firstDirectory(in: data, at: 0),
+              let pointer = ifd0.integers(0x8769, limit: 1).first,
+              let exif = TIFFDirectory(reader: ifd0.reader, at: ifd0.base + pointer, base: ifd0.base),
+              let text = exif.string(0x9003) else { return nil }
+        let parts = text.split(whereSeparator: { $0 == ":" || $0 == " " })
+        guard parts.count == 6, parts.allSatisfy({ Int($0) != nil }), let month = Int(parts[1]), (1...12).contains(month),
+              let day = Int(parts[2]), (1...31).contains(day) else { return nil }
+        return text
+    }
+
     /// `original` is EXIF's `yyyy:MM:dd HH:mm:ss`; `subseconds` the digits after the decimal point; `offset` is `±HH:MM`.
     public static func parse(dateTimeOriginal original: String, subseconds: String? = nil, offset: String? = nil,
                              timeZone: TimeZone = .current) -> Date? {

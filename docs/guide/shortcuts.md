@@ -105,6 +105,10 @@ Press `?` in the app to see the keys for the current view.
 | `⌘O` | Open folder |
 | `⌥⌘R` | Reload folder |
 | `⌘R` | Reveal in Finder |
+| `⌘E` | Edit in the default editor |
+| `⌥⌘E` | Edit in… (choose an editor) |
+| `⇧⌘E` | Extract embedded JPEGs |
+| `⌘.` | Cancel the extraction, or close its summary |
 | `⇧⌘S` | Save decisions to another folder |
 | `⌘,` | Settings |
 | `?` | Cheat sheet |

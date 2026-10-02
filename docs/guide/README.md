@@ -10,7 +10,7 @@ Oxys does not import photos. It does not make a catalog. It never changes your o
 2. [Cull photos](culling.md): stars, colors, rejects, undo, and selection.
 3. [Check sharpness and exposure](inspecting.md): zoom, RAW, focus peaking, clipping, and EXIF.
 4. [Compare two photos](compare.md): choose between two similar photos.
-5. [Filter, sort, and send photos on](filtering.md): show only your best photos.
+5. [Filter, sort, and send photos on](filtering.md): show only your best photos, open them in an editor, and extract their JPEGs.
 6. [Sidecars and other apps](sidecars.md): where Oxys saves your choices.
 7. [Settings](settings.md)
 8. [Keyboard shortcuts](shortcuts.md): all keys on one page.
