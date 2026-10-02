@@ -51,6 +51,8 @@ final class GridController: NSObject, NSCollectionViewDataSource {
 
     private var photos: [Photo] = []
     private var indexByURL: [URL: Int] = [:]
+    /// The same positions by the file whose pixels the cell shows (the JPEG of a RAW+JPEG pair, V-10).
+    private var indexByShownURL: [URL: Int] = [:]
     private var shownCurrent: URL?
     private var wantedRange: Range<Int> = 0..<0
     private var wantedEdge = 0
@@ -255,6 +257,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
 
     private func reindex() {
         indexByURL = Dictionary(uniqueKeysWithValues: photos.enumerated().map { ($1.url, $0) })
+        indexByShownURL = Dictionary(uniqueKeysWithValues: photos.enumerated().map { ($1.shownURL, $0) })
     }
 
     private func scrollToCurrent() {
@@ -287,7 +290,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     }
 
     private func resolved(_ key: GridThumbnailLoader.Key) {
-        if let index = indexByURL[key.frame.url] { refresh(index: index) }
+        if let index = indexByShownURL[key.frame.url] { refresh(index: index) }
         checkFirstScreen()
     }
 
@@ -327,11 +330,11 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         return .init(url: photo.url, image: loader.image(for: primary) ?? loader.image(for: other),
                      failed: loader.isFailed(primary), decision: photo.decision,
                      isCurrent: photo.url == folder.currentURL, isSelected: folder.selection.contains(photo.url),
-                     label: label(for: photo))
+                     label: label(for: photo), isPair: photo.isPair)
     }
 
     private func label(for photo: Photo) -> String {
-        [photo.name, photo.decision.isUndecided ? nil : photo.decision.summary].compactMap { $0 }.joined(separator: ", ")
+        [photo.name, photo.isPair ? "RAW and JPEG" : nil, photo.decision.isUndecided ? nil : photo.decision.summary].compactMap { $0 }.joined(separator: ", ")
     }
 
     fileprivate func clicked(_ url: URL, open: Bool, modifiers: NSEvent.ModifierFlags) {
@@ -391,6 +394,7 @@ final class GridCellView: NSView {
         let isCurrent: Bool
         let isSelected: Bool
         let label: String
+        let isPair: Bool
     }
 
     private let imageLayer = CALayer()
@@ -466,6 +470,7 @@ final class GridCellView: NSView {
         CATransaction.commit()
         badges.decision = content.failed ? nil : content.decision
         badges.failed = content.failed
+        badges.isPair = content.isPair
         setAccessibilityLabel(content.failed ? "\(content.label), no preview" : content.label)
         setAccessibilitySelected(content.isCurrent || content.isSelected)
     }
@@ -488,6 +493,8 @@ private final class GridBadgeView: NSView {
 
     var decision: Decision? { didSet { if decision != oldValue { needsDisplay = true } } }
     var failed = false { didSet { if failed != oldValue { needsDisplay = true } } }
+    /// A RAW+JPEG pair (V-10): a "R+J" chip at the right end of the strip.
+    var isPair = false { didSet { if isPair != oldValue { needsDisplay = true } } }
 
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -497,7 +504,8 @@ private final class GridBadgeView: NSView {
             draw("No preview", at: NSPoint(x: 6, y: 4), color: .white, font: .systemFont(ofSize: 11))
             return
         }
-        guard let decision, !decision.isUndecided else { return }
+        let decision = decision ?? .none
+        guard !decision.isUndecided || isPair else { return }
         NSColor.black.withAlphaComponent(Plate.opacity).setFill()
         bounds.fill()
         var x: CGFloat = 6
@@ -511,8 +519,16 @@ private final class GridBadgeView: NSView {
             let text = String(repeating: "★", count: decision.stars)
             x += draw(text, at: NSPoint(x: x, y: 3), color: .systemYellow, font: .systemFont(ofSize: 13)) + 6
         }
+        var right = bounds.width - 6
+        if isPair {
+            let chip = NSRect(x: right - 32, y: 3, width: 32, height: 16)
+            NSColor.white.withAlphaComponent(0.85).setFill()
+            NSBezierPath(roundedRect: chip, xRadius: 4, yRadius: 4).fill()
+            draw("R+J", in: chip, color: .black, font: .monospacedSystemFont(ofSize: 10, weight: .bold))
+            right -= 38
+        }
         if let label = decision.label {
-            let chip = NSRect(x: bounds.width - 22, y: 3, width: 16, height: 16)
+            let chip = NSRect(x: right - 16, y: 3, width: 16, height: 16)
             label.nsColor.setFill()
             NSBezierPath(roundedRect: chip, xRadius: 4, yRadius: 4).fill()
             draw(String(label.letter), in: chip, color: .black,

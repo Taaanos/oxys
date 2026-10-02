@@ -12,10 +12,12 @@ public enum FolderScanner {
 
     static let hintDepth = 3
 
-    public static func scan(_ folder: URL) throws -> Result {
+    /// With `pairing`, a RAW and its camera JPEG or HEIC come back as one photo (V-10).
+    public static func scan(_ folder: URL, pairing: Bool = true) throws -> Result {
         let token = Perf.begin(.folderScan)
         defer { Perf.end(token) }
         var photos = try list(folder)
+        if pairing { photos = RawJpegPairing.pair(photos) }
         photos.sort(by: Photo.isOrderedBefore)   // modification date for now; capture times re-sort later
         return Result(photos: photos, subfolderHasPhotos: photos.isEmpty && hasPhotos(inSubfoldersOf: folder, depth: hintDepth))
     }

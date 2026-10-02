@@ -12,6 +12,8 @@ public struct TruthBadge: Equatable, Sendable {
         case raw
         /// A JPEG, TIFF or similar: the file's own pixels.
         case file
+        /// The camera JPEG or HEIC of a RAW+JPEG pair (V-10): the file's own pixels, but not the RAW's.
+        case cameraJPEG
     }
 
     public var text: String
@@ -35,6 +37,9 @@ public struct TruthBadge: Equatable, Sendable {
         case .file:
             if enlarged { return TruthBadge(text: "Enlarged \(factor)", isWarning: true) }
             return TruthBadge(text: percent == 100 && !isFit ? "1:1" : "Full file", isWarning: false)
+        case .cameraJPEG:
+            if enlarged { return TruthBadge(text: "Camera JPEG enlarged \(factor)", isWarning: true) }
+            return TruthBadge(text: percent == 100 && !isFit ? "Camera JPEG 1:1" : "Camera JPEG", isWarning: false)
         case .preview:
             if enlarged { return TruthBadge(text: "Preview enlarged \(factor)", isWarning: true) }
             // At 1:1 a preview is still not the sensor unless it has the sensor's pixel count.

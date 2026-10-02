@@ -123,6 +123,10 @@ struct InfoStrip: View {
         if let photo {
             HStack(spacing: 12) {
                 Text(photo.name).font(.callout.monospaced())
+                if let companion = photo.companion {
+                    Text("RAW+JPEG").font(.caption.weight(.semibold)).foregroundStyle(Plate.secondary)
+                        .help("\(photo.name) and \(companion.url.lastPathComponent) are one frame; the decision goes to both")
+                }
                 if let decision, !decision.isUndecided { DecisionGlyphs(decision: decision) }
                 if let note = photo.sidecar.notes.first {
                     PlateLabel(text: note, systemImage: photo.sidecar.problem == nil ? "info.circle" : "exclamationmark.triangle.fill",
@@ -143,7 +147,7 @@ struct InfoStrip: View {
             .foregroundStyle(.white)
             .environment(\.colorScheme, .dark)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel(([photo.name, decision?.summary].compactMap { $0 } + photo.sidecar.notes).joined(separator: ", ") + (exifSpoken.map { ", " + $0 } ?? "") + zoomSpoken)
+            .accessibilityLabel(([photo.name, photo.isPair ? "RAW and JPEG" : nil, decision?.summary].compactMap { $0 } + photo.sidecar.notes).joined(separator: ", ") + (exifSpoken.map { ", " + $0 } ?? "") + zoomSpoken)
         }
     }
 }

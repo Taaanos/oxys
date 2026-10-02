@@ -347,7 +347,7 @@ enum PerfBench {
     private static func nextRaw(_ model: AppModel) async {
         if model.folder.currentIndex == model.folder.visible.count - 1 { model.commands.perform("nav.first"); await settle(.milliseconds(400)) }
         for _ in 0..<10 {
-            if model.loupe.shown?.url == model.folder.currentURL, model.folder.currentPhoto?.format.isRaw == true { return }
+            if model.loupe.shown?.url == model.folder.currentURL, model.folder.currentPhoto?.showsRaw == true { return }
             model.commands.perform("nav.next")
             await settle(.milliseconds(400))
         }

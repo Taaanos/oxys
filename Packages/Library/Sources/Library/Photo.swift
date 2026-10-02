@@ -55,8 +55,30 @@ public struct Photo: Sendable, Identifiable, Hashable {
     /// Where the decision was read from, and anything the inspector should say about it (M-07).
     public var sidecar: SidecarInfo = SidecarInfo()
 
+    /// The camera JPEG or HEIC that came with this RAW, when pairing found one (V-10). The frame is the RAW's:
+    /// its URL, sidecar and hand-off. The companion is what the photographer sees, and goes along to Finder.
+    public var companion: Companion?
+
+    public struct Companion: Sendable, Hashable {
+        public let url: URL
+        public let format: PhotoFormat
+        public let fileSize: Int
+        public let modificationDate: Date
+    }
+
     public var id: URL { url }
     public var name: String { url.lastPathComponent }
+
+    public var isPair: Bool { companion != nil }
+    /// The file whose pixels Loupe, Compare and Grid show: the companion of a pair, else the photo itself.
+    public var shownURL: URL { companion?.url ?? url }
+    public var shownFormat: PhotoFormat { companion?.format ?? format }
+    public var shownFileSize: Int { companion?.fileSize ?? fileSize }
+    public var shownModificationDate: Date { companion?.modificationDate ?? modificationDate }
+    /// True when the pixels on screen come from a RAW container (a pair shows its JPEG, so it does not).
+    public var showsRaw: Bool { shownFormat.isRaw }
+    /// Every file of the frame, for Reveal in Finder: the RAW, then the companion.
+    public var files: [URL] { companion.map { [url, $0.url] } ?? [url] }
 
     /// The time the photo sorts by: capture time, else the file's modification date (screenshots, exported JPEGs).
     public var sortDate: Date { captureTime ?? modificationDate }

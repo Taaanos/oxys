@@ -30,6 +30,9 @@ struct InspectorView: View {
                 if let photo {
                     Text(photo.name).font(.headline.monospaced()).textSelection(.enabled)
                         .accessibilityAddTraits(.isHeader)
+                    if let companion = photo.companion {
+                        Text("RAW+JPEG with \(companion.url.lastPathComponent)").font(.callout).foregroundStyle(.secondary)
+                    }
                     histogramSection(photo)
                     exifSection
                     sidecarSection(photo, folder: folder)

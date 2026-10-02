@@ -90,7 +90,7 @@ final class LoupeController {
     /// The truth badge (V-05) for the photo on screen; nil until a picture and its zoom are known.
     var truthBadge: TruthBadge? {
         guard failure == nil, let photo = shown, let pixels = shownPixels, let zoom = zoomInfo else { return nil }
-        let source: TruthBadge.Source = !photo.format.isRaw ? .file : developState == .raw ? .raw : developState == .developing ? .developing : .preview
+        let source: TruthBadge.Source = !photo.showsRaw ? (photo.isPair ? .cameraJPEG : .file) : developState == .raw ? .raw : developState == .developing ? .developing : .preview
         return TruthBadge.make(source: source, percent: zoom.percent, isFit: zoom.level.isFit, longEdge: max(pixels.width, pixels.height),
                                sensorLongEdge: RawPolicy.longEdge(ofDimensions: exif?.dimensions))
     }
@@ -123,7 +123,7 @@ final class LoupeController {
     }
 
     private func sourceName(of photo: Photo, developed: Bool) -> String {
-        !photo.format.isRaw ? "File" : developed ? "RAW" : "Preview"
+        !photo.showsRaw ? (photo.isPair ? "Camera JPEG" : "File") : developed ? "RAW" : "Preview"
     }
 
     /// `F`: the overlay on or off. A held `F` calls this again on release.
@@ -417,7 +417,7 @@ final class LoupeController {
         lastIndex = index
         rawNeighbors = index.map { i in
             RawPolicy.neighbors(of: i, count: folder.visible.count, forward: direction == .forward)
-                .map { folder.visible[$0] }.filter { $0.format.isRaw }
+                .map { folder.visible[$0] }.filter { $0.showsRaw }
         } ?? []
         let slow = await pipeline.isSlow
         let neighborIndices = index.map {
@@ -480,7 +480,7 @@ final class LoupeController {
         FrameLog.record(cursor: folder.currentURL, displayed: photo.url, kind: "preview")
         // Back on a photo that was in RAW mode: its decode is still cached, or the mode lapses (V-02/Q1).
         // In Always mode every RAW is wanted, unless sent back to the preview with `R` (V-03).
-        let always = rawMode == .always && photo.format.isRaw && !previewHeld.contains(photo.url)
+        let always = rawMode == .always && photo.showsRaw && !previewHeld.contains(photo.url)
         if rawWanted.contains(photo.url) || always {
             if let developed = rawCache.cached(target) {
                 present(developed, of: photo, canvas: canvas)
@@ -507,7 +507,7 @@ final class LoupeController {
     func toggleRaw() {
         guard isActive, let canvas, canvas.window != nil, let photo = shown, failure == nil else { return }
         guard RawPolicy.allowsDevelop(rawSetting) else { return }
-        guard photo.format.isRaw else {
+        guard photo.showsRaw else {
             announce("\(photo.name) is not a RAW file")
             return
         }
@@ -540,7 +540,7 @@ final class LoupeController {
         previewHeld = []
         if toggled {
             announce("Always develop RAW")
-            guard let photo = shown, photo.format.isRaw, failure == nil else { return }
+            guard let photo = shown, photo.showsRaw, failure == nil else { return }
             switch developState {
             case .preview:
                 rawWanted.insert(photo.url)
@@ -558,7 +558,7 @@ final class LoupeController {
     private func developAtActualSizeIfNeeded() {
         guard developState == .preview, let zoom = zoomInfo, let photo = shown, failure == nil, !previewHeld.contains(photo.url),
               RawPolicy.developsAtActualSize(
-                mode: rawMode, automatic: autoRawAtActual, isRaw: photo.format.isRaw, isFit: zoom.level.isFit,
+                mode: rawMode, automatic: autoRawAtActual, isRaw: photo.showsRaw, isFit: zoom.level.isFit,
                 percent: zoom.percent, previewLongEdge: shownPixels.map { max($0.width, $0.height) },
                 sensorLongEdge: RawPolicy.longEdge(ofDimensions: exif?.dimensions)) else { return }
         rawWanted.insert(photo.url)

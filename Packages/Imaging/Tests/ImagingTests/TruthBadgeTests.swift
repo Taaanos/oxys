@@ -35,6 +35,12 @@ private func badge(_ source: TruthBadge.Source, percent: Int = 31, fit: Bool = t
     #expect(badge(.file, percent: 200, fit: false) == TruthBadge(text: "Enlarged 2×", isWarning: true))
 }
 
+@Test func theCameraJpegOfAPairSaysSo() {
+    #expect(badge(.cameraJPEG) == TruthBadge(text: "Camera JPEG", isWarning: false))
+    #expect(badge(.cameraJPEG, percent: 100, fit: false).text == "Camera JPEG 1:1")
+    #expect(badge(.cameraJPEG, percent: 200, fit: false) == TruthBadge(text: "Camera JPEG enlarged 2×", isWarning: true))
+}
+
 @Test func zoomNeedingMorePixelsThanThePreviewHasAlwaysWarns() {
     for percent in stride(from: 101, through: 400, by: 7) {
         #expect(badge(.preview, percent: percent, fit: false).isWarning)

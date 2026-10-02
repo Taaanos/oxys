@@ -25,6 +25,9 @@ public final class FolderModel {
     /// The configured naming style (PRD "Sidecar naming"). Reads fall back to the other style.
     public var sidecarNaming: SidecarNaming = .stem
 
+    /// Whether a RAW and its camera JPEG or HEIC are one frame (V-10). Takes effect when the folder is read again.
+    public var pairsRawAndJpeg = true
+
     /// The filter and sort bar's settings (M-20).
     public private(set) var filter = PhotoFilter() { didSet { visibleVersion &+= 1 } }
 
@@ -125,6 +128,7 @@ public final class FolderModel {
         return photos.indices.filter { i in
             photos[i].sidecar.file == url
                 || SidecarNaming.allCases.contains { $0.fileName(for: photos[i].name).lowercased() == name }
+                || photos[i].companion.map({ SidecarNaming.fullName.fileName(for: $0.url.lastPathComponent).lowercased() == name }) == true
         }
     }
 
@@ -213,8 +217,9 @@ public final class FolderModel {
         content = .opening(url)
         isReadingCaptureTimes = false
 
+        let pairing = pairsRawAndJpeg
         loading = Task { [weak self] in
-            let (scanned, readOnly) = await Task.detached { (Result { try FolderScanner.scan(url) }, Self.isReadOnly(url)) }.value
+            let (scanned, readOnly) = await Task.detached { (Result { try FolderScanner.scan(url, pairing: pairing) }, Self.isReadOnly(url)) }.value
             guard let self, mine == generation else { return }
             isReadOnly = readOnly
             switch scanned {
@@ -332,7 +337,10 @@ public final class FolderModel {
                 reread.formUnion(affected)
             } else if let format = PhotoFormat(pathExtension: ext) {
                 let exists = FileManager.default.fileExists(atPath: url.path)
-                if let photo = photos.first(where: { $0.url.lastPathComponent == name }) {
+                if let index = photos.firstIndex(where: { $0.companion?.url.lastPathComponent == name }) {
+                    // The JPEG of a pair: if it went away the frame is the RAW alone; it never counts as a new file.
+                    if !exists { photos[index].companion = nil }
+                } else if let photo = photos.first(where: { $0.url.lastPathComponent == name }) {
                     if !exists { gone.insert(photo.url) }
                     else if format.hasEmbeddedXMP, photo.sidecar.file == nil { reread.insert(photo.url) }
                 } else if exists {
@@ -400,6 +408,13 @@ public final class FolderModel {
     public var currentIndex: Int? {
         guard let currentURL else { return nil }
         return visible.firstIndex { $0.url == currentURL }
+    }
+
+    /// Every file Reveal in Finder selects: each target frame's RAW and, for a pair, its JPEG (V-10/Q5).
+    public var revealURLs: [URL] {
+        let targets = cullTargets
+        let byURL = Dictionary(photos.map { ($0.url, $0) }, uniquingKeysWith: { first, _ in first })
+        return targets.flatMap { byURL[$0]?.files ?? [$0] }
     }
 
     public func decision(for url: URL) -> Decision? {
@@ -614,6 +629,13 @@ public final class FolderModel {
                       to: SidecarTarget(primary: primary, fallback: fallback),
                       // Back to "nothing decided": a sidecar we created for this photo goes away again (M-09/Q1).
                       removeIfCreatedByUs: restoring && photo.decision.isUndecided && photo.sidecar.unknownLabel == nil)
+        // With `name.ext.xmp` naming the JPEG of a pair has a sidecar of its own, and Lightroom reads that one (V-10/Q1).
+        // With `name.xmp` both files share the RAW's sidecar, so there is nothing more to write.
+        if let companion = photo.companion, sidecarNaming == .fullName {
+            let target = folder.appendingPathComponent(SidecarNaming.fullName.fileName(for: companion.url.lastPathComponent))
+            writer.submit(sidecarEdit(for: photo), to: SidecarTarget(primary: target),
+                          removeIfCreatedByUs: restoring && photo.decision.isUndecided && photo.sidecar.unknownLabel == nil)
+        }
         if photo.sidecar.file == nil, photo.sidecar.isRead { photos[index].sidecar.file = primary }
     }
 }

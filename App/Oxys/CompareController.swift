@@ -43,11 +43,11 @@ final class ComparePane {
 
     init(side: ComparePair.Side) { self.side = side }
 
-    var isRaw: Bool { shown?.format.isRaw == true && failure == nil }
+    var isRaw: Bool { shown?.showsRaw == true && failure == nil }
 
     var truthBadge: TruthBadge? {
         guard failure == nil, let photo = shown, let pixels = shownPixels, let zoom = zoomInfo else { return nil }
-        let source: TruthBadge.Source = !photo.format.isRaw ? .file : developState == .raw ? .raw : developState == .developing ? .developing : .preview
+        let source: TruthBadge.Source = !photo.showsRaw ? (photo.isPair ? .cameraJPEG : .file) : developState == .raw ? .raw : developState == .developing ? .developing : .preview
         return TruthBadge.make(source: source, percent: zoom.percent, isFit: zoom.level.isFit,
                                longEdge: max(pixels.width, pixels.height),
                                sensorLongEdge: RawPolicy.longEdge(ofDimensions: exif?.dimensions))

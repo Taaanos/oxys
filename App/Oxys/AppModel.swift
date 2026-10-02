@@ -121,6 +121,11 @@ final class AppModel {
         SidecarNaming(rawValue: UserDefaults.standard.string(forKey: "sidecarNaming") ?? "") ?? .stem
     }
 
+    /// Settings → General: a RAW and its camera JPEG are one frame (on until switched off).
+    static var pairsRawAndJpeg: Bool {
+        UserDefaults.standard.object(forKey: "pairRawJpeg") as? Bool ?? true
+    }
+
     init() {
         commands = CommandCenter(folder: folder)
         grid = GridController(folder: folder, loupe: loupe)
@@ -135,10 +140,14 @@ final class AppModel {
         AppDelegate.confirmQuit = { [unowned self] in confirmQuit() }
         // Settings (M-22): the sidecar naming style applies at once. Existing sidecars are never renamed (M-22/Q1).
         folder.sidecarNaming = Self.configuredNaming
+        folder.pairsRawAndJpeg = Self.pairsRawAndJpeg
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [folder] _ in
             MainActor.assumeIsolated {
                 let naming = AppModel.configuredNaming
                 if folder.sidecarNaming != naming { folder.sidecarNaming = naming }
+                // Pairing changes what the list is made of, so the open folder is read again (V-10/Q4).
+                let pairing = AppModel.pairsRawAndJpeg
+                if folder.pairsRawAndJpeg != pairing { folder.pairsRawAndJpeg = pairing; folder.flushSidecarWrites(); folder.reload() }
             }
         }
         // A card that was reseated or a share that came back: try the failed writes again when the app returns.
@@ -161,7 +170,7 @@ final class AppModel {
         commands.register("nav.down") { [unowned self] _ in grid.move(.down) }
         registerSelection()
         commands.register("file.reveal", isAvailable: { [unowned self] in !folder.cullTargets.isEmpty }) { [unowned self] _ in
-            let urls = folder.cullTargets
+            let urls = folder.revealURLs   // a RAW+JPEG pair reveals both files (V-10)
             NSWorkspace.shared.activateFileViewerSelecting(urls)
             announce(urls.count == 1 ? "Revealed 1 file in Finder" : "Revealed \(urls.count.formatted()) files in Finder")
         }

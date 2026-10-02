@@ -91,7 +91,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-07 | Highlight and shadow clipping | M-17 | done |
 | V-08 | Compare: layout and culling | M-13, M-19 | done |
 | V-09 | Compare: linked zoom and EXIF differences | V-08, M-15, M-16 | done (screen not looked at, VoiceOver and pointer drags unchecked) |
-| V-10 | RAW+JPEG pairs | M-08, M-21 | todo |
+| V-10 | RAW+JPEG pairs | M-08, M-21 | built, needs visual check (pairs shown in a live window, Lightroom reading the rating) |
 | V-11 | Auto-advance | M-06 | todo |
 | V-12 | External editors | M-19, M-22 | todo |
 | V-13 | Extract embedded JPEGs | M-02, M-19 | todo |
@@ -1584,6 +1584,21 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 3. RAW+HEIC pairs as well? *Proposed:* yes, same rule.
 4. A setting to switch pairing off? *Proposed:* yes, in General.
 5. Hand-off. *Proposed:* Reveal selects both files, Edit sends the RAW, Extract uses the RAW.
+
+**Status:** built, needs visual check
+
+**Decisions**
+- Q1 to Q5 accepted. A frame is the RAW's `Photo`; the JPEG or HEIC hangs off it as `Photo.companion`, so the frame's URL, sidecar, selection and undo stay the RAW's. `RawJpegPairing` (Library) merges a pair in the scan: one RAW and one JPEG or HEIC with the same base name in any case. It does not pair two RAWs with one name, a TIFF, or a JPEG beside a HEIC (the JPEG wins and the HEIC stays its own frame).
+- Sidecars: the decision always goes to the RAW's sidecar. With `name.ext.xmp` naming the JPEG's `name.jpg.xmp` gets the same write, and undo to "nothing" removes both sidecars we made. With `name.xmp` naming the two files share the RAW's sidecar.
+- Display: Loupe, Compare and Grid show the camera JPEG (`shownURL`). Because the pixels are then not a RAW's, `R` does not develop a pair, and the truth badge says "Camera JPEG" (new `TruthBadge.Source.cameraJPEG`). To see the RAW's own pixels, switch pairing off.
+- A "RAW+JPEG" mark in Loupe's info strip and the inspector, an "R+J" chip in Grid, and "RAW and JPEG" in the VoiceOver labels.
+- Reveal selects both files (`FolderModel.revealURLs`). Edit (V-12) and Extract (V-13) will take the frame's own URL, the RAW.
+- Settings → General: "Show a RAW and its JPEG as one photo" (on by default). Changing it flushes pending writes and reads the open folder again.
+- Outside changes: a JPEG that disappears leaves the RAW alone as its frame; the JPEG of a pair never counts as a new file.
+
+**Checked**
+- Unit tests: `Library` 129 (new: pair rules and case, HEIC, JPEG over HEIC, unclear cases, pairing off, `name.xmp` and `name.ext.xmp` writes, undo removing both, Reveal list, JPEG vanishing), `Imaging` 58 (new: Camera JPEG badge). Release build clean, arm64.
+- **Not checked:** a pair in a live window (Grid chip, Loupe mark, which image shows); VoiceOver wording; the rating in Lightroom Classic (needs you, G-10); a real RAW+JPEG shoot; the Settings toggle reloading the open folder; `ui-walk`.
 
 ### V-11 · Auto-advance
 

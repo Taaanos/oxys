@@ -25,7 +25,7 @@ nonisolated enum FrameLoader {
         directory: DiskThumbnailCache.standardDirectory(bundleID: Bundle.main.bundleIdentifier ?? "dev.oxys.Oxys"))
 
     static func key(for photo: Photo) -> FrameKey {
-        FrameKey(url: photo.url, fileSize: photo.fileSize, modified: photo.modificationDate, isRaw: photo.format.isRaw)
+        FrameKey(url: photo.shownURL, fileSize: photo.shownFileSize, modified: photo.shownModificationDate, isRaw: photo.showsRaw)
     }
 
     static func load(_ key: FrameKey, thumbnails: DiskThumbnailCache) throws -> LoadedFrame<LoupeFrame> {

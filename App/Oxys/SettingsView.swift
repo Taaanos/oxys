@@ -22,6 +22,7 @@ private struct GeneralPane: View {
     @AppStorage("prefetchBudgetMB") private var budgetMB = 0
     @AppStorage("rawMode") private var rawMode = RawMode.default.rawValue
     @AppStorage("rawAutoActual") private var rawAutoActual = true
+    @AppStorage("pairRawJpeg") private var pairRawJpeg = true
     /// What the slider and field show while Automatic is on, and what returns when it is switched off.
     @State private var manualMB = 2048
 
@@ -46,6 +47,9 @@ private struct GeneralPane: View {
 
     var body: some View {
         Form {
+            Toggle("Show a RAW and its JPEG as one photo", isOn: $pairRawJpeg)
+            Text("A RAW and a JPEG or HEIC with the same name in the same folder become one photo. You see the camera JPEG, and a rating goes to the pair. Reveal in Finder selects both files. Switching this changes the open folder at once.")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Picker("RAW decode", selection: $rawMode) {
                 ForEach(RawMode.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
             }
