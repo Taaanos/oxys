@@ -247,7 +247,7 @@ private struct CompareExifLine: View {
         HStack(spacing: 10) {
             ForEach(fields) { field in
                 if field.differs {
-                    Text("\(field.label) \(field.value)").bold().underline().foregroundStyle(Plate.warning)
+                    Text(field.value.hasPrefix(field.label) ? field.value : "\(field.label) \(field.value)").bold().underline().foregroundStyle(Plate.warning)
                 } else {
                     Text(field.value).foregroundStyle(Plate.secondary)
                 }
