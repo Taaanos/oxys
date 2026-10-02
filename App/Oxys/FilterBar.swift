@@ -59,17 +59,18 @@ struct FilterBar: View {
     private func stars(_ filter: PhotoFilter) -> some View {
         HStack(spacing: 2) {
             ForEach(1...5, id: \.self) { n in
-                let lit = n <= filter.minStars
+                let lit = filter.minStars > 0 && n >= filter.minStars && n <= filter.maxStars
                 Button {
-                    // A second click on the lit minimum clears it.
-                    model.setFilter { $0.minStars = $0.minStars == n ? 0 : n }
+                    // ⇧-click after a first star makes a range (2, then ⇧5, is 2 to 5 stars).
+                    let extend = NSEvent.modifierFlags.contains(.shift)
+                    model.setFilter { $0.clickStar(n, extend: extend) }
                 } label: {
                     Image(systemName: lit ? "star.fill" : "star").foregroundStyle(lit ? Color.yellow : .secondary)
                 }
                 .buttonStyle(.borderless)
-                .help(n == 5 ? "5 stars (⌥⌘5)" : "\(n) stars or more (⌥⌘\(n))")
+                .help(n == 5 ? "5 stars (⌥⌘5). ⇧-click for a range" : "\(n) stars or more (⌥⌘\(n)). ⇧-click for a range")
                 .accessibilityLabel(n == 1 ? "1 star or more" : n == 5 ? "5 stars" : "\(n) stars or more")
-                .accessibilityAddTraits(filter.minStars == n ? .isSelected : [])
+                .accessibilityAddTraits(lit ? .isSelected : [])
             }
         }
     }
