@@ -4,6 +4,10 @@ A keyboard-first RAW culler for macOS. Instant embedded previews, full keyboard 
 
 Status: early development. See [PRD.md](PRD.md) for the product and [STORIES.md](STORIES.md) for the build plan.
 
+## Using Oxys
+
+The [user guide](docs/guide/README.md) explains each feature and key: [get started](docs/guide/getting-started.md), [cull photos](docs/guide/culling.md), [check sharpness and exposure](docs/guide/inspecting.md), [Compare](docs/guide/compare.md), [sidecars and other apps](docs/guide/sidecars.md), and all [keyboard shortcuts](docs/guide/shortcuts.md).
+
 ## Requirements
 
 - Apple silicon Mac running macOS 27 or newer
