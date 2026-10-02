@@ -92,7 +92,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-08 | Compare: layout and culling | M-13, M-19 | done |
 | V-09 | Compare: linked zoom and EXIF differences | V-08, M-15, M-16 | done (screen not looked at, VoiceOver and pointer drags unchecked) |
 | V-10 | RAW+JPEG pairs | M-08, M-21 | built, needs visual check (pairs shown in a live window, Lightroom reading the rating) |
-| V-11 | Auto-advance | M-06 | todo |
+| V-11 | Auto-advance | M-06 | done |
 | V-12 | External editors | M-19, M-22 | todo |
 | V-13 | Extract embedded JPEGs | M-02, M-19 | todo |
 | V-14 | Key remapping and presets | M-22, M-23 | todo |
@@ -1612,10 +1612,21 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Applies to rating, label and reject keys.
 
 **Acceptance criteria**
-- [ ] `A` toggles it, its state is always visible, and it persists.
+- [x] `A` toggles it, its state is always visible, and it persists.
 
 **Open questions**
 1. With auto-advance on, what does `⇧` do? *Proposed:* the opposite: apply without advancing.
+
+**Decisions** (V-11)
+- Question 1 **decided** as proposed. The cull handler in `AppModel` computes `advance = autoAdvance != (⇧ held)`, so one rule covers Grid, Loupe and Compare. In Compare the active side moves on (V-08/Q4).
+- `A` is the command `cull.autoAdvance` (Photo menu, toggle, a physical key, every mode). It is not a `⇧` twin command. VoiceOver says "Auto-advance on" or "Auto-advance off".
+- State: `AppModel.autoAdvance`, stored in the `autoAdvance` default (off at first launch). Settings → General has the same switch; the model follows changes made there.
+- Indicator: an "Auto-advance" plate at the top left of the window in every mode. It is in the window, not the toolbar, so it stays visible when `⇥` hides the toolbar. Icon and text, with a VoiceOver label that also says what `⇧` does.
+- Applies to rating, label and reject keys, and to the `[` and `]` rating steps, as `⇧` does today.
+
+**Checked**
+- Unit tests: `Commands` (new: `A` toggles in Grid, Loupe and Compare; `⇧A` is no twin). Release build clean, arm64.
+- **Not checked:** the toggle and the plate in a live window; Settings switch and `A` staying in step; VoiceOver wording; `⇧` inversion in Grid, Loupe and Compare by hand; `ui-walk`.
 
 ### V-12 · External editors
 

@@ -420,3 +420,14 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(press(.upArrow, .grid) == [.perform("nav.up")])
     #expect(press(.downArrow, .grid) == [.perform("nav.down")])
 }
+
+@Test func autoAdvanceKeyToggles() {
+    var router = KeyRouter(keymap: resolve(nil).keymap)
+    for mode in [ViewMode.grid, .loupe, .compare] {
+        let down = router.handle(KeyInput(keyCode: PhysicalKey.a.rawValue, timestamp: 0), mode: mode, focus: .canvas)
+        #expect(down.actions == [.perform("cull.autoAdvance")])
+        _ = router.handle(KeyInput(keyCode: PhysicalKey.a.rawValue, isDown: false, timestamp: 0.01), mode: mode, focus: .canvas)
+    }
+    // ⇧A is not a twin of anything: the toggle does not advance.
+    #expect(CommandTable.standard["cull.autoAdvance"]?.shiftAdvances == false)
+}

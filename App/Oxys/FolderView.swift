@@ -49,6 +49,9 @@ struct FolderView: View {
             InspectorView(model: model)
                 .inspectorColumnWidth(min: 240, ideal: 280, max: 420)
         }
+        .overlay(alignment: .topLeading) {
+            if model.autoAdvance, folder.content == .photos { AutoAdvanceBadge() }
+        }
         .overlay { if model.showCheatSheet { CheatSheetView(model: model) } }
         .toolbar(id: "oxys.main") { ToolbarItems(model: model) }
         .toolbarVisibility(model.chromeHidden ? .hidden : .visible, for: .windowToolbar)
@@ -113,6 +116,22 @@ private struct ToolbarItems: CustomizableToolbarContent {
                 .accessibilityValue(model.showInspector ? "Shown" : "Hidden")
                 .disabled(model.folder.content != .photos)
         }
+    }
+}
+
+/// Says that auto-advance is on (V-11). Top left in every mode, so it stays visible when the toolbar is hidden.
+/// Text and an icon, never color alone.
+private struct AutoAdvanceBadge: View {
+    var body: some View {
+        PlateLabel(text: "Auto-advance", systemImage: "forward.end.fill", tint: Plate.secondary)
+            .font(.callout.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .infoPlate(cornerRadius: 8)
+            .padding(12)
+            .allowsHitTesting(false)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Auto-advance is on. Shift applies a rating without advancing.")
     }
 }
 

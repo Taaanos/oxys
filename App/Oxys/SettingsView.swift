@@ -23,6 +23,7 @@ private struct GeneralPane: View {
     @AppStorage("rawMode") private var rawMode = RawMode.default.rawValue
     @AppStorage("rawAutoActual") private var rawAutoActual = true
     @AppStorage("pairRawJpeg") private var pairRawJpeg = true
+    @AppStorage("autoAdvance") private var autoAdvance = false
     /// What the slider and field show while Automatic is on, and what returns when it is switched off.
     @State private var manualMB = 2048
 
@@ -47,6 +48,9 @@ private struct GeneralPane: View {
 
     var body: some View {
         Form {
+            Toggle("Advance to the next photo after every rating, label or reject", isOn: $autoAdvance)
+            Text("Off by default. While it is on, hold ⇧ with a key to apply it and stay on the photo. The A key switches it on and off.")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Toggle("Show a RAW and its JPEG as one photo", isOn: $pairRawJpeg)
             Text("A RAW and a JPEG or HEIC with the same name in the same folder become one photo. You see the camera JPEG, and a rating goes to the pair. Reveal in Finder selects both files. Switching this changes the open folder at once.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

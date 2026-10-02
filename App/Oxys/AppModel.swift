@@ -32,6 +32,11 @@ final class AppModel {
     var cheatScroll = ScrollPosition()
     /// Kept by the sheet's scroll view so the keys can move it: current offset, visible height and content height.
     var cheatMetrics: (offset: CGFloat, page: CGFloat, content: CGFloat) = (0, 0, 0)
+    /// Auto-advance (V-11): rating, label and reject keys move to the next photo, and `⇧` turns that around.
+    /// Set by `A` and by Settings → General; remembered across launches, off by default.
+    var autoAdvance = UserDefaults.standard.bool(forKey: "autoAdvance") {
+        didSet { if autoAdvance != UserDefaults.standard.bool(forKey: "autoAdvance") { UserDefaults.standard.set(autoAdvance, forKey: "autoAdvance") } }
+    }
     /// The inspector sidebar (⌥⌘I), remembered across launches. Hidden along with the toolbar by `⇥` (M-13).
     private(set) var showInspector = UserDefaults.standard.bool(forKey: "showInspector")
     /// True after "Move Focus to Inspector" until `Esc`: `⇥`, `⇧⇥`, `↑` and `↓` walk the inspector's rows and
@@ -141,8 +146,10 @@ final class AppModel {
         // Settings (M-22): the sidecar naming style applies at once. Existing sidecars are never renamed (M-22/Q1).
         folder.sidecarNaming = Self.configuredNaming
         folder.pairsRawAndJpeg = Self.pairsRawAndJpeg
-        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [folder] _ in
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [unowned self, folder] _ in
             MainActor.assumeIsolated {
+                let auto = UserDefaults.standard.bool(forKey: "autoAdvance")
+                if autoAdvance != auto { autoAdvance = auto }
                 let naming = AppModel.configuredNaming
                 if folder.sidecarNaming != naming { folder.sidecarNaming = naming }
                 // Pairing changes what the list is made of, so the open folder is read again (V-10/Q4).
@@ -222,6 +229,10 @@ final class AppModel {
                           title: { [unowned self] in loupe.canDevelop ? "Always Show RAW" : "Always Show RAW (off: RAW decode is Never in Settings)" }) { [unowned self] _ in
             loupe.toggleAlwaysRaw()
         }
+        commands.register("cull.autoAdvance", isOn: { [unowned self] in autoAdvance }) { [unowned self] _ in
+            autoAdvance.toggle()
+            announce(autoAdvance ? "Auto-advance on" : "Auto-advance off")
+        }
         commands.register("zoom.sticky", isOn: { [unowned self] in loupe.stickyZoom }) { [unowned self] _ in
             loupe.stickyZoom.toggle()
         }
@@ -285,11 +296,13 @@ final class AppModel {
             commands.register(CommandID(rawValue: id)) { [unowned self] phase in
                 // Grid acts on the whole selection when there is one (G-5); Loupe and Compare on the active photo.
                 // In Compare that is the active side's, and `⇧` moves that side on, not the folder's cursor (V-08).
+                // With auto-advance on, `⇧` is the opposite: apply and stay (V-11/Q1).
+                let advance = autoAdvance != (phase == .performAdvancing)
                 if commands.mode == .compare {
-                    compare.cull(action, advance: phase == .performAdvancing)
+                    compare.cull(action, advance: advance)
                     return
                 }
-                loupe.cull(action, advance: phase == .performAdvancing, folder: folder,
+                loupe.cull(action, advance: advance, folder: folder,
                            targets: commands.mode == .grid ? folder.cullTargets : nil)
             }
         }

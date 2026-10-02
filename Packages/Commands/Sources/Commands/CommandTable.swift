@@ -254,6 +254,9 @@ public struct CommandTable: Sendable {
         Command("cull.label.blue", "Blue Label", menu: .init(.photo, group: 3), modes: cull, requires: .photos, shiftAdvances: true,
                 keys: [Shortcut(.position(.digit9)), Shortcut(.position(.keypad9))]),
         Command("cull.label.purple", "Purple Label", menu: .init(.photo, group: 3), modes: cull, requires: .photos),
+        // Auto-advance (V-11): every rating, label and reject moves on; `⇧` then applies without moving.
+        Command("cull.autoAdvance", "Auto-Advance After Rating", menu: .init(.photo, group: 5), modes: cull, kind: .toggle,
+                keys: [Shortcut(.position(.a))]),
 
         // Reveal (M-21): one Finder window with the selection (or the active photo) highlighted.
         Command("file.reveal", "Reveal in Finder", menu: .init(.photo, group: 4), requires: .photos,
