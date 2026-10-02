@@ -467,6 +467,26 @@ final class LoupeController {
         let neighbors = neighborIndices.map { FrameLoader.key(for: folder.visible[$0]) }
         warmExif([photo.url] + neighborIndices.map { folder.visible[$0].url })
 
+        // A RAW that is wanted and already developed goes straight to the screen: no JPEG shows first.
+        let wantsRaw = rawWanted.contains(photo.url) || (rawMode == .always && photo.showsRaw && !previewHeld.contains(photo.url))
+        if wantsRaw, rawSetting != .never, let developed = rawCache.cached(target) {
+            earlyQuick?.task.cancel()
+            canvas.show(developed.image, keyToFrame: takeToken(), sameZoom: shown?.url == photo.url && failure == nil)
+            shown = photo
+            previewShown(of: photo)
+            developState = .raw
+            updateExif(for: photo)
+            folder.setPreview(PreviewInfo(pixelWidth: developed.width, pixelHeight: developed.height), for: photo.url)
+            lastPreviewLongSide = CGFloat(max(developed.width, developed.height))
+            showingStandIn = false
+            showingScreenSize = false
+            failure = nil
+            showDevelopedState(developed, of: photo, canvas: canvas)
+            FrameLog.record(cursor: folder.currentURL, displayed: photo.url, kind: "raw")
+            developNeighbors(after: photo)
+            return
+        }
+
         let pipeline = pipeline, thumbnails = thumbnails
 
         // P-03: a cold photo shows its screen-size frame first, and the full-size frame follows when the cursor stays.
@@ -704,12 +724,17 @@ final class LoupeController {
 
     private func present(_ frame: LoupeFrame, of photo: Photo, canvas: LoupeView) {
         developState = .raw
-        histogram = frame.histogram
-        shownPixels = (frame.width, frame.height)
-        canvas.setAccessibilityLabel("\(photo.name), RAW, \(frame.width) by \(frame.height) pixels")
+        showDevelopedState(frame, of: photo, canvas: canvas)
         // Same photo, more pixels: the view keeps its place on screen.
         canvas.show(frame.image, sameZoom: true, keepView: true)
         announce("RAW")
+    }
+
+    /// What the developed `frame` of `photo` changes besides the picture: histogram, size and the VoiceOver label.
+    private func showDevelopedState(_ frame: LoupeFrame, of photo: Photo, canvas: LoupeView) {
+        histogram = frame.histogram
+        shownPixels = (frame.width, frame.height)
+        canvas.setAccessibilityLabel("\(photo.name), RAW, \(frame.width) by \(frame.height) pixels")
     }
 
     private func showPreviewAgain(of photo: Photo, canvas: LoupeView) {
