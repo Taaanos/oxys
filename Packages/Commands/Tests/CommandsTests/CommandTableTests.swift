@@ -376,6 +376,29 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(result.actions == [.perform("help.cheatsheet")])
 }
 
+/// V-09: Compare takes the zoom, pan, RAW and overlay keys of Loupe, and `⇧Z` links the panes. `⇧Z` is Compare's alone.
+@Test func compareTakesLoupesZoomPanAndOverlayKeys() {
+    var router = KeyRouter(keymap: resolve(nil).keymap)
+    var t = 0.0
+    func press(_ key: PhysicalKey, _ mode: ViewMode, _ modifiers: KeyModifiers = []) -> [RoutedAction] {
+        t += 1
+        return router.handle(KeyInput(keyCode: key.rawValue, modifiers: modifiers, timestamp: t), mode: mode, focus: .canvas).actions
+    }
+    #expect(press(.z, .compare, .shift) == [.perform("zoom.link")])
+    #expect(press(.z, .loupe, .shift).isEmpty)
+    #expect(press(.z, .grid, .shift).isEmpty)
+    for mode in [ViewMode.loupe, .compare] {
+        #expect(press(.z, mode) == [.perform("zoom.toggle")])
+        #expect(press(.leftArrow, mode, .option) == [.perform("pan.left")])
+        #expect(press(.r, mode) == [.perform("zoom.raw")])
+        #expect(press(.f, mode, .shift) == [.perform("overlay.peakingMode")])
+        #expect(press(.h, mode, .option) == [.perform("overlay.clippingThresholds")])
+        #expect(press(.i, mode) == [.perform("info.cycle")])
+    }
+    // Shift-R (always develop) stays in Loupe: in Compare, `R` develops both panes.
+    #expect(press(.r, .compare, .shift).isEmpty)
+}
+
 @Test func compareKeysWorkByKeyInCompareOnly() {
     var router = KeyRouter(keymap: resolve(nil).keymap)
     var t = 0.0

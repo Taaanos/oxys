@@ -90,7 +90,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-06 | Focus peaking | M-15 | done |
 | V-07 | Highlight and shadow clipping | M-17 | done |
 | V-08 | Compare: layout and culling | M-13, M-19 | done |
-| V-09 | Compare: linked zoom and EXIF differences | V-08, M-15, M-16 | todo |
+| V-09 | Compare: linked zoom and EXIF differences | V-08, M-15, M-16 | done (screen not looked at, VoiceOver and pointer drags unchecked) |
 | V-10 | RAW+JPEG pairs | M-08, M-21 | todo |
 | V-11 | Auto-advance | M-06 | todo |
 | V-12 | External editors | M-19, M-22 | todo |
@@ -1548,6 +1548,20 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 **Open questions**
 1. Relinking after panning separately: snap together or keep the offset? *Proposed:* keep the offset, which lets you line up slightly shifted handheld frames.
 2. Does `R` develop only the active side? *Proposed:* both, since comparing sharpness is the point.
+
+**Decisions** (V-09)
+- Questions 1 and 2 **decided** as proposed. Relinking keeps the offset the separate panning left (`ViewLink` in `Canvas`, 6 tests); if the zooms differ, or either side is at Fit, no offset is kept and the other side takes the active side's zoom. `R` develops both RAW panes, one after the other (the RAW cache decodes one at a time), active side first; a second `R` returns both to the previews.
+- Linked from the start; `⇧Z` (`zoom.link`, Compare only) toggles it for the session. Zoom, steps, `Z`, `⌘1`, `⌘0` and the pan keys act on the active pane and the other follows; a scroll, pinch or drag on either pane leads too. Unlinked, they act on the active pane only. Zoom is the same scale on both panes (1:1 is 1:1 for each), the spot the same relative point.
+- The panes now follow Loupe's sticky-zoom setting (V-08 turned it off), so stepping a side keeps the zoom and the spot.
+- `F`, `⇧F`, `H`, `S`, `⌥H` and `I` work in Compare. The overlays paint on both panes; each pane has its own peaking label and clipping readout (its own numbers). The popover is anchored between the panes.
+- EXIF: each pane's strip shows focal length, aperture, shutter and ISO, plus any other setting (exposure compensation, white balance, metering, flash, lens, camera) that differs. A differing value is named, bold, underlined and in the warning tint. Time, size and place are never compared. Nothing is marked until both panes have their EXIF. Logic is `ExifInfo.compareFields(against:)` in `Metadata` (6 tests).
+- The pane title no longer says "Active": the ring shows it, and VoiceOver still hears "Active" as the pane's value.
+- Not done in Compare: `⇧R` (always develop), and the automatic RAW develop at 1:1 (V-03). Each pane's RAW state resets when its photo changes.
+
+**Checked** (V-09)
+- Unit tests: `Canvas` 67, `Metadata` 51, `Commands` 54 (new: Compare takes the zoom, pan, RAW and overlay keys; `⇧Z` is Compare's alone). Release build clean, arm64.
+- `make perf-bench SCENARIO=compare-link FOLDER=TestData/bench/24mp-1000`: 14 checks pass in the real app (`Z` puts both at 1:1 at the same relative point; linked pan and zoom move both; unlinked pans alone; relinking keeps the offset; the candidate leads as well as the select; peaking and clipping on both and off). On `raw-mix`, `R` develops both panes in 0.4 s and goes back; its pan and same-point checks fail there only because its previews are smaller than the view and come from different cameras.
+- **Not checked:** how the screen looks (highlighted values, labels, the popover anchor); VoiceOver; pointer drags and pinch on a pane (the code path is the one that calls `onViewChange`, as the keys do); two photos of different pixel sizes at once with one side developed (their scales differ, so the link then shows different magnifications); `make ui-walk-compare`.
 
 ### V-10 · RAW+JPEG pairs
 

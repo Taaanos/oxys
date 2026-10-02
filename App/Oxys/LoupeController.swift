@@ -112,9 +112,18 @@ final class LoupeController {
         var spoken: String { "Focus peaking, \(mode.title), on the \(source.lowercased())" }
     }
     var peakingLabel: PeakingLabel? {
-        guard peakingOn, !showingStandIn, failure == nil, let photo = shown else { return nil }
-        let source = !photo.format.isRaw ? "File" : developState == .raw ? "RAW" : "Preview"
-        return PeakingLabel(mode: peakingMode, source: source)
+        guard !showingStandIn, failure == nil, let photo = shown else { return nil }
+        return peakingLabel(for: photo, developed: developState == .raw)
+    }
+
+    /// The label for any photo on screen; Compare's panes call it with their own state (V-09).
+    func peakingLabel(for photo: Photo, developed: Bool) -> PeakingLabel? {
+        guard peakingOn else { return nil }
+        return PeakingLabel(mode: peakingMode, source: sourceName(of: photo, developed: developed))
+    }
+
+    private func sourceName(of photo: Photo, developed: Bool) -> String {
+        !photo.format.isRaw ? "File" : developed ? "RAW" : "Preview"
     }
 
     /// `F`: the overlay on or off. A held `F` calls this again on release.
@@ -122,7 +131,7 @@ final class LoupeController {
         guard canPeak else { return }
         let token = Perf.begin(.peaking)
         peakingOn.toggle()
-        canvas?.setPeaking(peakingOn ? PeakingSettings.style : nil, token: token)
+        paint(token: token) { $0.setPeaking(peakingOn ? PeakingSettings.style : nil, token: $1) }
         announce(peakingOn ? "Focus peaking on, \(peakingMode.title)" : "Focus peaking off")
     }
 
@@ -133,17 +142,41 @@ final class LoupeController {
         peakingMode = peakingMode.other
         PeakingSettings.setMode(peakingMode)
         peakingOn = true
-        canvas?.setPeaking(PeakingSettings.style, token: token)
+        paint(token: token) { $0.setPeaking(PeakingSettings.style, token: $1) }
         announce("Focus peaking on, \(peakingMode.title)")
     }
 
-    private var canPeak: Bool { isActive && canvas?.window != nil && shown != nil && failure == nil }
+    private var canPeak: Bool { inCompare || (isActive && canvas?.window != nil && shown != nil && failure == nil) }
+
+    // MARK: Compare's panes (V-09)
+
+    /// The canvases of Compare's two panes while Compare is up; empty otherwise. Overlays are painted on these
+    /// instead of Loupe's canvas, so `F`, `H` and `S` apply to both panes.
+    @ObservationIgnored var compareCanvases: () -> [LoupeView] = { [] }
+    private var inCompare: Bool { compareCanvases().contains { $0.window != nil } }
+
+    /// Runs `body` on every canvas the overlays show on. The signpost token ends with the first one's frame.
+    private func paint(token: Perf.Token? = nil, _ body: (LoupeView, Perf.Token?) -> Void) {
+        var token = token
+        let compare = compareCanvases()
+        for view in compare.isEmpty ? (canvas.map { [$0] } ?? []) : compare {
+            body(view, token)
+            token = nil
+        }
+        if let token { Perf.end(token) }
+    }
+
+    /// Puts the overlays that are on onto a canvas that was just made or changed.
+    func applyOverlays(to canvas: LoupeView) {
+        canvas.setPeaking(peakingOn ? PeakingSettings.style : nil)
+        canvas.setClipping(clippingStyle)
+    }
 
     /// Settings changed (color, sensitivity, or the mode in the Analysis pane): the canvas redraws with them.
     private func applyPeakingSettings() {
         let mode = PeakingSettings.mode
         if mode != peakingMode { peakingMode = mode }
-        canvas?.setPeaking(peakingOn ? PeakingSettings.style : nil)
+        paint { view, _ in view.setPeaking(peakingOn ? PeakingSettings.style : nil) }
     }
     // MARK: clipping (V-07)
 
@@ -166,12 +199,18 @@ final class LoupeController {
     }
     /// The readout: one row per overlay that is on. Nil when nothing is painted or the numbers are not back yet.
     var clippingLabel: ClippingLabel? {
-        guard highlightsOn || shadowsOn, !showingStandIn, failure == nil, let photo = shown, let stats = clippingStats else { return nil }
-        let source = !photo.format.isRaw ? "File" : developState == .raw ? "RAW" : "Preview"
+        guard !showingStandIn, failure == nil, let photo = shown else { return nil }
+        return clippingLabel(for: photo, developed: developState == .raw, stats: clippingStats)
+    }
+
+    /// The readout for any photo on screen; Compare's panes call it with their own state and numbers (V-09).
+    func clippingLabel(for photo: Photo, developed: Bool, stats: ClippingStats?) -> ClippingLabel? {
+        guard highlightsOn || shadowsOn, let stats else { return nil }
+        let source = sourceName(of: photo, developed: developed)
         var rows: [ClippingLabel.Row] = []
         if highlightsOn { rows.append(.init(title: "Highlights", value: stats.highlightText, symbol: "sun.max.fill")) }
         if shadowsOn { rows.append(.init(title: "Shadows", value: stats.shadowText, symbol: "moon.fill")) }
-        return ClippingLabel(rows: rows, source: source, stackedOverPeaking: peakingLabel != nil)
+        return ClippingLabel(rows: rows, source: source, stackedOverPeaking: peakingOn)
     }
 
     /// `H`: highlight clipping on or off. A held `H` calls this again on release.
@@ -193,7 +232,7 @@ final class LoupeController {
     }
 
     func toggleClippingPopover() {
-        guard isActive else { return }
+        guard isActive || inCompare else { return }
         showClippingPopover.toggle()
     }
 
@@ -201,7 +240,7 @@ final class LoupeController {
         on ? "\(name) on" + (stats.map { ", \($0) of the frame" } ?? "") : "\(name) off"
     }
 
-    private var canClip: Bool { isActive && canvas?.window != nil && shown != nil && failure == nil }
+    private var canClip: Bool { inCompare || (isActive && canvas?.window != nil && shown != nil && failure == nil) }
 
     private var clippingStyle: ClippingStyle? {
         var marks: ClippingMarks = []
@@ -212,13 +251,13 @@ final class LoupeController {
 
     private func applyClipping(token: Perf.Token? = nil) {
         if clippingStyle == nil { clippingStats = nil }
-        canvas?.setClipping(clippingStyle, token: token)
+        paint(token: token) { $0.setClipping(clippingStyle, token: $1) }
     }
 
     /// Settings changed (thresholds, stripes): the canvas redraws, and the numbers come back for the new thresholds.
     private func applyClippingSettings() {
         guard highlightsOn || shadowsOn else { return }
-        canvas?.setClipping(clippingStyle)
+        paint { view, _ in view.setClipping(clippingStyle) }
     }
 
     /// Photos the user switched to RAW with `R`. A photo comes back as RAW while its decode is still in the
@@ -240,7 +279,7 @@ final class LoupeController {
     var rawMode: RawMode { RawPolicy.effective(setting: rawSetting, sessionAlways: sessionAlways) }
     private var autoRawAtActual: Bool { UserDefaults.standard.object(forKey: "rawAutoActual") as? Bool ?? true }
     /// At most 5 developed RAWs, within the frame budget (V-02).
-    @ObservationIgnored private let rawCache = RawFrameCache<LoupeFrame>(maxCount: 5, maxBytes: LoupeController.memoryBudget)
+    @ObservationIgnored let rawCache = RawFrameCache<LoupeFrame>(maxCount: 5, maxBytes: LoupeController.memoryBudget)
 
     /// The confirmation over the canvas after a cull key; nil when it has timed out.
     struct Badge: Equatable {
@@ -799,8 +838,7 @@ final class LoupeController {
     }
 
     private func announce(_ phrase: String) {
-        guard let host else { return }
-        NSAccessibility.post(element: host, notification: .announcementRequested, userInfo: [
+        NSAccessibility.post(element: host.map { $0 as Any } ?? NSApp as Any, notification: .announcementRequested, userInfo: [
             .announcement: phrase, .priority: NSAccessibilityPriorityLevel.high.rawValue,
         ])
     }

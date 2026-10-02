@@ -1,15 +1,17 @@
 import AppKit
+import Canvas
 import Commands
 import Darwin
 import Diagnostics
 import Library
+import Metadata
 
 /// M-26 measurement driver. With `OXYS_BENCH=<scenario>` and `OXYS_OPEN=<folder>` set, the app opens the
 /// folder, runs one scenario through the same commands the keys call, writes its numbers with `Perf.record`
 /// (set `OXYS_PERF_LOG=<file>`; read it with `PerfTool log`) and quits. Does nothing otherwise.
 ///
 /// Scenarios: `open` (folder open to first image), `nav-prefetched`, `nav-cold`, `nav-held` (30 steps a second),
-/// `scrub` (1,000 frames, memory), `cull`, `zoom`, `develop`, `develop-cancel` (V-02), `compare` (V-08: checks the pair rules, then steps both sides), `overlays`, `grid` (scroll 10,000 files), `idle`.
+/// `scrub` (1,000 frames, memory), `cull`, `zoom`, `develop`, `develop-cancel` (V-02), `compare` (V-08: checks the pair rules, then steps both sides), `compare-link` (V-09: linked zoom and pan, overlays and `R` on both panes), `overlays`, `grid` (scroll 10,000 files), `idle`.
 @MainActor
 enum PerfBench {
     private static let environment = ProcessInfo.processInfo.environment
@@ -73,6 +75,8 @@ enum PerfBench {
             }
         case "compare":
             await compareWalk(model)
+        case "compare-link":
+            await compareLinkWalk(model)
         case "compare-view":
             // Compare stays up for 40 s so a screenshot can look at it.
             commands.perform("compare.enter"); await settle(.seconds(1))
@@ -246,6 +250,87 @@ enum PerfBench {
         check("enter-from-selection", pair().select == urls[6] && pair().candidate == urls[7])
         for _ in 0..<100 {
             for id in ["nav.next", "compare.switchSide", "nav.next", "compare.swap", "compare.advance", "nav.previous", "compare.switchSide"] {
+                commands.perform(CommandID(rawValue: id)); await settle(.milliseconds(250))
+            }
+        }
+        commands.perform("view.grid")
+    }
+
+    /// V-09: linked zoom and pan, the overlays and `R` on both panes, through the commands the keys call. Each
+    /// `check-<name>` is 1 when it held, 0 when not.
+    private static func compareLinkWalk(_ model: AppModel) async {
+        let folder = model.folder, commands = model.commands, compare = model.compare
+        let urls = folder.visible.map(\.url)
+        guard urls.count >= 4 else { Perf.record("check-folder-too-small", 0); return }
+        func check(_ name: String, _ ok: Bool) { Perf.record("check-\(name)", ok ? 1 : 0) }
+        func state(_ pane: ComparePane) -> ViewState? { pane.canvas?.viewState }
+        func same(_ a: CGPoint, _ b: CGPoint) -> Bool { abs(a.x - b.x) < 1e-4 && abs(a.y - b.y) < 1e-4 }
+        func moved(_ a: CGPoint, _ b: CGPoint) -> Bool { !same(a, b) }
+        let select = compare.select, candidate = compare.candidate
+        folder.setCurrent(urls[0])
+        await settle(.milliseconds(500))
+        commands.perform("compare.enter"); await settle(.seconds(1.5))
+        check("linked-at-start", compare.linked)
+        // Z: both sides at 1:1, at the same relative point.
+        commands.perform("zoom.toggle"); await settle(.milliseconds(500))
+        let a = state(select), b = state(candidate)
+        check("z-both-actual-size", a?.level == .actual && b?.level == .actual)
+        check("z-same-relative-point", a != nil && b != nil && same(a!.center, b!.center))
+        // Linked, a pan moves both by the same amount.
+        commands.perform("pan.right"); await settle(.milliseconds(300))
+        let a2 = state(select), b2 = state(candidate)
+        check("linked-pan-moves-both", a2 != nil && b2 != nil && moved(a!.center, a2!.center) && same(a2!.center, b2!.center))
+        // Linked, a zoom step moves both.
+        commands.perform("zoom.in"); await settle(.milliseconds(300))
+        check("linked-zoom-step", state(select)?.level == state(candidate)?.level && state(select)?.level != a2?.level)
+        commands.perform("zoom.actual"); await settle(.milliseconds(300))
+        // Unlinked, each side pans on its own (the active side is the select).
+        commands.perform("zoom.link"); await settle(.milliseconds(200))
+        check("unlinked", !compare.linked)
+        let before = (state(select), state(candidate))
+        commands.perform("pan.down"); await settle(.milliseconds(300))
+        let after = (state(select), state(candidate))
+        check("unlinked-pans-alone", before.0 != nil && after.0 != nil && moved(before.0!.center, after.0!.center)
+              && before.1?.center == after.1?.center)
+        // Relinking keeps the offset the separate panning left.
+        commands.perform("zoom.link"); await settle(.milliseconds(200))
+        let offset = (state(candidate)!.center.x - state(select)!.center.x, state(candidate)!.center.y - state(select)!.center.y)
+        check("relink-keeps-offset", offset.0 == 0 ? offset.1 != 0 : true)
+        commands.perform("pan.left"); await settle(.milliseconds(300))
+        let end = (state(candidate)!.center.x - state(select)!.center.x, state(candidate)!.center.y - state(select)!.center.y)
+        check("relinked-pan-keeps-offset", abs(end.0 - offset.0) < 1e-4 && abs(end.1 - offset.1) < 1e-4)
+        // The other side leads just as well.
+        commands.perform("compare.switchSide")
+        commands.perform("pan.up"); await settle(.milliseconds(300))
+        check("candidate-leads", moved(after.1!.center, state(candidate)!.center) && moved(state(select)!.center, a2!.center))
+        // Overlays reach both panes.
+        commands.perform("overlay.peaking"); await settle(.milliseconds(800))
+        check("peaking-on-both", select.canvas?.peaking != nil && candidate.canvas?.peaking != nil)
+        commands.perform("overlay.peaking"); await settle(.milliseconds(300))
+        check("peaking-off-both", select.canvas?.peaking == nil && candidate.canvas?.peaking == nil)
+        commands.perform("overlay.highlights"); commands.perform("overlay.shadows"); await settle(.milliseconds(800))
+        check("clipping-on-both", select.canvas?.clipping != nil && candidate.canvas?.clipping != nil
+              && select.clippingStats != nil && candidate.clippingStats != nil)
+        commands.perform("overlay.highlights"); commands.perform("overlay.shadows"); await settle(.milliseconds(300))
+        check("clipping-off-both", select.canvas?.clipping == nil && candidate.canvas?.clipping == nil)
+        // R develops both RAW panes, and back.
+        let raws = [select, candidate].filter(\.isRaw)
+        if !raws.isEmpty {
+            let began = ContinuousClock.now
+            commands.perform("zoom.raw")
+            for _ in 0..<100 where raws.contains(where: { $0.developState != .raw }) { await settle(.milliseconds(100)) }
+            Perf.record("raw-both-ready-ms", ms(began.duration(to: .now)))
+            for pane in raws { Perf.record("raw-state-\(pane.side.title.lowercased())-\(pane.developState)", 1) }
+            check("r-develops-both", raws.allSatisfy { $0.developState == .raw })
+            commands.perform("zoom.raw"); await settle(.milliseconds(500))
+            check("r-back-to-previews", raws.allSatisfy { $0.developState == .preview })
+        }
+        // The EXIF line marks differences against the other photo.
+        let fields = select.exif?.compareFields(against: candidate.exif) ?? []
+        check("exif-line-has-values", !fields.isEmpty)
+        // Stepping a side keeps the zoom and the spot (sticky), and the link follows the new photo.
+        for _ in 0..<100 {
+            for id in ["nav.next", "pan.right", "compare.switchSide", "nav.next", "pan.left", "zoom.fit", "zoom.actual", "compare.switchSide"] {
                 commands.perform(CommandID(rawValue: id)); await settle(.milliseconds(250))
             }
         }

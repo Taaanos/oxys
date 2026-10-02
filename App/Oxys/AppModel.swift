@@ -125,6 +125,7 @@ final class AppModel {
         commands = CommandCenter(folder: folder)
         grid = GridController(folder: folder, loupe: loupe)
         compare = CompareController(folder: folder, loupe: loupe)
+        loupe.compareCanvases = { [compare] in compare.canvases }
         grid.onOpen = { [unowned self] in commands.mode = .loupe }
         commands.register("file.open") { [unowned self] _ in chooseFolder() }
         commands.register("file.reload") { [unowned self] _ in folder.reload() }
@@ -185,17 +186,27 @@ final class AppModel {
         commands.register("compare.advance") { [unowned self] _ in compare.advance() }
         commands.register("grid.smaller") { [unowned self] _ in grid.resize(by: -1) }
         commands.register("grid.larger") { [unowned self] _ in grid.resize(by: 1) }
-        commands.register("zoom.toggle", isOn: { [unowned self] in loupe.zoomInfo?.isActualSize == true }) { [unowned self] _ in
-            loupe.toggleZoom()
+        // Zoom, pan and RAW work in Compare too (V-09): they act on the active pane, and the other follows while linked.
+        commands.register("zoom.toggle", isOn: { [unowned self] in activeZoomInfo?.isActualSize == true }) { [unowned self] _ in
+            if commands.mode == .compare { compare.toggleZoom() } else { loupe.toggleZoom() }
         }
-        commands.register("zoom.actual") { [unowned self] _ in loupe.setZoom(.actual) }
-        commands.register("zoom.fit") { [unowned self] _ in loupe.setZoom(.fit) }
-        commands.register("zoom.in") { [unowned self] _ in loupe.stepZoom(.in) }
-        commands.register("zoom.out") { [unowned self] _ in loupe.stepZoom(.out) }
-        commands.register("zoom.raw", isOn: { [unowned self] in loupe.developState != .preview },
+        commands.register("zoom.actual") { [unowned self] _ in
+            if commands.mode == .compare { compare.setZoom(.actual) } else { loupe.setZoom(.actual) }
+        }
+        commands.register("zoom.fit") { [unowned self] _ in
+            if commands.mode == .compare { compare.setZoom(.fit) } else { loupe.setZoom(.fit) }
+        }
+        commands.register("zoom.in") { [unowned self] _ in
+            if commands.mode == .compare { compare.stepZoom(.in) } else { loupe.stepZoom(.in) }
+        }
+        commands.register("zoom.out") { [unowned self] _ in
+            if commands.mode == .compare { compare.stepZoom(.out) } else { loupe.stepZoom(.out) }
+        }
+        commands.register("zoom.link", isOn: { [unowned self] in compare.linked }) { [unowned self] _ in compare.toggleLink() }
+        commands.register("zoom.raw", isOn: { [unowned self] in commands.mode == .compare ? compare.anyDeveloped : loupe.developState != .preview },
                           isAvailable: { [unowned self] in loupe.canDevelop },
                           title: { [unowned self] in loupe.canDevelop ? "Show RAW" : "Show RAW (off: RAW decode is Never in Settings)" }) { [unowned self] _ in
-            loupe.toggleRaw()
+            if commands.mode == .compare { compare.toggleRaw() } else { loupe.toggleRaw() }
         }
         commands.register("zoom.rawAlways", isOn: { [unowned self] in loupe.rawMode == .always },
                           isAvailable: { [unowned self] in loupe.canDevelop },
@@ -249,7 +260,9 @@ final class AppModel {
             ("pan.pageLeft", .left, true), ("pan.pageRight", .right, true), ("pan.pageUp", .up, true), ("pan.pageDown", .down, true),
         ]
         for (id, direction, page) in pans {
-            commands.register(CommandID(rawValue: id)) { [unowned self] _ in loupe.pan(direction, page: page) }
+            commands.register(CommandID(rawValue: id)) { [unowned self] _ in
+                if commands.mode == .compare { compare.pan(direction, page: page) } else { loupe.pan(direction, page: page) }
+            }
         }
         let cullActions: [(String, CullAction)] = [
             ("cull.rate.0", .setRating(0)), ("cull.rate.1", .setRating(1)), ("cull.rate.2", .setRating(2)),
@@ -416,6 +429,12 @@ final class AppModel {
     private func copyToPasteboard(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    /// The zoom on screen that `Z` and the menu check mark speak of: the active pane's in Compare.
+    private var activeZoomInfo: ZoomInfo? {
+        guard commands.mode == .compare else { return loupe.zoomInfo }
+        return compare.pair.flatMap { compare.pane($0.active).zoomInfo }
     }
 
     func setChromeHidden(_ hidden: Bool) {

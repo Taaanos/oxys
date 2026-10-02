@@ -138,42 +138,45 @@ public struct CommandTable: Sendable {
                        Shortcut(.position(.equal), [.command, .shift])]),
 
         // Zoom (M-14). `Z` toggles Fit and 1:1, and shows 1:1 only while held; `⌘1` and `⌘0` are explicit.
-        Command("zoom.toggle", "Toggle Fit / 1:1", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
+        Command("zoom.toggle", "Toggle Fit / 1:1", menu: .init(.view, group: 1), modes: loupeAndCompare, requires: .photos,
                 kind: .toggleOrHold, keys: [Shortcut(.position(.z))]),
-        Command("zoom.actual", "Actual Size (1:1)", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
+        Command("zoom.actual", "Actual Size (1:1)", menu: .init(.view, group: 1), modes: loupeAndCompare, requires: .photos,
                 keys: [Shortcut(.position(.digit1), [.command])]),
-        Command("zoom.fit", "Zoom to Fit", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
+        Command("zoom.fit", "Zoom to Fit", menu: .init(.view, group: 1), modes: loupeAndCompare, requires: .photos,
                 keys: [Shortcut(.position(.digit0), [.command])]),
         // Steps and panning (M-15). `=` and `−` step Fit, 25, 50, 100, 200, 400% in Loupe, and `⌘+` and `⌘−` do too
         // (Grid gives the same keys to its thumbnails). `⌥`-arrows pan a quarter of the view, `⌥⇧` a whole view.
         // `⌥Z` turns sticky zoom (zoom and spot carry over to the next photo) off and on.
-        Command("zoom.in", "Zoom In", menu: .init(.view, group: 1), modes: loupe, requires: .photos, repeats: true,
+        Command("zoom.in", "Zoom In", menu: .init(.view, group: 1), modes: loupeAndCompare, requires: .photos, repeats: true,
                 keys: [Shortcut(.character("=")), Shortcut(.position(.equal), [.command]),
                        Shortcut(.position(.equal), [.command, .shift])]),
-        Command("zoom.out", "Zoom Out", menu: .init(.view, group: 1), modes: loupe, requires: .photos, repeats: true,
+        Command("zoom.out", "Zoom Out", menu: .init(.view, group: 1), modes: loupeAndCompare, requires: .photos, repeats: true,
                 keys: [Shortcut(.character("-")), Shortcut(.position(.minus), [.command])]),
+        // Compare (V-09): `⇧Z` links and unlinks the two panes' zoom and pan. Linked, a zoom or pan on either pane moves both.
+        Command("zoom.link", "Link Zoom and Pan", menu: .init(.view, group: 1), modes: compare, requires: .photos,
+                kind: .toggle, keys: [Shortcut(.position(.z), [.shift])]),
         Command("zoom.sticky", "Keep Zoom Between Photos", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
                 kind: .toggle, keys: [Shortcut(.position(.z), [.option])]),
-        Command("pan.left", "Pan Left", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
+        Command("pan.left", "Pan Left", menu: .init(.view, group: 3), modes: loupeAndCompare, requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.leftArrow), [.option])]),
-        Command("pan.right", "Pan Right", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
+        Command("pan.right", "Pan Right", menu: .init(.view, group: 3), modes: loupeAndCompare, requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.rightArrow), [.option])]),
-        Command("pan.up", "Pan Up", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
+        Command("pan.up", "Pan Up", menu: .init(.view, group: 3), modes: loupeAndCompare, requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.upArrow), [.option])]),
-        Command("pan.down", "Pan Down", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
+        Command("pan.down", "Pan Down", menu: .init(.view, group: 3), modes: loupeAndCompare, requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.downArrow), [.option])]),
-        Command("pan.pageLeft", "Pan Left a View", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
+        Command("pan.pageLeft", "Pan Left a View", menu: .init(.view, group: 3), modes: loupeAndCompare, requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.leftArrow), [.option, .shift])]),
-        Command("pan.pageRight", "Pan Right a View", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
+        Command("pan.pageRight", "Pan Right a View", menu: .init(.view, group: 3), modes: loupeAndCompare, requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.rightArrow), [.option, .shift])]),
-        Command("pan.pageUp", "Pan Up a View", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
+        Command("pan.pageUp", "Pan Up a View", menu: .init(.view, group: 3), modes: loupeAndCompare, requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.upArrow), [.option, .shift])]),
-        Command("pan.pageDown", "Pan Down a View", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
+        Command("pan.pageDown", "Pan Down a View", menu: .init(.view, group: 3), modes: loupeAndCompare, requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.downArrow), [.option, .shift])]),
 
         // Develop the RAW (V-02). `R` swaps the embedded preview for the decoded RAW in place, and back. While it
         // decodes, `R` cancels. Moving to another photo cancels it too.
-        Command("zoom.raw", "Show RAW", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
+        Command("zoom.raw", "Show RAW", menu: .init(.view, group: 1), modes: loupeAndCompare, requires: .photos,
                 kind: .toggle, keys: [Shortcut(.position(.r))]),
         // `⇧R` (V-03): develop every RAW this session, and back to On demand. Never mode turns `R` and `⇧R` off.
         Command("zoom.rawAlways", "Always Show RAW", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
@@ -181,25 +184,25 @@ public struct CommandTable: Sendable {
 
         // Focus peaking (V-06). `F` toggles the overlay and shows it only while held; `⇧F` switches between Edges and
         // Fine detail (and turns the overlay on if it is off). Color and sensitivity are in Settings.
-        Command("overlay.peaking", "Focus Peaking", menu: .init(.view, group: 5), modes: loupe, requires: .photos,
+        Command("overlay.peaking", "Focus Peaking", menu: .init(.view, group: 5), modes: loupeAndCompare, requires: .photos,
                 kind: .toggleOrHold, keys: [Shortcut(.position(.f))]),
-        Command("overlay.peakingMode", "Peaking Mode", menu: .init(.view, group: 5), modes: loupe, requires: .photos,
+        Command("overlay.peakingMode", "Peaking Mode", menu: .init(.view, group: 5), modes: loupeAndCompare, requires: .photos,
                 keys: [Shortcut(.position(.f), [.shift])]),
 
         // Clipping (V-07). `H` marks blown highlights, `S` blocked shadows; each toggles and shows only while held.
         // `⌥H` opens the thresholds popover. The percentages persist (Settings → Analysis has them too).
-        Command("overlay.highlights", "Highlight Clipping", menu: .init(.view, group: 5), modes: loupe, requires: .photos,
+        Command("overlay.highlights", "Highlight Clipping", menu: .init(.view, group: 5), modes: loupeAndCompare, requires: .photos,
                 kind: .toggleOrHold, keys: [Shortcut(.position(.h))]),
-        Command("overlay.shadows", "Shadow Clipping", menu: .init(.view, group: 5), modes: loupe, requires: .photos,
+        Command("overlay.shadows", "Shadow Clipping", menu: .init(.view, group: 5), modes: loupeAndCompare, requires: .photos,
                 kind: .toggleOrHold, keys: [Shortcut(.position(.s))]),
-        Command("overlay.clippingThresholds", "Clipping Thresholds…", menu: .init(.view, group: 5), modes: loupe, requires: .photos,
+        Command("overlay.clippingThresholds", "Clipping Thresholds…", menu: .init(.view, group: 5), modes: loupeAndCompare, requires: .photos,
                 keys: [Shortcut(.position(.h), [.option])]),
 
         // Info on the image (M-18). `I` cycles off, filename and stars, plus EXIF, plus histogram; `⇧I` toggles the
         // histogram on its own. `⌥⌘I` opens the inspector (every mode); "Move Focus to Inspector" puts the keyboard
         // there, since `⇥` belongs to the toolbar. In Loupe `↑` and `↓` walk the EXIF values (M-16), `⌘C` copies the
         // focused one (all when none is), and Show in Maps opens the GPS spot.
-        Command("info.cycle", "Cycle Info", menu: .init(.view, group: 4), modes: loupe, requires: .photos,
+        Command("info.cycle", "Cycle Info", menu: .init(.view, group: 4), modes: loupeAndCompare, requires: .photos,
                 keys: [Shortcut(.position(.i))]),
         Command("info.histogram", "Show Histogram", menu: .init(.view, group: 4), modes: loupe, requires: .photos,
                 kind: .toggle, keys: [Shortcut(.position(.i), [.shift])]),
@@ -264,6 +267,8 @@ public struct CommandTable: Sendable {
     private static let grid: Set<ViewMode> = [.grid]
     private static let loupe: Set<ViewMode> = [.loupe]
     private static let compare: Set<ViewMode> = [.compare]
+    /// Zoom, pan, RAW, the overlays and the info level work in Compare too (V-09), on both panes.
+    private static let loupeAndCompare: Set<ViewMode> = [.loupe, .compare]
 
     /// Cull keys act on the active photo in every mode. In Grid they act on the whole selection when there is one (G-5, M-19).
     private static let cull: Set<ViewMode> = [.grid, .loupe, .compare]

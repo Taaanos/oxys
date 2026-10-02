@@ -17,16 +17,25 @@ final class ComparePane {
     private(set) var failure: String?
     private(set) var zoomInfo: ZoomInfo?
     private(set) var exif: ExifInfo?
+    /// The pane's own RAW state (V-09): `R` develops both panes, and each keeps its own state until its photo changes.
+    private(set) var developState = LoupeController.DevelopState.preview
+    /// How much of the frame is clipped, while an overlay is on; nil until the analysis is back.
+    private(set) var clippingStats: ClippingStats?
 
     @ObservationIgnored private var frame: LoupeFrame?
+    @ObservationIgnored private var developTask: Task<Void, Never>?
+    /// Set by the controller: gives a new canvas its zoom rules, its overlays and its link to the other pane.
+    @ObservationIgnored var configure: ((LoupeView) -> Void)?
     @ObservationIgnored private var wanted: URL?
     @ObservationIgnored private var task: Task<Void, Never>?
     /// The view is built after the pane is asked to load; it shows the frame as soon as it exists.
     @ObservationIgnored weak var canvas: LoupeView? {
         didSet {
             guard let canvas, canvas !== oldValue else { return }
-            canvas.stickyZoom = false
             canvas.onZoomChange = { [weak self] in self?.zoomInfo = $0 }
+            canvas.onClippingStats = { [weak self] in self?.clippingStats = $0 }
+            canvas.focusAnchor = exif?.maker?.focusAnchor.map { CGPoint(x: $0.x, y: $0.y) }
+            configure?(canvas)
             canvas.setAccessibilityLabel(accessibilityName)
             if let frame { canvas.show(frame.image) } else if failure != nil { canvas.show(nil) }
         }
@@ -34,9 +43,12 @@ final class ComparePane {
 
     init(side: ComparePair.Side) { self.side = side }
 
+    var isRaw: Bool { shown?.format.isRaw == true && failure == nil }
+
     var truthBadge: TruthBadge? {
         guard failure == nil, let photo = shown, let pixels = shownPixels, let zoom = zoomInfo else { return nil }
-        return TruthBadge.make(source: photo.format.isRaw ? .preview : .file, percent: zoom.percent, isFit: zoom.level.isFit,
+        let source: TruthBadge.Source = !photo.format.isRaw ? .file : developState == .raw ? .raw : developState == .developing ? .developing : .preview
+        return TruthBadge.make(source: source, percent: zoom.percent, isFit: zoom.level.isFit,
                                longEdge: max(pixels.width, pixels.height),
                                sensorLongEdge: RawPolicy.longEdge(ofDimensions: exif?.dimensions))
     }
@@ -56,6 +68,7 @@ final class ComparePane {
             return
         }
         task?.cancel()
+        stopDeveloping()
         wanted = photo.url
         let key = FrameLoader.key(for: photo)
         task = Task { [weak self] in
@@ -73,7 +86,9 @@ final class ComparePane {
                 shown = photo
                 shownPixels = (loaded.width, loaded.height)
                 failure = nil
+                developState = .preview
                 self.exif = exif
+                canvas?.focusAnchor = exif?.maker?.focusAnchor.map { CGPoint(x: $0.x, y: $0.y) }
                 folder.setPreview(PreviewInfo(pixelWidth: loaded.width, pixelHeight: loaded.height), for: photo.url)
                 canvas?.setAccessibilityLabel(accessibilityName)
                 canvas?.show(loaded.image, keyToFrame: token)
@@ -84,6 +99,7 @@ final class ComparePane {
                 shown = photo
                 shownPixels = nil
                 failure = (error as? PreviewError)?.localizedDescription ?? error.localizedDescription
+                developState = .preview
                 self.exif = exif
                 zoomInfo = nil
                 canvas?.setAccessibilityLabel(accessibilityName)
@@ -92,10 +108,63 @@ final class ComparePane {
         }
     }
 
+    // MARK: develop (V-09)
+
+    /// Decodes the RAW and swaps it in over the preview; the view keeps its place on screen (as in Loupe, V-02).
+    /// `done` hears the result for VoiceOver.
+    /// The returned task ends when this pane is done (the cache decodes one RAW at a time, so the caller waits).
+    func develop(cache: RawFrameCache<LoupeFrame>, done: @escaping @MainActor (String) -> Void) -> Task<Void, Never>? {
+        guard let photo = shown, isRaw, developState == .preview, canvas != nil else { return nil }
+        developState = .developing
+        let key = FrameLoader.key(for: photo)
+        let minLongEdge = max(512, shownPixels.map { max($0.width, $0.height) } ?? 0)
+        let task = Task { [weak self] in
+            let result: Result<LoupeFrame?, any Error>
+            do {
+                result = .success(try await cache.develop(key) { try FrameLoader.develop($0, minLongEdge: minLongEdge) })
+            } catch { result = .failure(error) }
+            guard let self, !Task.isCancelled, shown?.url == photo.url else { return }
+            developTask = nil
+            switch result {
+            case .success(let developed?):
+                developState = .raw
+                shownPixels = (developed.width, developed.height)
+                canvas?.setAccessibilityLabel("\(side.title) pane, \(photo.name), RAW, \(developed.width) by \(developed.height) pixels")
+                canvas?.show(developed.image, sameZoom: true, keepView: true)
+                done("\(side.title), RAW")
+            case .success(nil):
+                developState = .preview
+            case .failure:
+                developState = .preview
+                done("\(side.title), this RAW cannot be developed. Showing the preview")
+            }
+        }
+        developTask = task
+        return task
+    }
+
+    /// Back to the preview, or stop the decode that is running.
+    func showPreview() {
+        let wasDeveloped = developState == .raw
+        stopDeveloping()
+        guard wasDeveloped, let frame else { return }
+        shownPixels = (frame.width, frame.height)
+        canvas?.setAccessibilityLabel(accessibilityName)
+        canvas?.show(frame.image, sameZoom: true, keepView: true)
+    }
+
+    private func stopDeveloping() {
+        developTask?.cancel()
+        developTask = nil
+        developState = .preview
+    }
+
     /// Compare ended: nothing stays on the canvas for the next entry to flash.
     func clear() {
         task?.cancel()
         task = nil
+        stopDeveloping()
+        clippingStats = nil
         wanted = nil
         frame = nil
         shown = nil
@@ -134,10 +203,26 @@ final class CompareController {
     @ObservationIgnored private let plan = PrefetchPlan()
     @ObservationIgnored private var direction = PrefetchPlan.Direction.forward
 
+    /// `⇧Z` (V-09): a zoom or a pan on one pane moves the other. On at first; the choice stays for the session.
+    private(set) var linked = true
+    /// What separate panning left between the panes, as the select's view to the candidate's.
+    @ObservationIgnored private var link = ViewLink()
+
     init(folder: FolderModel, loupe: LoupeController) {
         self.folder = folder
         self.loupe = loupe
+        for side in [ComparePair.Side.select, .candidate] {
+            pane(side).configure = { [weak self] canvas in
+                guard let self else { return }
+                canvas.stickyZoom = self.loupe.stickyZoom
+                canvas.onViewChange = { [weak self] state in self?.viewChanged(on: side, to: state) }
+                self.loupe.applyOverlays(to: canvas)
+            }
+        }
     }
+
+    /// Both panes' canvases while Compare is up, for the overlays (`F`, `H`, `S`).
+    var canvases: [LoupeView] { isActive ? [select.canvas, candidate.canvas].compactMap { $0 } : [] }
 
     func pane(_ side: ComparePair.Side) -> ComparePane { side == .select ? select : candidate }
 
@@ -156,6 +241,7 @@ final class CompareController {
         }
         pair = started
         direction = .forward
+        link = ViewLink()
         folder.setCurrent(started.activeURL)
         refresh(token: nil)
         announce("Compare. Select \(name(of: started.select)), candidate \(name(of: started.candidate)). \(started.active.title) is active")
@@ -167,6 +253,7 @@ final class CompareController {
         pair = nil
         badge = nil
         badgeTimeout?.cancel()
+        developChain?.cancel()
         select.clear()
         candidate.clear()
     }
@@ -270,6 +357,70 @@ final class CompareController {
         }
         if fixed != current { commit(fixed, token: nil) }
     }
+
+    // MARK: zoom, pan and link (V-09)
+
+    /// The zoom and pan commands act on the active pane; while linked, the other pane follows.
+    private var activeCanvas: LoupeView? {
+        guard let pair else { return nil }
+        let canvas = pane(pair.active).canvas
+        return canvas?.window == nil ? nil : canvas
+    }
+
+    func toggleZoom() { activeCanvas?.toggleZoom(token: Perf.begin(.zoom)) }
+    func setZoom(_ level: ZoomLevel) { activeCanvas?.setZoom(level, token: Perf.begin(.zoom)) }
+    func stepZoom(_ direction: ZoomDirection) { activeCanvas?.stepZoom(direction, token: Perf.begin(.zoom)) }
+    func pan(_ direction: PanDirection, page: Bool) { activeCanvas?.pan(direction, page: page) }
+
+    /// `⇧Z`. Linking again keeps the offset the panes have now (V-09/Q1); if their zooms differ, the active pane's zoom
+    /// goes to the other.
+    func toggleLink() {
+        guard let pair else { return }
+        linked.toggle()
+        if linked, let lead = pane(pair.active).canvas, let follower = pane(pair.active.other).canvas {
+            let leader = lead.viewState
+            let fromActive = ViewLink(leader: leader, follower: follower.viewState)
+            link = pair.active == .select ? fromActive : fromActive.reversed
+            follower.apply(linkFrom(pair.active).follower(of: leader))
+        }
+        announce(linked ? "Zoom and pan linked" : "Zoom and pan unlinked")
+    }
+
+    private func linkFrom(_ side: ComparePair.Side) -> ViewLink { side == .select ? link : link.reversed }
+
+    /// A pane's view moved by a key, a scroll, a pinch or a drag: the other pane follows while linked.
+    private func viewChanged(on side: ComparePair.Side, to state: ViewState) {
+        guard linked, isActive, let follower = pane(side.other).canvas else { return }
+        follower.apply(linkFrom(side).follower(of: state))
+    }
+
+    /// `R`: develops the RAW on both panes, or, when they are developed or developing, goes back to the previews.
+    func toggleRaw() {
+        guard loupe.canDevelop else { announce("RAW decode is off in Settings"); return }
+        let raws = [select, candidate].filter(\.isRaw)
+        guard !raws.isEmpty else { announce("Neither photo is a RAW file"); return }
+        if raws.contains(where: { $0.developState == .preview }) {
+            announce(raws.count == 2 ? "Developing both" : "Developing \(raws[0].side.title)")
+            // One decode at a time: the active pane first.
+            let ordered = raws.sorted { $0.side == pair?.active && $1.side != pair?.active }
+            developChain = Task { [weak self] in
+                for pane in ordered {
+                    guard !Task.isCancelled, let self else { return }
+                    await pane.develop(cache: loupe.rawCache) { self.announce($0) }?.value
+                }
+            }
+        } else {
+            developChain?.cancel()
+            for pane in raws { pane.showPreview() }
+            loupe.rawCache.cancelInflight()
+            announce("Previews")
+        }
+    }
+
+    @ObservationIgnored private var developChain: Task<Void, Never>?
+
+    /// For the `R` menu item's check mark.
+    var anyDeveloped: Bool { [select, candidate].contains { $0.developState != .preview } }
 
     // MARK: loading
 

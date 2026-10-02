@@ -25,6 +25,9 @@ public final class LoupeView: NSView {
     private var returnScale: CGFloat?
     /// Called when the zoom level the info strip shows changes.
     public var onZoomChange: ((ZoomInfo?) -> Void)?
+    /// Called when a zoom or a pan moves the view (V-09): a key, a pinch, a scroll or a drag. Not called by
+    /// ``apply(_:)``, so two linked canvases do not answer each other.
+    public var onViewChange: (@MainActor (ViewState) -> Void)?
     /// Where the camera focused in the upright picture (0...1, top-left origin), for the photo on screen; nil when the
     /// file does not say. The zoom goes here when the pointer is not over the image.
     public var focusAnchor: CGPoint?
@@ -207,6 +210,7 @@ public final class LoupeView: NSView {
             returnScale = nil
             change(to: level, image: image)
             render()
+            onViewChange?(viewState)
         } else if let token {
             Perf.end(token)
         }
@@ -273,6 +277,26 @@ public final class LoupeView: NSView {
         returnScale = nil
         change(to: level, image: image)
         render()
+        onViewChange?(viewState)
+    }
+
+    /// The zoom and the picture point at the middle of the view, as drawn: a center the edges clamped is reported
+    /// where it really is.
+    public var viewState: ViewState {
+        guard let image, window != nil, case .scale(let s) = zoom else { return ViewState(level: zoom, center: zoomCenter) }
+        let size = drawableSize
+        let rect = ZoomGeometry.rect(imageSize: zoomSize(of: image), viewSize: size, scale: s * oneToOneScale, center: zoomCenter)
+        return ViewState(level: zoom, center: ZoomGeometry.center(of: rect, viewSize: size))
+    }
+
+    /// Shows `state` (V-09), as a linked canvas follows the other one. The center is clamped by the edges when drawn.
+    public func apply(_ state: ViewState) {
+        guard state != viewState else { return }
+        returnScale = nil
+        zoom = state.level
+        zoomCenter = state.level.isFit ? CGPoint(x: 0.5, y: 0.5) : state.center
+        window?.invalidateCursorRects(for: self)
+        render()
     }
 
     /// Moves the picture by `delta` points (the way the content moves), stopping at the image edges.
@@ -287,6 +311,7 @@ public final class LoupeView: NSView {
         zoomCenter = ZoomGeometry.panned(center: zoomCenter, by: delta, imageSize: zoomSize(of: image), viewSize: size,
                                          scale: currentScale(image: image, size: size))
         render()
+        onViewChange?(viewState)
     }
 
     /// `⌥`-arrows: the view moves a quarter of its size over the photo, or a whole view with `page`.

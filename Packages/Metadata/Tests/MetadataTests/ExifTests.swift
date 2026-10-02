@@ -126,3 +126,62 @@ import Testing
         #expect(kept.contains(24))
     }
 }
+
+@Suite struct ExifCompareTests {
+    private func info(focal: String? = "50 mm", aperture: String? = "f/2.8", shutter: String? = "1/250", iso: String? = "ISO 100") -> ExifInfo {
+        var info = ExifInfo()
+        info.focalLength = focal
+        info.aperture = aperture
+        info.shutter = shutter
+        info.iso = iso
+        return info
+    }
+
+    @Test func equalSettingsMarkNothing() {
+        let fields = info().compareFields(against: info())
+        #expect(fields.map(\.label) == ["Focal length", "Aperture", "Shutter", "ISO"])
+        #expect(fields.allSatisfy { !$0.differs })
+    }
+
+    @Test func aDifferingValueIsMarkedOnBothSides() {
+        let a = info(shutter: "1/250"), b = info(shutter: "1/500")
+        #expect(a.compareFields(against: b).filter(\.differs).map(\.value) == ["1/250"])
+        #expect(b.compareFields(against: a).filter(\.differs).map(\.value) == ["1/500"])
+    }
+
+    @Test func otherSettingsAppearOnlyWhenTheyDiffer() {
+        var a = info(), b = info()
+        a.whiteBalance = "Auto"
+        b.whiteBalance = "Auto"
+        a.exposureCompensation = "+0.7 EV"
+        b.exposureCompensation = "0 EV"
+        let labels = a.compareFields(against: b).map(\.label)
+        #expect(labels.contains("Exposure comp."))
+        #expect(!labels.contains("White balance"))
+    }
+
+    @Test func aValueOnlyTheOtherPhotoHasIsADifference() {
+        let a = info(focal: nil), b = info(focal: "50 mm")
+        let field = a.compareFields(against: b).first { $0.label == "Focal length" }
+        #expect(field == CompareField(label: "Focal length", value: "none", differs: true))
+        // And the photo that has it is marked too.
+        #expect(b.compareFields(against: a).first { $0.label == "Focal length" }?.differs == true)
+    }
+
+    @Test func timeSizeAndPlaceAreNeverSettings() {
+        var a = info(), b = info()
+        a.captureTime = .distantPast
+        b.captureTime = .now
+        a.dimensions = "6000 × 4000"
+        b.dimensions = "4000 × 3000"
+        a.fileSize = "20 MB"
+        b.fileSize = "30 MB"
+        #expect(a.compareFields(against: b).allSatisfy { !$0.differs })
+    }
+
+    @Test func withoutTheOtherPhotoNothingIsMarked() {
+        let fields = info().compareFields(against: nil)
+        #expect(fields.map(\.label) == ["Focal length", "Aperture", "Shutter", "ISO"])
+        #expect(fields.allSatisfy { !$0.differs })
+    }
+}

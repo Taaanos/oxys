@@ -105,8 +105,13 @@ struct InfoStrip: View {
     let decision: Decision?
     let zoom: ZoomInfo?
     let truth: TruthBadge?
-    /// Compare (V-08): shutter, aperture, ISO and focal length, short enough for half a window.
-    var exifLine: String?
+    /// Compare (V-08, V-09): shutter, aperture, ISO and focal length, short enough for half a window, and any other
+    /// setting that differs from the other pane's photo. A differing value is marked.
+    var exifFields: [CompareField] = []
+
+    private var exifSpoken: String? {
+        exifFields.isEmpty ? nil : exifFields.map { $0.differs ? "\($0.label) \($0.value), differs" : $0.value }.joined(separator: ", ")
+    }
 
     private var zoomSpoken: String {
         guard let zoom else { return "" }
@@ -125,7 +130,7 @@ struct InfoStrip: View {
                         .lineLimit(1)
                         .help(photo.sidecar.notes.joined(separator: "\n"))
                 }
-                if let exifLine { Text(exifLine).foregroundStyle(Plate.secondary).lineLimit(1) }
+                if !exifFields.isEmpty { CompareExifLine(fields: exifFields) }
                 if let zoom {
                     Text(zoom.level.isFit ? "Fit \(zoom.percent)%" : zoom.isActualSize ? "1:1" : "\(zoom.percent)%").foregroundStyle(Plate.secondary)
                 }
@@ -138,7 +143,7 @@ struct InfoStrip: View {
             .foregroundStyle(.white)
             .environment(\.colorScheme, .dark)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel(([photo.name, decision?.summary].compactMap { $0 } + photo.sidecar.notes).joined(separator: ", ") + (exifLine.map { ", " + $0 } ?? "") + zoomSpoken)
+            .accessibilityLabel(([photo.name, decision?.summary].compactMap { $0 } + photo.sidecar.notes).joined(separator: ", ") + (exifSpoken.map { ", " + $0 } ?? "") + zoomSpoken)
         }
     }
 }
@@ -226,5 +231,24 @@ struct ErrorTile: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(name). \(message)")
+    }
+}
+
+/// The EXIF values of one Compare pane. A value that differs from the other photo's is bold, underlined and
+/// named, and in the warning tint: it never rests on color alone.
+private struct CompareExifLine: View {
+    let fields: [CompareField]
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(fields) { field in
+                if field.differs {
+                    Text("\(field.label) \(field.value)").bold().underline().foregroundStyle(Plate.warning)
+                } else {
+                    Text(field.value).foregroundStyle(Plate.secondary)
+                }
+            }
+        }
+        .lineLimit(1)
     }
 }
