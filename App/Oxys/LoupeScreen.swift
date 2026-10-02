@@ -1,4 +1,5 @@
 import Canvas
+import Imaging
 import Library
 import Metadata
 import SwiftUI
@@ -18,7 +19,7 @@ struct LoupeScreen: View {
                 ErrorTile(name: loupe.shown?.name ?? "", message: failure)
             }
             if let badge = loupe.badge { CullBadge(badge: badge) }
-            if loupe.developState != .preview, loupe.failure == nil { DevelopBadge(state: loupe.developState) }
+            if let truth = loupe.truthBadge { TruthBadgeView(badge: truth) }
             if loupe.showExif, let exif = loupe.exif, loupe.failure == nil {
                 ExifPanel(info: exif, focused: Bindable(loupe).focusedExifField)
             }
@@ -28,8 +29,7 @@ struct LoupeScreen: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
             if loupe.showInfoStrip {
-                InfoStrip(photo: loupe.shown, decision: loupe.shown.flatMap { folder.decision(for: $0.url) }, pixels: loupe.shownPixels, zoom: loupe.zoomInfo,
-                          develop: loupe.developState)
+                InfoStrip(photo: loupe.shown, decision: loupe.shown.flatMap { folder.decision(for: $0.url) }, zoom: loupe.zoomInfo, truth: loupe.truthBadge)
             }
         }
         .background(Color(white: LoupeView.canvasGray))
@@ -92,19 +92,14 @@ private struct ExifPanel: View {
 private struct InfoStrip: View {
     let photo: Photo?
     let decision: Decision?
-    let pixels: (width: Int, height: Int)?
     let zoom: ZoomInfo?
-    let develop: LoupeController.DevelopState
+    let truth: TruthBadge?
 
     private var zoomSpoken: String {
         guard let zoom else { return "" }
         return (zoom.level.isFit ? ", fit, \(zoom.percent) percent" : zoom.isActualSize ? ", actual size" : ", zoom \(zoom.percent) percent")
-            + (previewShort ? ", preview pixels, fewer than the sensor" : "")
+            + (truth.map { ", " + $0.spoken } ?? "")
     }
-
-    /// 1:1 of an embedded preview is not 1:1 of the sensor; the full truth badge is V-05. Until the sensor size
-    /// is known (M-16), any RAW zoomed past Fit carries the flag.
-    private var previewShort: Bool { zoom.map { !$0.level.isFit } == true && photo?.format.isRaw == true && develop != .raw }
 
     var body: some View {
         if let photo {
@@ -117,15 +112,8 @@ private struct InfoStrip: View {
                         .lineLimit(1)
                         .help(photo.sidecar.notes.joined(separator: "\n"))
                 }
-                if let pixels {
-                    Text(verbatim: "\(develop == .raw ? "RAW" : "Preview") \(pixels.width) × \(pixels.height) px").foregroundStyle(Plate.secondary)
-                }
                 if let zoom {
                     Text(zoom.level.isFit ? "Fit \(zoom.percent)%" : zoom.isActualSize ? "1:1" : "\(zoom.percent)%").foregroundStyle(Plate.secondary)
-                    if previewShort {
-                        PlateLabel(text: "Preview pixels, fewer than the sensor", systemImage: "exclamationmark.triangle",
-                                   tint: Plate.warning)
-                    }
                 }
                 Spacer()
             }
@@ -138,27 +126,6 @@ private struct InfoStrip: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel(([photo.name, decision?.summary].compactMap { $0 } + photo.sidecar.notes).joined(separator: ", ") + zoomSpoken)
         }
-    }
-}
-
-/// "Developing" while the RAW decodes (the preview stays up), then "RAW". A cut, not an animation. VoiceOver hears
-/// the same words through the controller's announcements, so the badge itself is hidden from it.
-private struct DevelopBadge: View {
-    let state: LoupeController.DevelopState
-
-    var body: some View {
-        Label(state == .developing ? "Developing…" : "RAW", systemImage: state == .developing ? "hourglass" : "camera.aperture")
-            .font(.callout.weight(.semibold))
-            .foregroundStyle(.white)
-            .environment(\.colorScheme, .dark)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .infoPlate(cornerRadius: 8)
-            .padding(12)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-            .padding(.bottom, 34)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
     }
 }
 

@@ -86,6 +86,14 @@ final class LoupeController {
     /// What the canvas shows of the photo on screen (V-02): its embedded preview, a decode of the RAW under way
     /// (the preview stays up), or the developed RAW.
     enum DevelopState: Equatable { case preview, developing, raw }
+
+    /// The truth badge (V-05) for the photo on screen; nil until a picture and its zoom are known.
+    var truthBadge: TruthBadge? {
+        guard failure == nil, let photo = shown, let pixels = shownPixels, let zoom = zoomInfo else { return nil }
+        let source: TruthBadge.Source = !photo.format.isRaw ? .file : developState == .raw ? .raw : developState == .developing ? .developing : .preview
+        return TruthBadge.make(source: source, percent: zoom.percent, isFit: zoom.level.isFit, longEdge: max(pixels.width, pixels.height),
+                               sensorLongEdge: RawPolicy.longEdge(ofDimensions: exif?.dimensions))
+    }
     private(set) var developState = DevelopState.preview
     /// Photos the user switched to RAW with `R`. A photo comes back as RAW while its decode is still in the
     /// cache (V-02/Q1); one that was evicted comes back as the preview.

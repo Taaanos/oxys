@@ -86,7 +86,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-02 | Develop the RAW on demand | F-06, M-04, M-14 | done |
 | V-03 | RAW modes and automatic RAW at 1:1 | V-02 | done |
 | V-04 | LibRaw fallback | F-06, V-02, G-2 | parked (closed: not needed for v1.0) |
-| V-05 | Truth badge | V-02 | todo |
+| V-05 | Truth badge | V-02 | done |
 | V-06 | Focus peaking | M-15 | todo |
 | V-07 | Highlight and shadow clipping | M-17 | todo |
 | V-08 | Compare: layout and culling | M-13, M-19 | todo |
@@ -1394,10 +1394,27 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Shown in Loupe and on each Compare pane.
 
 **Acceptance criteria**
-- [ ] Whenever the zoom needs more pixels than the preview has, the badge says so.
+- [x] Whenever the zoom needs more pixels than the preview has, the badge says so.
 
 **Open questions**
-1. Exact wording and states. *Proposed:* as above, refined while building.
+1. Exact wording and states. *Proposed:* as above, refined while building. **Decided:** see the table below.
+
+**Implementation notes**
+- `Imaging.TruthBadge` (pure, 6 tests) turns the source (preview, developing, RAW, plain file), the zoom percent, the picture's long edge and the sensor's long edge into text plus a warning flag. `TruthBadgeView` draws it bottom right on the info plate; it replaces V-02's "Developing/RAW" badge and the info strip's size text and orange flag. It shows even when the info strip is hidden.
+- `percent` is of the pixels on screen, so "enlarged" means more than 100%, also at Fit when a small preview is stretched.
+
+| State | Text | Warning |
+| --- | --- | --- |
+| Preview, Fit or below 1:1 | `Preview 1616 px` | no |
+| Preview, over 100% | `Preview enlarged 2.4×` | yes |
+| Preview at 1:1, smaller than the sensor or sensor unknown | `Preview 1:1, not sensor pixels` | yes |
+| RAW decode running | `Developing` | yes |
+| Developed RAW | `RAW`, `RAW 1:1`, `RAW enlarged 2×` | no |
+| JPEG or other file | `Full file`, `1:1`, `Enlarged 2×` | only when enlarged |
+
+- A warning has a triangle icon and words; a plain state has a seal icon. VoiceOver reads "warning, …" before the text, and the info strip's spoken label includes the badge.
+- **Compare:** V-08 does not exist yet. `TruthBadgeView` takes a `TruthBadge` value, so each pane can own one.
+- **Not checked:** the badge by eye in the running app; VoiceOver; `make ui-walk` (no Accessibility permission here).
 
 ### V-06 · Focus peaking
 
