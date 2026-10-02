@@ -37,6 +37,7 @@ Press `?` in the app to see the keys for the current view.
 | Key | Does | Where |
 | --- | --- | --- |
 | `Z` | Fit ⇄ 1:1, tap or hold | Loupe, Compare |
+| Double-click | Fit ⇄ 1:1 at the pointer | Loupe, Compare |
 | `⌘1` `⌘0` | 1:1, Fit | Loupe, Compare |
 | `=` `-` | Zoom in, out | Loupe, Compare |
 | `⌘+` `⌘-` | Zoom in, out | Loupe, Compare (in Grid, thumbnail size) |

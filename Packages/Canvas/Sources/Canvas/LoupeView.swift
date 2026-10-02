@@ -453,6 +453,10 @@ public final class LoupeView: NSView {
     public override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         onClick?()
+        if event.clickCount == 2 {
+            toggleZoom(token: Perf.begin(.zoom))
+            return
+        }
         dragging = zoom != .fit
         if dragging { NSCursor.closedHand.push() }
     }
