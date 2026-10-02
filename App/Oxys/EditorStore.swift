@@ -60,6 +60,11 @@ final class EditorStore {
             let process = Process()
             process.executableURL = executable
             process.arguments = urls.map(\.path)
+            // Launch Services would apply the bundle's `LSEnvironment` (RawTherapee keeps its GTK paths there and
+            // aborts without them); starting the executable ourselves has to do the same.
+            if let extra = Bundle(url: app)?.infoDictionary?["LSEnvironment"] as? [String: String] {
+                process.environment = ProcessInfo.processInfo.environment.merging(extra) { _, bundle in bundle }
+            }
             process.standardOutput = FileHandle.nullDevice
             process.standardError = FileHandle.nullDevice
             do {
