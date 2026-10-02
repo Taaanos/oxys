@@ -425,6 +425,13 @@ public final class LoupeView: NSView {
         super.viewDidMoveToWindow()
         window?.makeFirstResponder(self)
         render()
+        // A view that SwiftUI adds while the screen changes (Compare's panes, the first time) can be drawn before its
+        // layer is in the tree; that frame never reaches the screen and a later layout of the same size would not
+        // draw again. One more frame after the attach covers it.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, window != nil, image != nil else { return }
+            render()
+        }
     }
 
     // MARK: pointer and keys
@@ -524,6 +531,12 @@ public final class LoupeView: NSView {
                                                             blue: Self.canvasGray, alpha: 1)
         guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
         if let image {
+            let level = ZoomGeometry.normalized(zoom, imageSize: zoomSize(of: image), viewSize: pixelSize, oneToOne: oneToOneScale)
+            if level != zoom {
+                zoom = level
+                zoomCenter = CGPoint(x: 0.5, y: 0.5)
+                window?.invalidateCursorRects(for: self)
+            }
             let rect = currentRect(image: image, size: pixelSize)
             publishZoom(rect: rect)
             var quad = Quad(rect: rect, in: pixelSize, map: OrientationMap(image.orientation))

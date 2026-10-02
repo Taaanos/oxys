@@ -14,6 +14,14 @@ import Testing
     let image = CGSize(width: 6000, height: 4000)
     let view = CGSize(width: 3000, height: 2000)
 
+    @Test func aScaleBelowFitBecomesFit() {
+        let image = CGSize(width: 3000, height: 4000), view = CGSize(width: 2000, height: 2000)   // Fit is 0.5
+        #expect(ZoomGeometry.normalized(.scale(0.12), imageSize: image, viewSize: view, oneToOne: 1) == .fit)
+        #expect(ZoomGeometry.normalized(.scale(0.5), imageSize: image, viewSize: view, oneToOne: 1) == .fit)
+        #expect(ZoomGeometry.normalized(.scale(1), imageSize: image, viewSize: view, oneToOne: 1) == .scale(1))
+        #expect(ZoomGeometry.normalized(.fit, imageSize: image, viewSize: view, oneToOne: 1) == .fit)
+    }
+
     @Test func oneToOneIsExactAtTheDefaultMode() {
         #expect(ZoomGeometry.oneToOneScale(modePixelWidth: 3024, nativePixelWidth: 3024) == 1)
     }

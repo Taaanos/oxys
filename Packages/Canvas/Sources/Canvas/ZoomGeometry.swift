@@ -71,6 +71,15 @@ public enum ZoomGeometry {
         return min(viewSize.width / imageSize.width, viewSize.height / imageSize.height)
     }
 
+    /// `level`, or Fit when its scale would draw the picture smaller than Fit. That happens when a zoom made for a
+    /// bigger frame (the developed RAW) meets a smaller one (the next photo's preview, a linked pane's preview):
+    /// no zoom below Fit exists, and a Fit that says "12%" would make `Z` go to Fit instead of 1:1.
+    public static func normalized(_ level: ZoomLevel, imageSize: CGSize, viewSize: CGSize, oneToOne: CGFloat) -> ZoomLevel {
+        guard case .scale(let s) = level, imageSize.width > 0, imageSize.height > 0, viewSize.width > 0, viewSize.height > 0
+        else { return level }
+        return s * oneToOne <= fitScale(imageSize: imageSize, viewSize: viewSize) * 1.0001 ? .fit : level
+    }
+
     /// The image's rect when `scale` drawable pixels cover one image pixel and `center` (0...1 in the image) is
     /// at the middle of the view. An axis smaller than the view is centered; a larger one never shows a gap at
     /// either edge. The origin is whole pixels, so at 1:1 every image pixel lands on one drawable pixel.
