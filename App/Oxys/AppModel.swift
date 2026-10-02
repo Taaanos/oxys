@@ -189,7 +189,6 @@ final class AppModel {
         NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
                              userInfo: [.announcement: phrase, .priority: NSAccessibilityPriorityLevel.high.rawValue])
     }
-    @ObservationIgnored private var pointerMonitor: Any?
     /// The filter and sort bar (`\`, M-20). Hiding it keeps the filter; the subtitle still says what is shown.
     private(set) var showFilterBar = false
     /// Bumped by ⌘F; the bar focuses its search field when it changes.
@@ -553,26 +552,9 @@ final class AppModel {
         return compare.pair.flatMap { compare.pane($0.active).zoomInfo }
     }
 
+    /// `⇥` and `⌥⌘T` are the only ways to hide and show the chrome. Moving the pointer to the top edge does nothing, so a pointer that drifts there cannot shift the canvas while the photographer judges a frame.
     func setChromeHidden(_ hidden: Bool) {
         chromeHidden = hidden
-        if hidden, pointerMonitor == nil {
-            // The window only reports pointer moves when asked; asking costs one cheap check per move.
-            NSApp.keyWindow?.acceptsMouseMovedEvents = true
-            pointerMonitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
-                nonisolated(unsafe) let event = event
-                MainActor.assumeIsolated { self?.pointerMoved(event) }
-                return event
-            }
-        } else if !hidden, let monitor = pointerMonitor {
-            NSEvent.removeMonitor(monitor)
-            pointerMonitor = nil
-        }
-    }
-
-    private func pointerMoved(_ event: NSEvent) {
-        guard chromeHidden, let window = event.window, window.isKeyWindow,
-              event.locationInWindow.y >= window.contentLayoutRect.maxY - 6 else { return }
-        setChromeHidden(false)
     }
 
     func open(_ url: URL) {

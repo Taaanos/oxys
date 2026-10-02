@@ -280,7 +280,7 @@ The interface is a quiet dark frame around the photograph; everything else is on
 
 ### Principles
 
-- **Content first.** Apple advises fewer toolbar items, no heavy backgrounds or tinted controls that compete with content, and toolbars that can hide contextually with a reliable way back. Loupe hides toolbar and panels on `⇥`, and pressing it again, or moving the pointer to the top edge, restores them.
+- **Content first.** Apple advises fewer toolbar items, no heavy backgrounds or tinted controls that compete with content, and toolbars that can hide contextually with a reliable way back. Loupe hides toolbar and panels on `⇥`, and pressing it again restores them. Moving the pointer does not show them.
 - **A complete, standard menu bar.** Standard order (app, File, Edit, View, custom menus, Window, Help). Items are disabled, never hidden, so the menu teaches what the app can do. Custom menus: Photo (rate, label, flag, reveal, edit in, extract) and Filter. Settings live at ⌘, in the app menu.
 - **Neutral dark canvas.** The chrome follows the system appearance and there is no in-app appearance switch, as Apple recommends. The image canvas is always a neutral dark gray, a case Apple's Dark Mode guidance allows for media viewing, so the surround never biases exposure judgments. Text contrast is at least 4.5:1.
 - **Windows the Mac way.** One resizable main window with full-screen support; the window title is the folder name and the subtitle reads "312 of 1,204 shown", never the app name.

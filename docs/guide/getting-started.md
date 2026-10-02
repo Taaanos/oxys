@@ -40,5 +40,5 @@ Before you open the folder in another program, read [Sidecars and other apps](si
 
 - **Toolbar:** a Grid, Loupe, and Compare picker. It also has buttons for the filter bar and the inspector.
 - **Title:** the folder name. The subtitle shows how many photos you see, for example "312 of 1,204 shown".
-- **`⇥` (Tab):** hides the toolbar and panels. Press it again to show them. You can also move the pointer to the top edge.
+- **`⇥` (Tab):** hides the toolbar and panels. Press it again to show them. Moving the pointer does not show them.
 - **Full screen:** press `⌃⌘F`.
