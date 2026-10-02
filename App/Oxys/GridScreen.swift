@@ -482,12 +482,12 @@ private final class GridBadgeView: NSView {
             return
         }
         guard let decision, !decision.isUndecided else { return }
-        NSColor.black.withAlphaComponent(0.55).setFill()
+        NSColor.black.withAlphaComponent(Plate.opacity).setFill()
         bounds.fill()
         var x: CGFloat = 6
         if decision.isReject {
             let mark = NSRect(x: x, y: 3, width: 16, height: 16)
-            NSColor.systemRed.setFill()
+            NSColor(srgbRed: 0.78, green: 0.06, blue: 0.12, alpha: 1).setFill() // white ✕ at 5.9:1
             NSBezierPath(roundedRect: mark, xRadius: 4, yRadius: 4).fill()
             draw("✕", in: mark, color: .white, font: .systemFont(ofSize: 11, weight: .bold))
             x += 22
@@ -499,7 +499,7 @@ private final class GridBadgeView: NSView {
             let chip = NSRect(x: bounds.width - 22, y: 3, width: 16, height: 16)
             label.nsColor.setFill()
             NSBezierPath(roundedRect: chip, xRadius: 4, yRadius: 4).fill()
-            draw(String(label.letter), in: chip, color: label == .yellow ? .black : .white,
+            draw(String(label.letter), in: chip, color: .black,
                  font: .monospacedSystemFont(ofSize: 11, weight: .bold))
         }
     }

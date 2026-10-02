@@ -16,3 +16,25 @@ enum Plate {
     /// the worst-case plate is about 6.7:1.
     static let secondary = Color.white.opacity(0.85)
 }
+
+extension Plate {
+    /// Colored marks on a plate carry a word beside them, so the color is only a hint. Orange and a light red
+    /// keep 3:1 on the worst-case plate, enough for a mark; the words stay white.
+    static let warning = Color.orange
+    static let reject = Color(red: 1, green: 0.42, blue: 0.40)
+}
+
+/// An icon in a color, then text in the plate's secondary white, so the text keeps 4.5:1.
+struct PlateLabel: View {
+    let text: String
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        Label {
+            Text(text).foregroundStyle(Plate.secondary)
+        } icon: {
+            Image(systemName: systemImage).foregroundStyle(tint)
+        }
+    }
+}

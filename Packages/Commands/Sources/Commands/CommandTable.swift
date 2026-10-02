@@ -183,7 +183,7 @@ public struct CommandTable: Sendable {
 
         // `⇥` hides the toolbar and panels; the pointer at the top edge, or `⇥` again, brings them back (M-13).
         Command("view.chrome", "Hide Toolbar", menu: .init(.view, group: 2),
-                keys: [Shortcut(.position(.tab))]),
+                keys: [Shortcut(.position(.tab)), Shortcut(.position(.t), [.option, .command])]),
 
         // Cull (M-06). Each has a ⇧ twin that also moves to the next photo. Keypad digits mirror the digit row.
         Command("cull.rate.0", "Clear Rating", menu: .init(.photo, group: 1), modes: cull, requires: .photos, shiftAdvances: true,

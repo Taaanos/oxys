@@ -109,8 +109,8 @@ private struct InfoStrip: View {
                 Text(photo.name).font(.callout.monospaced())
                 if let decision, !decision.isUndecided { DecisionGlyphs(decision: decision) }
                 if let note = photo.sidecar.notes.first {
-                    Label(note, systemImage: photo.sidecar.problem == nil ? "info.circle" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(photo.sidecar.problem == nil ? Plate.secondary : Color.orange)
+                    PlateLabel(text: note, systemImage: photo.sidecar.problem == nil ? "info.circle" : "exclamationmark.triangle.fill",
+                               tint: photo.sidecar.problem == nil ? Plate.secondary : Plate.warning)
                         .lineLimit(1)
                         .help(photo.sidecar.notes.joined(separator: "\n"))
                 }
@@ -120,8 +120,8 @@ private struct InfoStrip: View {
                 if let zoom {
                     Text(zoom.level.isFit ? "Fit \(zoom.percent)%" : zoom.isActualSize ? "1:1" : "\(zoom.percent)%").foregroundStyle(Plate.secondary)
                     if previewShort {
-                        Label("Preview pixels, fewer than the sensor", systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.orange)
+                        PlateLabel(text: "Preview pixels, fewer than the sensor", systemImage: "exclamationmark.triangle",
+                                   tint: Plate.warning)
                     }
                 }
                 Spacer()
@@ -145,7 +145,7 @@ private struct DecisionGlyphs: View {
     var body: some View {
         HStack(spacing: 8) {
             if decision.isReject {
-                Label("Rejected", systemImage: "xmark.circle.fill").foregroundStyle(.red)
+                PlateLabel(text: "Rejected", systemImage: "xmark.circle.fill", tint: Plate.reject)
             } else if decision.stars > 0 {
                 Text(String(repeating: "★", count: decision.stars) + String(repeating: "☆", count: 5 - decision.stars))
                     .foregroundStyle(.yellow)
@@ -158,14 +158,14 @@ private struct DecisionGlyphs: View {
     }
 }
 
-/// A colored rounded square carrying the label's letter.
+/// A colored rounded square carrying the label's letter. Black on all five colors is at least 5:1; white fails on green and red.
 private struct LabelChip: View {
     let label: ColorLabel
 
     var body: some View {
         Text(String(label.letter))
             .font(.caption.bold().monospaced())
-            .foregroundStyle(label == .yellow ? .black : .white)
+            .foregroundStyle(.black)
             .frame(width: 18, height: 18)
             .background(label.color, in: RoundedRectangle(cornerRadius: 4))
     }

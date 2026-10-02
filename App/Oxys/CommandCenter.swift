@@ -150,7 +150,16 @@ final class CommandCenter {
             if event.type == .keyDown { modalKey(event.keyCode, input.character) }
             return true
         }
-        let focus: KeyFocus = if let tv = window.firstResponder as? NSTextView, tv.isEditable || tv.isFieldEditor {
+        // With Full Keyboard Access on, `⇥` and `⇧⇥` are how the keyboard moves between controls (the filter bar,
+        // the toolbar, the banner's buttons), so they go to the system. "Hide Toolbar" keeps `⌥⌘T`.
+        if NSApp.isFullKeyboardAccessEnabled, event.keyCode == PhysicalKey.tab.rawValue,
+           event.modifierFlags.isDisjoint(with: [.command, .control, .option]) { return false }
+        // A text field or a focused control (button, picker) owns its keys: Space presses a button, arrows move a
+        // picker. `Esc` hands focus back to the image.
+        let responder = window.firstResponder
+        let focus: KeyFocus = if let tv = responder as? NSTextView, tv.isEditable || tv.isFieldEditor {
+            .textInput
+        } else if responder is NSControl {
             .textInput
         } else { .canvas }
         if event.type == .keyDown, focus == .canvas,
