@@ -13,6 +13,16 @@ The [user guide](docs/guide/README.md) explains each feature and key: [get start
 - Apple silicon Mac running macOS 27 or newer
 - Xcode 27 (Swift 6.4)
 
+## Install
+
+Download `Oxys.zip` from [Releases](https://github.com/Taaanos/oxys/releases). The build has no Apple Developer ID, so macOS blocks it the first time. After you move it to `/Applications`, run:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Oxys.app
+```
+
+See [Install Oxys](docs/guide/install.md) for the System Settings way and for other ways.
+
 ## Build from source
 
 ```sh

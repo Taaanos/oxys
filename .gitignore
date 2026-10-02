@@ -13,3 +13,6 @@ build/
 
 # Camera files and generated benchmark folders (F-02)
 TestData/
+
+# Release packages (scripts/package-release.sh)
+dist/
