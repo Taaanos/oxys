@@ -1,3 +1,5 @@
+import AppKit
+import Canvas
 import Imaging
 import Sidecar
 import SwiftUI
@@ -8,6 +10,7 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             GeneralPane().tabItem { Label("General", systemImage: "gearshape") }
+            AnalysisPane().tabItem { Label("Analysis", systemImage: "scope") }
             SidecarsPane().tabItem { Label("Sidecars", systemImage: "doc.text") }
         }
         .frame(width: 500)
@@ -90,6 +93,51 @@ private struct SidecarsPane: View {
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Text("Sidecars that already exist are not renamed. New ones use this style, and a photo that only has the other style keeps using that file; the inspector shows which one.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+        .formStyle(.grouped)
+    }
+}
+
+/// How the analysis overlays look (V-06 focus peaking; V-07's clipping thresholds will join here).
+private struct AnalysisPane: View {
+    @AppStorage(PeakingSettings.modeKey) private var mode = PeakingMode.edges.rawValue
+    @AppStorage(PeakingSettings.redKey) private var red = Double(PeakingStyle.defaultColor.x)
+    @AppStorage(PeakingSettings.greenKey) private var green = Double(PeakingStyle.defaultColor.y)
+    @AppStorage(PeakingSettings.blueKey) private var blue = Double(PeakingStyle.defaultColor.z)
+    @AppStorage(PeakingSettings.sensitivityKey) private var sensitivity = PeakingStyle.defaultSensitivity
+
+    private var color: Binding<Color> {
+        Binding(get: { Color(.sRGB, red: red, green: green, blue: blue) },
+                set: { new in
+                    guard let converted = NSColor(new).usingColorSpace(.sRGB) else { return }
+                    (red, green, blue) = (Double(converted.redComponent), Double(converted.greenComponent), Double(converted.blueComponent))
+                })
+    }
+
+    var body: some View {
+        Form {
+            Section("Focus peaking") {
+                Picker("Mode", selection: $mode) {
+                    ForEach(PeakingMode.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
+                }
+                .pickerStyle(.radioGroup)
+                Text("Edges marks the outlines of what is sharp. Fine detail marks small detail and texture, and shows more noise. ⇧F in Loupe switches between them.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                ColorPicker("Color", selection: color, supportsOpacity: false)
+                LabeledContent("Sensitivity") {
+                    Slider(value: $sensitivity, in: 0...1) {
+                        Text("Sensitivity")
+                    } minimumValueLabel: {
+                        Text("Strict")
+                    } maximumValueLabel: {
+                        Text("Loose")
+                    }
+                    .accessibilityValue("\(Int((sensitivity * 100).rounded())) percent")
+                }
+                Text("Strict marks only the strongest edges. Loose marks faint ones too. Magenta is rare in photos, so it stands out.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Button("Reset to Defaults") { PeakingSettings.reset() }
+            }
         }
         .formStyle(.grouped)
     }

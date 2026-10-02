@@ -37,6 +37,11 @@ public final class LoupeView: NSView {
         didSet { if spaceHeld != oldValue { window?.invalidateCursorRects(for: self) } }
     }
     private var dragging = false
+    /// Focus peaking (V-06); nil is off. Set with ``setPeaking(_:token:)``.
+    public private(set) var peaking: PeakingStyle?
+    private var peakingMask: PeakingMask?
+    /// A thumbnail stand-in is not the picture: peaking on it would flash marks that the real frame then replaces.
+    private var isStandIn = false
 
     private var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
 
@@ -64,11 +69,12 @@ public final class LoupeView: NSView {
 
     /// Shows `image`, or the empty canvas for nil. `keyToFrame` ends when the frame is on screen. The same
     /// photo's better frame (`sameZoom`) keeps the zoom and the spot, and so does any frame while sticky zoom
-    /// is on; otherwise a photo opens at Fit. `zoomSizeFactor` is for a stand-in (see `sizeFactor`).
+    /// is on; otherwise a photo opens at Fit. `zoomSizeFactor` and `isStandIn` are for a stand-in (see `sizeFactor`);
+    /// focus peaking waits for the real frame.
     /// `keepView` is for the same photo at another resolution (the developed RAW over its preview, V-02): a zoomed-in
     /// view is rescaled so the same part of the picture stays under the same pixels of the screen.
     public func show(_ image: PreparedImage?, keyToFrame token: Perf.Token? = nil, sameZoom: Bool = false,
-                     zoomSizeFactor: CGFloat = 1, keepView: Bool = false) {
+                     zoomSizeFactor: CGFloat = 1, keepView: Bool = false, isStandIn: Bool = false) {
         if let stale = pendingToken { Perf.end(stale) }
         pendingToken = token
         if keepView, let old = self.image, let image, case .scale(let s) = zoom {
@@ -76,9 +82,48 @@ public final class LoupeView: NSView {
             zoom = .scale(ZoomGeometry.scale(s, keepingSizeFrom: oldWidth, to: newWidth))
         }
         self.image = image
+        self.isStandIn = isStandIn
         sizeFactor = zoomSizeFactor
+        if image == nil { peakingMask = nil }
         if !stickyZoom && !(sameZoom && image != nil) { resetZoom() }
         render()
+    }
+
+    /// Turns focus peaking on with `style`, off with nil, or changes its look. `token` (a `peaking` interval) ends when
+    /// the result is presented. A change of color or sensitivity needs no new analysis; a change of mode does.
+    public func setPeaking(_ style: PeakingStyle?, token: Perf.Token? = nil) {
+        guard style != peaking else { if let token { Perf.end(token) }; return }
+        peaking = style
+        if style == nil { peakingMask = nil }
+        if image != nil, window != nil {
+            if let token {
+                if let stale = pendingToken { Perf.end(stale) }
+                pendingToken = token
+            }
+            render()
+        } else if let token {
+            Perf.end(token)
+        }
+    }
+
+    /// The mask and parameters for this frame, encoding the analysis into `buffer` when the picture or mode changed.
+    private func peakingPass(for image: PreparedImage, gpu: LoupeGPU, buffer: any MTLCommandBuffer) -> (mask: PeakingMask, params: PeakParams, gpu: PeakingGPU)? {
+        guard let style = peaking, !isStandIn, let peakingGPU = gpu.peaking else { return nil }
+        let threshold = PeakingThreshold.stored(sensitivity: style.sensitivity, mode: style.mode)
+        let mask: PeakingMask
+        if let cached = peakingMask, cached.source === image.texture, cached.mode == style.mode {
+            peakingGPU.rebuildPyramid(of: cached, threshold: threshold, in: buffer)
+            mask = cached
+        } else if let made = peakingGPU.makeMask(for: image, mode: style.mode, threshold: threshold, reusing: peakingMask, in: buffer) {
+            peakingMask = made
+            mask = made
+        } else {
+            return nil
+        }
+        let params = PeakParams(color: SIMD4(style.color, 1),
+                                threshold: threshold,
+                                levels: UInt32(mask.levels))
+        return (mask, params, peakingGPU)
     }
 
     /// Back to Fit, for a new folder.
@@ -362,6 +407,9 @@ public final class LoupeView: NSView {
         layer.presentsWithTransaction = inLiveResize || resized
 
         guard let drawable = layer.nextDrawable(), let buffer = gpu.queue.makeCommandBuffer() else { return }
+        // The analysis is a compute pass, so it is encoded before the render pass and shares its command buffer:
+        // turning peaking on costs no more than one frame.
+        let peakingPass = image.flatMap { self.peakingPass(for: $0, gpu: gpu, buffer: buffer) }
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = drawable.texture
         pass.colorAttachments[0].loadAction = .clear
@@ -379,6 +427,13 @@ public final class LoupeView: NSView {
             let crisp = zoom != .fit && rect.width >= image.displaySize.width
             encoder.setFragmentSamplerState(crisp ? gpu.nearestSampler : gpu.sampler, index: 0)
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+            if var pass = peakingPass {
+                encoder.setRenderPipelineState(pass.gpu.overlay)
+                encoder.setVertexBytes(&quad, length: MemoryLayout<Quad>.stride, index: 0)
+                encoder.setFragmentTexture(pass.mask.texture, index: 0)
+                encoder.setFragmentBytes(&pass.params, length: MemoryLayout<PeakParams>.stride, index: 0)
+                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+            }
         }
         encoder.endEncoding()
         if image == nil { publishZoom(rect: nil) }

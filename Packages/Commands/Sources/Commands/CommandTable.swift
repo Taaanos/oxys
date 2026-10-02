@@ -169,6 +169,13 @@ public struct CommandTable: Sendable {
         Command("zoom.rawAlways", "Always Show RAW", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
                 kind: .toggle, keys: [Shortcut(.position(.r), [.shift])]),
 
+        // Focus peaking (V-06). `F` toggles the overlay and shows it only while held; `⇧F` switches between Edges and
+        // Fine detail (and turns the overlay on if it is off). Color and sensitivity are in Settings.
+        Command("overlay.peaking", "Focus Peaking", menu: .init(.view, group: 5), modes: loupe, requires: .photos,
+                kind: .toggleOrHold, keys: [Shortcut(.position(.f))]),
+        Command("overlay.peakingMode", "Peaking Mode", menu: .init(.view, group: 5), modes: loupe, requires: .photos,
+                keys: [Shortcut(.position(.f), [.shift])]),
+
         // Info on the image (M-18). `I` cycles off, filename and stars, plus EXIF, plus histogram; `⇧I` toggles the
         // histogram on its own. `⌥⌘I` opens the inspector (every mode); "Move Focus to Inspector" puts the keyboard
         // there, since `⇥` belongs to the toolbar. In Loupe `↑` and `↓` walk the EXIF values (M-16), `⌘C` copies the

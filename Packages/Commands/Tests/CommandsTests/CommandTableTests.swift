@@ -266,6 +266,25 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(actions(.z, [], t: 12) == [.perform("zoom.toggle")])
 }
 
+@Test func fKeyTogglesPeakingAndHoldReleases() {
+    var router = KeyRouter(keymap: resolve(nil).keymap)
+    let f = PhysicalKey.f.rawValue
+    func handle(_ input: KeyInput, _ mode: ViewMode = .loupe) -> [RoutedAction] { router.handle(input, mode: mode, focus: .canvas).actions }
+    // Tap: down toggles, a quick up does nothing more.
+    #expect(handle(KeyInput(keyCode: f, timestamp: 0)) == [.perform("overlay.peaking")])
+    #expect(handle(KeyInput(keyCode: f, isDown: false, timestamp: 0.05)).isEmpty)
+    // Hold: it shows while held and goes back on release.
+    #expect(handle(KeyInput(keyCode: f, timestamp: 1)) == [.perform("overlay.peaking")])
+    #expect(handle(KeyInput(keyCode: f, isDown: false, timestamp: 2)) == [.releaseHold("overlay.peaking")])
+    // ⇧F switches the mode, ⌘F is still the filename search, and neither peaking key works in Grid.
+    #expect(handle(KeyInput(keyCode: f, modifiers: [.shift], timestamp: 3)) == [.perform("overlay.peakingMode")])
+    _ = handle(KeyInput(keyCode: f, modifiers: [.shift], isDown: false, timestamp: 3.05))
+    #expect(handle(KeyInput(keyCode: f, modifiers: [.command], timestamp: 4)) == [.perform("filter.find")])
+    _ = handle(KeyInput(keyCode: f, modifiers: [.command], isDown: false, timestamp: 4.05))
+    #expect(handle(KeyInput(keyCode: f, timestamp: 5), .grid).isEmpty)
+    #expect(handle(KeyInput(keyCode: f, modifiers: [.shift], timestamp: 6), .grid).isEmpty)
+}
+
 @Test func exifKeysLiveInLoupeOnly() {
     var router = KeyRouter(keymap: resolve(nil).keymap)
     func press(_ key: PhysicalKey, _ mode: ViewMode, _ mods: KeyModifiers = [], at t: Double) -> [RoutedAction] {

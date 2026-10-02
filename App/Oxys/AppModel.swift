@@ -188,6 +188,12 @@ final class AppModel {
         commands.register("zoom.sticky", isOn: { [unowned self] in loupe.stickyZoom }) { [unowned self] _ in
             loupe.stickyZoom.toggle()
         }
+        commands.register("overlay.peaking", isOn: { [unowned self] in loupe.peakingOn }) { [unowned self] _ in
+            loupe.togglePeaking()
+        }
+        commands.register("overlay.peakingMode", title: { [unowned self] in "Peaking Mode: \(loupe.peakingMode.title) (switch to \(loupe.peakingMode.other.title))" }) { [unowned self] _ in
+            loupe.switchPeakingMode()
+        }
         commands.register("info.cycle", title: { [unowned self] in "Cycle Info (now \(loupe.infoLevel.title))" }) { [unowned self] _ in
             loupe.cycleInfo()
         }

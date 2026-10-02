@@ -37,6 +37,8 @@ public enum PerfInterval: String, CaseIterable, Sendable {
     case rawDevelop = "raw-develop"
     /// A zero-length mark: a develop finished after it was cancelled and its result was thrown away. Should never appear.
     case rawWasted = "raw-wasted"
+    /// A peaking command → the overlay is on screen (V-06; one display frame, 16 ms at 60 Hz). The first frame also runs the analysis.
+    case peaking = "peaking"
 
     /// Signpost names must be static strings, so the raw value is repeated here.
     var signpostName: StaticString {
@@ -57,6 +59,7 @@ public enum PerfInterval: String, CaseIterable, Sendable {
         case .histogram: "histogram"
         case .rawDevelop: "raw-develop"
         case .rawWasted: "raw-wasted"
+        case .peaking: "peaking"
         }
     }
 }

@@ -20,6 +20,7 @@ struct LoupeScreen: View {
             }
             if let badge = loupe.badge { CullBadge(badge: badge) }
             if let truth = loupe.truthBadge { TruthBadgeView(badge: truth) }
+            if let peaking = loupe.peakingLabel { PeakingBadgeView(label: peaking) }
             if loupe.showExif, let exif = loupe.exif, loupe.failure == nil {
                 ExifPanel(info: exif, focused: Bindable(loupe).focusedExifField)
             }

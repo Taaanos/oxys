@@ -31,6 +31,8 @@ public final class LoupeGPU: @unchecked Sendable {
     let nearestSampler: any MTLSamplerState
     /// Renders developed RAWs (V-02) on the same queue, in extended linear Display P3 so nothing clips on the way.
     private let ciContext: CIContext
+    /// Focus peaking (V-06); nil only if its shaders failed to build, in which case the overlay is simply absent.
+    let peaking: PeakingGPU?
 
     private init?() {
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue(),
@@ -59,6 +61,7 @@ public final class LoupeGPU: @unchecked Sendable {
         nearest.tAddressMode = .clampToEdge
         guard let nearestSampler = device.makeSamplerState(descriptor: nearest) else { return nil }
         (self.device, self.queue, self.pipeline, self.sampler, self.nearestSampler) = (device, queue, pipeline, sampler, nearestSampler)
+        peaking = PeakingGPU(device: device, vertex: vertex, pixelFormat: Self.pixelFormat)
         ciContext = CIContext(mtlCommandQueue: queue, options: [
             .workingColorSpace: CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3) as Any,
             .cacheIntermediates: false,

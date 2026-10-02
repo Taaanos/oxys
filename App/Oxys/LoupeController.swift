@@ -95,6 +95,56 @@ final class LoupeController {
                                sensorLongEdge: RawPolicy.longEdge(ofDimensions: exif?.dimensions))
     }
     private(set) var developState = DevelopState.preview
+
+    // MARK: focus peaking (V-06)
+
+    /// The overlay is on. Not remembered across launches; the mode, color and sensitivity are (Settings → Analysis).
+    private(set) var peakingOn = false
+    private(set) var peakingMode = PeakingSettings.mode
+    /// A thumbnail stands in for the preview: peaking waits for the real frame.
+    private(set) var showingStandIn = false
+
+    /// What the label over the canvas says: the mode, and which pixels were analyzed. Nil when nothing is painted.
+    struct PeakingLabel: Equatable {
+        let mode: PeakingMode
+        let source: String
+        var text: String { "Peaking: \(mode.title) · \(source)" }
+        var spoken: String { "Focus peaking, \(mode.title), on the \(source.lowercased())" }
+    }
+    var peakingLabel: PeakingLabel? {
+        guard peakingOn, !showingStandIn, failure == nil, let photo = shown else { return nil }
+        let source = !photo.format.isRaw ? "File" : developState == .raw ? "RAW" : "Preview"
+        return PeakingLabel(mode: peakingMode, source: source)
+    }
+
+    /// `F`: the overlay on or off. A held `F` calls this again on release.
+    func togglePeaking() {
+        guard canPeak else { return }
+        let token = Perf.begin(.peaking)
+        peakingOn.toggle()
+        canvas?.setPeaking(peakingOn ? PeakingSettings.style : nil, token: token)
+        announce(peakingOn ? "Focus peaking on, \(peakingMode.title)" : "Focus peaking off")
+    }
+
+    /// `⇧F`: Edges and Fine detail, and the overlay on if it was off, so the change is visible.
+    func switchPeakingMode() {
+        guard canPeak else { return }
+        let token = Perf.begin(.peaking)
+        peakingMode = peakingMode.other
+        PeakingSettings.setMode(peakingMode)
+        peakingOn = true
+        canvas?.setPeaking(PeakingSettings.style, token: token)
+        announce("Focus peaking on, \(peakingMode.title)")
+    }
+
+    private var canPeak: Bool { isActive && canvas?.window != nil && shown != nil && failure == nil }
+
+    /// Settings changed (color, sensitivity, or the mode in the Analysis pane): the canvas redraws with them.
+    private func applyPeakingSettings() {
+        let mode = PeakingSettings.mode
+        if mode != peakingMode { peakingMode = mode }
+        canvas?.setPeaking(peakingOn ? PeakingSettings.style : nil)
+    }
     /// Photos the user switched to RAW with `R`. A photo comes back as RAW while its decode is still in the
     /// cache (V-02/Q1); one that was evicted comes back as the preview.
     @ObservationIgnored private var rawWanted: Set<URL> = []
@@ -137,6 +187,7 @@ final class LoupeController {
                 self?.developAtActualSizeIfNeeded()
             }
             canvas?.stickyZoom = stickyZoom
+            canvas?.setPeaking(peakingOn ? PeakingSettings.style : nil)
             guard let canvas, canvas !== oldValue, let last = lastRequest else { return }
             Task { await load(last.photo, in: last.folder) }
         }
@@ -163,6 +214,7 @@ final class LoupeController {
             setExif(nil)
             histogram = nil
             shownPixels = nil
+            showingStandIn = false
             failure = nil
             canvas?.show(nil)
         }
@@ -196,6 +248,7 @@ final class LoupeController {
             MainActor.assumeIsolated {
                 self?.applyBudget()
                 self?.applyRawSetting()
+                self?.applyPeakingSettings()
             }
         }
     }
@@ -271,11 +324,12 @@ final class LoupeController {
                 updateExif(for: photo)
                 histogram = nil
                 shownPixels = nil
+                showingStandIn = true
                 failure = nil
                 canvas.setAccessibilityLabel(photo.name)
                 let long = max(stand.displaySize.width, stand.displaySize.height)
                 let factor = lastPreviewLongSide.map { long > 0 ? $0 / long : 1 } ?? 1
-                canvas.show(stand, sameZoom: same, zoomSizeFactor: factor)
+                canvas.show(stand, sameZoom: same, zoomSizeFactor: factor, isStandIn: true)
                 FrameLog.record(cursor: folder.currentURL, displayed: photo.url, kind: "thumbnail")
             }
         }
@@ -300,6 +354,7 @@ final class LoupeController {
         histogram = frame.histogram
         shownPixels = (frame.width, frame.height)
         lastPreviewLongSide = CGFloat(max(frame.width, frame.height))
+        showingStandIn = false
         failure = nil
         canvas.setAccessibilityLabel("\(photo.name), \(frame.width) by \(frame.height) pixels")
         canvas.show(frame.image, keyToFrame: token, sameZoom: same)

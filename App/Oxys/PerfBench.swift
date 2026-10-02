@@ -119,6 +119,38 @@ enum PerfBench {
                     await settle(.milliseconds(250))
                 }
             }
+        case "peaking-view":
+            // The overlay stays on for 40 s so a screenshot can look at it. `OXYS_BENCH_ZOOM=1` goes to 1:1 first.
+            if environment["OXYS_BENCH_ZOOM"] == "1" { commands.perform("zoom.actual"); await settle(.milliseconds(500)) }
+            commands.perform("overlay.peaking")
+            await settle(.seconds(40))
+        case "peaking-still":
+            // The overlay on and off on one photo: the cost of the analysis and the draw, with no other work going on.
+            for _ in 0..<100 {
+                for id in ["peaking-on", "peaking-off"] {
+                    let began = ContinuousClock.now
+                    commands.perform("overlay.peaking")
+                    await DisplayTick.next()
+                    Perf.record(id, ms(began.duration(to: .now)))
+                    await settle(.milliseconds(150))
+                }
+            }
+        case "peaking":
+            // F on and off (`peaking-on` is the command to the next display frame, the first one runs the analysis),
+            // then browsing with the overlay on: each frame carries its own analysis, so key-to-frame shows its cost.
+            for _ in 0..<40 {
+                for id in ["peaking-on", "peaking-off"] {
+                    let began = ContinuousClock.now
+                    commands.perform("overlay.peaking")
+                    await DisplayTick.next()
+                    Perf.record(id, ms(began.duration(to: .now)))
+                    await settle(.milliseconds(250))
+                }
+                commands.perform("nav.next"); await settle(.milliseconds(300))
+            }
+            commands.perform("overlay.peaking"); await settle(.milliseconds(300))
+            await held(commands, steps: 300, every: .milliseconds(33))
+            commands.perform("overlay.peaking")
         case "grid":
             await scrollGrid(model)
         case "idle":

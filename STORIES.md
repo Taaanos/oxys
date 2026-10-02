@@ -87,7 +87,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-03 | RAW modes and automatic RAW at 1:1 | V-02 | done |
 | V-04 | LibRaw fallback | F-06, V-02, G-2 | parked (closed: not needed for v1.0) |
 | V-05 | Truth badge | V-02 | done |
-| V-06 | Focus peaking | M-15 | todo |
+| V-06 | Focus peaking | M-15 | done |
 | V-07 | Highlight and shadow clipping | M-17 | todo |
 | V-08 | Compare: layout and culling | M-13, M-19 | todo |
 | V-09 | Compare: linked zoom and EXIF differences | V-08, M-15, M-16 | todo |
@@ -1435,8 +1435,27 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - [ ] On a focus-bracket test series, peaking density ranks the frames in the expected order.
 
 **Open questions**
-1. The algorithms for the two modes. *Proposed:* Edges is a gradient magnitude (Sobel) on lightly smoothed luma; Fine detail is a high-pass (Laplacian) at full resolution with a lower threshold. Tune them against FastRawViewer.
-2. Default color and sensitivity. *Proposed:* a saturated color that rarely occurs in photos (magenta), medium sensitivity.
+1. The algorithms for the two modes. **Decided** as proposed, with one change (see below): Edges is a gradient magnitude (Sobel) on lightly smoothed luma; Fine detail is a high-pass (Laplacian) at full resolution with a lower threshold. Tune them against FastRawViewer.
+2. Default color and sensitivity. **Decided** as proposed: a saturated color that rarely occurs in photos (magenta), medium sensitivity.
+
+**Built (decisions and results)**
+- `Canvas`: `PeakingStyle` (mode, color, sensitivity) and `PeakingThreshold` (pure, tested) turn the slider into a luma step: 0.30 at Strict to 0.02 at Loose on a geometric scale; Fine detail uses 0.6 of that. Default is magenta at 0.5 (a step of about 0.08, i.e. 20 of 255 levels). Tuned by eye on one ISO 6400 Sony ARW (preview and RAW, rendered offscreen): Edges at 0.5 outlines the food, plate rim and plant and leaves a little speckle in dark shadow; at 0.2 it marks almost nothing.
+- Compute (`PeakingGPU`): one pass writes an 8-bit edge strength for every source pixel (luma with the histogram's Rec. 709 weights on encoded values; the byte is the square root of a luma step, where a clean step of d reads d in Edges). **Edges** is Sobel on luma that a 3x3 binomial smoothed first, which is the "lightly smoothed" of the proposal. **Fine detail** is an 8-neighbor Laplacian of the same smoothed luma, scaled so that the same amount of sensor noise passes in both modes at one slider position (a Laplacian is about 3 times as noisy as the Sobel for the same response to an edge). Both modes use one threshold scale; Fine detail is not "more sensitive" (the proposal said lower threshold; that lit a whole ISO 6400 frame). Each 16x16 group loads its luma once into threadgroup memory.
+- **First version was wrong, and the first screenshot showed it:** the pyramid kept the maximum over the pixels under a screen pixel, and Fine detail used an unsmoothed Laplacian. At Fit, 36 or more source pixels sit under one screen pixel, so one noisy pixel in them was enough, and an ISO 6400 photo turned magenta from edge to edge, in the preview and worse in the RAW. Now the pyramid above level 0 holds a *count* of source pixels that passed the threshold (up to 255), and a zoomed-out screen pixel is painted only when at least max(3, 1/10 of the block) of them passed. A real edge or small sharp patch crossing the block clears that; isolated noise does not. The counts depend on the threshold, so a change of sensitivity rebuilds the counts (levels 1 and up, a fraction of a millisecond), not the strength map. Zoomed in, and zoomed out by less than 2x, the screen pixel still reads the source pixel strengths (largest of 9 taps).
+- The overlay is a second draw of the picture's quad. It works in stored-image space, so orientation needs nothing extra.
+- The analysis is encoded in the same command buffer as the frame, before the render pass: a toggle is one frame. The mask texture is reused when the next picture has the same size, and dropped when peaking is off.
+- Commands: `overlay.peaking` (`F`, tap toggles, hold shows while held, same router as `Z`) and `overlay.peakingMode` (`⇧F`). `⇧F` also turns the overlay on if it is off, so the change is visible. Loupe only until V-08 gives Compare its keys. New cheat-sheet group "Overlays" (V-07 will use it).
+- On or off is not remembered across launches; mode, color and sensitivity are (Settings → Analysis, new pane; V-07's thresholds belong there too).
+- The label "Peaking: Edges · Preview" (or RAW, or File for a JPEG) sits bottom left, with an icon and words. VoiceOver reads "Focus peaking, Edges, on the preview" and each toggle is announced. When `R` swaps the preview for the RAW, the analysis runs again on the RAW and the label changes.
+- A thumbnail stand-in gets no overlay (it is not the picture); the real frame does.
+- Signpost `peaking`: command to presented frame. Bench scenarios `peaking` (toggles while browsing, then key-repeat browsing with the overlay on), `peaking-still` (100 toggles on one photo) and `peaking-view` (overlay held on for a screenshot).
+
+**Checked**
+- Unit tests: `Canvas` 47 (new: threshold mapping, flat picture marks nothing, a clean step is marked at the edge only, both modes, density falls with more blur in both modes, density rises with sensitivity, a small area survives the pyramid, odd sizes, overlay rendered offscreen at 1:1, zoomed in 4x and zoomed out 8x, no marks on a picture without edges), `Commands` 51 (new: `F` tap and hold, `⇧F`, `⌘F` still searches, not in Grid). Release build clean, arm64.
+- GPU time of the analysis for 24 MP: 2.2 ms steady (3.5 to 4 ms before the threadgroup tile; the smoothing added 0.3 ms). The toggle numbers below were measured with the first version, before smoothing and counts; the compute is 0.3 ms longer now, measured with the command buffer's GPU timestamps.
+- `make perf-bench SCENARIO=peaking-still` (24 MP, 100 toggles): the first 45 toggles on took 3.0 to 5.0 ms (p50 about 4.2) and off about 1.0 ms. Then a 156 ms stall, and every later toggle ran about 2.5x slower (on 6 to 12 ms, off 2 ms). The same step happened at the same time in two runs. The `overlays` scenario (no GPU work) did not show it. Cause not found; it looks like a GPU or power state change. So: well inside one frame at 120 Hz before the step, inside one 60 Hz frame after it.
+- **Criterion "peaking density ranks a focus bracket":** only shown on synthetic blur series (`peakingDensity` is public for a later tool). No real bracket is in `TestData/`.
+- **Not checked:** a Metal frame capture; the overlay in the live window (this session captures a black screen; the offscreen renders use the same shaders), so the look in the window is judged only from offscreen renders of one photo; the thresholds are untuned against other photos or FastRawViewer, and only one high-ISO frame was tried; `F` held and `⇧F` in the live app; VoiceOver; Compare (V-08 does not exist; the pass lives in `LoupeView`, which Compare can reuse); `make ui-walk`.
 
 ### V-07 · Highlight and shadow clipping
 
