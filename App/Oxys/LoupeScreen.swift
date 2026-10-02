@@ -34,7 +34,8 @@ struct LoupeScreen: View {
             if loupe.showExif, let exif = loupe.exif, loupe.failure == nil {
                 ExifPanel(info: exif, focused: Bindable(loupe).focusedExifField)
             }
-            if loupe.showHistogram, loupe.showInfoStrip, let histogram = loupe.histogram, loupe.failure == nil {
+            // The inspector has its own Histogram section, so the corner one steps aside while it is open.
+            if loupe.showHistogram, loupe.showInfoStrip, !(model.showInspector && !model.chromeHidden), let histogram = loupe.histogram, loupe.failure == nil {
                 HistogramView(histogram: histogram)
                     .padding(12)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)

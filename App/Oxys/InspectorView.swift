@@ -105,12 +105,9 @@ struct InspectorView: View {
 
     @ViewBuilder private func histogramSection(_ photo: Photo) -> some View {
         let loupe = model.loupe
-        section("Histogram") {
-            if loupe.shown?.url == photo.url, let histogram = loupe.histogram {
-                HistogramView(histogram: histogram)
-            } else {
-                Text("Shown once this photo is open in Loupe.").foregroundStyle(.secondary)
-            }
+        // No placeholder text: the section appears only when this photo's histogram exists (Grid and Compare have none).
+        if loupe.shown?.url == photo.url, let histogram = loupe.histogram {
+            section("Histogram") { HistogramView(histogram: histogram) }
         }
     }
 
