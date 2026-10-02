@@ -50,3 +50,16 @@ import Testing
     let back = try JSONDecoder().decode(EditorList.self, from: JSONEncoder().encode(list))
     #expect(back == list)
 }
+
+@Test func gtkEditorsTakePathArguments() {
+    let launch = Dictionary(uniqueKeysWithValues: ExternalEditor.presets.map { ($0.id, $0.launch) })
+    #expect(launch["art"] == .arguments)
+    #expect(launch["rawtherapee"] == .arguments)
+    #expect(launch["lightroom-classic"] == .workspace)
+}
+
+@Test func listSavedBeforeLaunchStyleStillDecodes() throws {
+    let old = #"{"added":[{"id":"custom:/A.app","name":"A","path":"/A.app","isPreset":false}]}"#
+    let list = try JSONDecoder().decode(EditorList.self, from: Data(old.utf8))
+    #expect(list.added.first?.launch == .workspace)
+}

@@ -55,6 +55,21 @@ final class EditorStore {
     /// `completion` runs on the main actor with an error text, or nil when the editor accepted the files.
     func open(_ urls: [URL], in editor: ExternalEditor, completion: @escaping @MainActor (String?) -> Void) {
         guard let app = appURL(for: editor) else { completion("\(editor.name) is not installed"); return }
+        if editor.launch == .arguments, let executable = Bundle(url: app)?.executableURL {
+            // The files are plain path arguments, as on the app's command line. Nothing waits on the process.
+            let process = Process()
+            process.executableURL = executable
+            process.arguments = urls.map(\.path)
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            do {
+                try process.run()
+                completion(nil)
+            } catch {
+                completion("\(editor.name) could not open the files: \(error.localizedDescription)")
+            }
+            return
+        }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         NSWorkspace.shared.open(urls, withApplicationAt: app, configuration: configuration) { _, error in
