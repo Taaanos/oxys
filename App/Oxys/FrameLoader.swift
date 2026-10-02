@@ -1,4 +1,5 @@
 import Canvas
+import CoreImage
 import Diagnostics
 import Foundation
 import Imaging
@@ -65,6 +66,28 @@ nonisolated enum FrameLoader {
             cache.store(grid.image, orientation: grid.orientation, path: key.url.path, size: key.fileSize,
                         modified: key.modified, longEdge: thumbnailEdge)
         }
+    }
+
+    /// Develops the RAW of `key` into a texture (V-02): the neutral filter, the render, the mip chain, then the
+    /// histogram from a small mip level (the frame never exists as a `CGImage`). Checks for cancellation between
+    /// the steps; a render already running cannot be stopped, so its result is dropped by the caller's cache.
+    static func develop(_ key: FrameKey, minLongEdge: Int) throws -> LoadedFrame<LoupeFrame> {
+        let token = Perf.begin(.rawDevelop)
+        defer { Perf.end(token) }
+        try Task.checkCancellation()
+        guard let gpu = LoupeGPU.shared else { throw RawDevelopError.unsupported }
+        let filter = try RawDeveloper.neutralFilter(for: key.url, minLongEdge: minLongEdge)
+        try Task.checkCancellation()
+        guard let output = filter.outputImage, let prepared = try gpu.prepare(developed: output) else {
+            throw RawDevelopError.unsupported
+        }
+        var histogram: Histogram?
+        if let small = Perf.measure(.histogram, { gpu.readback(prepared, maxEdge: 1024) }) {
+            histogram = Histogram.compute(bgra: small.bgra, pixelCount: small.width * small.height, source: .raw)
+        }
+        let size = prepared.displaySize
+        return LoadedFrame(frame: LoupeFrame(image: prepared, width: Int(size.width), height: Int(size.height), histogram: histogram),
+                           cost: prepared.byteCost)
     }
 
     /// The disk thumbnail of `key` as a texture, or nil when there is none yet.

@@ -59,6 +59,15 @@ public struct Histogram: Sendable, Equatable {
         return count(rgba: pixels, pixelCount: w * h, source: source)
     }
 
+    /// Histograms of tightly packed B, G, R, A bytes (a Metal `bgra8Unorm` readback), as they are, with no scaling.
+    public static func compute(bgra pixels: [UInt8], pixelCount: Int, source: Source) -> Histogram {
+        var rgba = pixels
+        rgba.withUnsafeMutableBufferPointer { p in
+            for i in 0..<min(pixelCount, p.count / 4) { p.swapAt(i * 4, i * 4 + 2) }
+        }
+        return count(rgba: rgba, pixelCount: pixelCount, source: source)
+    }
+
     /// Bins tightly packed R, G, B, X bytes.
     static func count(rgba pixels: [UInt8], pixelCount: Int, source: Source) -> Histogram {
         var r = [UInt32](repeating: 0, count: binCount), g = r, b = r, l = r

@@ -83,6 +83,18 @@ final class LoupeController {
     /// Longer side of the last full preview, to size a thumbnail stand-in's zoom (see `LoupeView.show`).
     @ObservationIgnored private var lastPreviewLongSide: CGFloat?
 
+    /// What the canvas shows of the photo on screen (V-02): its embedded preview, a decode of the RAW under way
+    /// (the preview stays up), or the developed RAW.
+    enum DevelopState: Equatable { case preview, developing, raw }
+    private(set) var developState = DevelopState.preview
+    /// Photos the user switched to RAW with `R`. A photo comes back as RAW while its decode is still in the
+    /// cache (V-02/Q1); one that was evicted comes back as the preview.
+    @ObservationIgnored private var rawWanted: Set<URL> = []
+    @ObservationIgnored private var developingURL: URL?
+    @ObservationIgnored private var developTask: Task<Void, Never>?
+    /// At most 5 developed RAWs, within the frame budget (V-02).
+    @ObservationIgnored private let rawCache = RawFrameCache<LoupeFrame>(maxCount: 5, maxBytes: LoupeController.memoryBudget)
+
     /// The confirmation over the canvas after a cull key; nil when it has timed out.
     struct Badge: Equatable {
         let id: Int
@@ -121,6 +133,8 @@ final class LoupeController {
         guard active != isActive else { return }
         isActive = active
         if !active {
+            stopDeveloping()
+            developState = .preview
             shown = nil
             setExif(nil)
             histogram = nil
@@ -168,6 +182,10 @@ final class LoupeController {
     func reset() {
         lastIndex = nil
         lastPreviewLongSide = nil
+        stopDeveloping()
+        rawWanted = []
+        rawCache.removeAll()
+        developState = .preview
         canvas?.resetZoom()
         let pipeline = pipeline
         Task { await pipeline.reset() }
@@ -181,6 +199,8 @@ final class LoupeController {
         lastRequest = (photo, folder)
         guard let canvas else { return }
         let target = FrameLoader.key(for: photo)
+        // Moving on cancels the decode of the photo left behind (V-02).
+        if developingURL != photo.url { stopDeveloping() }
         let index = folder.currentIndex
         let direction: PrefetchPlan.Direction = if let index, let last = lastIndex, index < last { .backward } else { .forward }
         lastIndex = index
@@ -204,6 +224,7 @@ final class LoupeController {
             if let stand, !finished.withLock({ $0 }), isCurrent(photo, in: folder) {
                 let same = shown?.url == photo.url
                 shown = photo
+                previewShown(of: photo)
                 updateExif(for: photo)
                 histogram = nil
                 shownPixels = nil
@@ -230,6 +251,7 @@ final class LoupeController {
         let token = takeToken()
         let same = shown?.url == photo.url && failure == nil
         shown = photo
+        previewShown(of: photo)
         updateExif(for: photo)
         folder.setPreview(PreviewInfo(pixelWidth: frame.width, pixelHeight: frame.height), for: photo.url)
         histogram = frame.histogram
@@ -239,6 +261,110 @@ final class LoupeController {
         canvas.setAccessibilityLabel("\(photo.name), \(frame.width) by \(frame.height) pixels")
         canvas.show(frame.image, keyToFrame: token, sameZoom: same)
         FrameLog.record(cursor: folder.currentURL, displayed: photo.url, kind: "preview")
+        // Back on a photo that was in RAW mode: its decode is still cached, or the mode lapses (V-02/Q1).
+        if rawWanted.contains(photo.url) {
+            if let developed = rawCache.cached(target) {
+                present(developed, of: photo, canvas: canvas)
+            } else {
+                rawWanted.remove(photo.url)
+            }
+        }
+    }
+
+    // MARK: develop (V-02)
+
+    /// A preview (or its stand-in) of `photo` went on screen. The state goes back to "preview" unless this
+    /// photo's RAW is being developed, in which case the preview simply stays up until the RAW replaces it.
+    private func previewShown(of photo: Photo) {
+        if developState == .developing, developingURL == photo.url { return }
+        developState = .preview
+    }
+
+    /// `R`: the RAW over the preview, and back. Pressed while it decodes, it cancels.
+    func toggleRaw() {
+        guard isActive, let canvas, canvas.window != nil, let photo = shown, failure == nil else { return }
+        guard photo.format.isRaw else {
+            announce("\(photo.name) is not a RAW file")
+            return
+        }
+        switch developState {
+        case .preview:
+            rawWanted.insert(photo.url)
+            develop(photo)
+        case .developing:
+            rawWanted.remove(photo.url)
+            stopDeveloping()
+            developState = .preview
+            announce("RAW cancelled, showing the preview")
+        case .raw:
+            rawWanted.remove(photo.url)
+            showPreviewAgain(of: photo, canvas: canvas)
+        }
+    }
+
+    private func develop(_ photo: Photo) {
+        guard let canvas else { return }
+        stopDeveloping()
+        developState = .developing
+        developingURL = photo.url
+        announce("Developing")
+        let key = FrameLoader.key(for: photo)
+        let minLongEdge = max(512, shownPixels.map { max($0.width, $0.height) } ?? 0)
+        let cache = rawCache
+        developTask = Task { [weak self] in
+            let result: Result<LoupeFrame?, any Error>
+            do {
+                result = .success(try await cache.develop(key) { try FrameLoader.develop($0, minLongEdge: minLongEdge) })
+            } catch { result = .failure(error) }
+            guard let self, !Task.isCancelled, developingURL == photo.url, shown?.url == photo.url else { return }
+            developingURL = nil
+            switch result {
+            case .success(let frame?):
+                present(frame, of: photo, canvas: canvas)
+            case .success(nil):
+                developState = .preview
+            case .failure:
+                rawWanted.remove(photo.url)
+                developState = .preview
+                announce("This RAW cannot be developed. Showing the preview")
+            }
+        }
+    }
+
+    /// Cancels the decode in flight, if any. Its result is dropped when it lands.
+    private func stopDeveloping() {
+        developTask?.cancel()
+        developTask = nil
+        developingURL = nil
+        rawCache.cancelInflight()
+    }
+
+    private func present(_ frame: LoupeFrame, of photo: Photo, canvas: LoupeView) {
+        developState = .raw
+        histogram = frame.histogram
+        shownPixels = (frame.width, frame.height)
+        canvas.setAccessibilityLabel("\(photo.name), RAW, \(frame.width) by \(frame.height) pixels")
+        // Same photo, more pixels: the view keeps its place on screen.
+        canvas.show(frame.image, sameZoom: true, keepView: true)
+        announce("RAW")
+    }
+
+    private func showPreviewAgain(of photo: Photo, canvas: LoupeView) {
+        let key = FrameLoader.key(for: photo)
+        let pipeline = pipeline
+        developState = .preview
+        Task { [weak self] in
+            // The preview is normally still cached; if the budget pushed it out, load it again.
+            var cached = await pipeline.cachedFrame(key)
+            if cached == nil { cached = try? await pipeline.frame(for: key, prefetch: []) }
+            guard let frame = cached else { return }
+            guard let self, shown?.url == photo.url, developState == .preview else { return }
+            histogram = frame.histogram
+            shownPixels = (frame.width, frame.height)
+            canvas.setAccessibilityLabel("\(photo.name), \(frame.width) by \(frame.height) pixels")
+            canvas.show(frame.image, sameZoom: true, keepView: true)
+            announce("Preview")
+        }
     }
 
     /// Whether `photo` is still the one the cursor is on and this request has not been superseded. Checked

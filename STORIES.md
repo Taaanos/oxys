@@ -83,7 +83,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-26 | MVP gate: performance | all MVP | done (gate not met: 6 misses) |
 | **Phase 2** | **v1.0** | | |
 | V-01 | Maker notes: lens and AF point | M-16, F-03 | built (Sony, Canon CR2 and DNG, Fujifilm match the reference on the corpus; Nikon and CR3 only on built files; the live `Z` check is pending) |
-| V-02 | Develop the RAW on demand | F-06, M-04, M-14 | todo |
+| V-02 | Develop the RAW on demand | F-06, M-04, M-14 | done |
 | V-03 | RAW modes and automatic RAW at 1:1 | V-02 | todo |
 | V-04 | LibRaw fallback | F-06, V-02, G-2 | parked |
 | V-05 | Truth badge | V-02 | todo |
@@ -1306,13 +1306,28 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - The histogram (and later the overlays) switches its source label to "RAW".
 
 **Acceptance criteria**
-- [ ] Decode under 1 s at 24 MP and under 2 s at 45–61 MP on the reference Mac.
-- [ ] At 1:1 in RAW mode, each screen pixel is one (demosaiced) sensor pixel, checked with a test chart.
-- [ ] Moving away mid-decode cancels it; the signposts show no wasted completion.
+- [x] Decode under 1 s at 24 MP and under 2 s at 45–61 MP on the reference Mac.
+- [x] At 1:1 in RAW mode, each screen pixel is one (demosaiced) sensor pixel, checked with a test chart.
+- [x] Moving away mid-decode cancels it; the signposts show no wasted completion.
 
 **Open questions**
 1. Does a frame stay in RAW mode when you come back to it? *Proposed:* yes, while it is still in the memory cache.
 2. Show the RAW's default crop or the full sensor area? *Proposed:* the default crop, which matches what editors show.
+
+**Result (built)**
+- **Decided**: both open questions as proposed. A photo comes back as RAW while its decode is in the cache; one that was evicted comes back as the preview and the mode lapses. The RAW keeps the decoder's default crop (the output is the full `nativeSize`; the corpus has no cropped file).
+- **Lens correction is off** in RAW mode (the open point from F-06). It resamples, and 1:1 must show sensor pixels. The embedded preview has the camera's correction in it, so the two differ slightly toward the corners; the mapping between them is by fraction of the picture, which is exact at the centre.
+- **`R`** (`zoom.raw`, "Show RAW" in View, Loupe only): preview → "Developing…" (the preview stays up) → RAW in place. `R` while developing cancels. `R` on a RAW goes back to the preview. A file that is not a RAW says so to VoiceOver. A RAW that cannot be developed keeps the preview and says so.
+- **Imaging**: `RawDeveloper.neutralFilter` sets every detail control to 0 and lens correction off. A `.tif`/`.tiff` file is also tried with the DNG, NEF and PEF type hints (F-06's "sniff the container"); a decode smaller than the largest embedded preview counts as "only the thumbnail" and tries the next hint. `RawFrameCache` holds at most 5 developed frames (and no more than the frame budget, the newest always stays), runs one decode at a time, and drops a result that lands after a cancel. 10 new tests.
+- **Canvas**: `LoupeGPU.prepare(developed:)` renders the `CIImage` straight into a private, mipmapped `bgra8Unorm` texture at its own size, encoded as Display P3 (the layer is tagged the same way). Nothing is resampled, and the nearest-neighbor sampler at 1:1 does the rest. A test renders a known pattern and reads the texels back: exact pixels, upright. `.shaderWrite` is needed on the texture or Core Image refuses it ("destination is nil").
+- **Zoom**: the swap keeps the same part of the picture under the same screen pixels, so the percentage changes (a view at 100% of a 1,620 px preview becomes 27% of a 6,000 px RAW). Fit stays Fit. Moving to another photo keeps the percentage as before (M-15), it is not converted.
+- **Histogram** reads a small mip level of the finished texture (no second decode) and says "RAW". The info strip says "RAW W × H px" and drops the "preview pixels" warning. A badge ("Developing…", "RAW") shows even when the info strip is off; VoiceOver hears the same words as announcements.
+- **Measured** (`make perf-bench SCENARIO=develop`, release build, interval `raw-develop`: filter, render, mips, histogram): 48.8 MP DNG, 20 runs: p50 311 ms, max 377 ms. Six corpus RAWs of 17 to 48.8 MP, first run of each: p50 190 ms, max 505 ms (the 48.8 MP file, cold). The limit is 1 s at 24 MP and 2 s at 45 to 61 MP. 61 MP itself is not measured (no file).
+- **Cancel**: `develop-cancel` presses `R` and moves on 30 ms later, 30 times; no `raw-wasted` mark appears. A render that has started cannot be stopped (Core Image has no cancel), so a move that comes mid-render lets that render end, and its result is dropped at once (the code checks after the render, before the mips); `raw-wasted` would show only if a result reached the cache after a cancel.
+- **Memory**: 5 developed frames of 48.8 MP are about 1.3 GB beside the preview cache. The two caches each keep to the frame budget, not to one budget together; the bench footprint peaked at 2.7 GB.
+- **Not checked**: `make ui-walk` (needs the Accessibility permission, this session has none); the live `R` swap by eye on a screen; a test chart on a real RAW (the exact-pixel test uses a built pattern); 61 MP.
+- **Bench**: scenarios `develop` and `develop-cancel` in `PerfBench`. The bench folders sort the TIFF scans in long runs, so the scenarios step to the next RAW first.
+
 
 ### V-03 · RAW modes and automatic RAW at 1:1
 

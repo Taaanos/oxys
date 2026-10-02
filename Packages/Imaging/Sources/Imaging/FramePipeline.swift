@@ -82,6 +82,9 @@ public actor FramePipeline<Frame: Sendable> {
 
     public func isCached(_ key: FrameKey) -> Bool { cache.contains(key) }
 
+    /// The frame if it is in the cache, with no loading and no change to what is in flight.
+    public func cachedFrame(_ key: FrameKey) -> Frame? { cache.value(for: key) }
+
     /// The frame for `target`, loading it at once at high priority. `prefetch` lists the neighbors worth having
     /// next, most useful first. Anything in flight that is neither is cancelled before it reads or decodes.
     /// Returns nil when this request was itself superseded (cancelled) before it finished.

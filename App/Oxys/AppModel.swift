@@ -174,6 +174,9 @@ final class AppModel {
         commands.register("zoom.fit") { [unowned self] _ in loupe.setZoom(.fit) }
         commands.register("zoom.in") { [unowned self] _ in loupe.stepZoom(.in) }
         commands.register("zoom.out") { [unowned self] _ in loupe.stepZoom(.out) }
+        commands.register("zoom.raw", isOn: { [unowned self] in loupe.developState != .preview }) { [unowned self] _ in
+            loupe.toggleRaw()
+        }
         commands.register("zoom.sticky", isOn: { [unowned self] in loupe.stickyZoom }) { [unowned self] _ in
             loupe.stickyZoom.toggle()
         }

@@ -33,6 +33,10 @@ public enum PerfInterval: String, CaseIterable, Sendable {
     case zoom = "zoom"
     /// Computing one frame's histogram (M-17), inside the frame load.
     case histogram = "histogram"
+    /// Developing one RAW into a GPU texture (V-02): the filter, the render and the mip chain. 1 s at 24 MP, 2 s at 61 MP.
+    case rawDevelop = "raw-develop"
+    /// A zero-length mark: a develop finished after it was cancelled and its result was thrown away. Should never appear.
+    case rawWasted = "raw-wasted"
 
     /// Signpost names must be static strings, so the raw value is repeated here.
     var signpostName: StaticString {
@@ -51,6 +55,8 @@ public enum PerfInterval: String, CaseIterable, Sendable {
         case .gridFirstScreen: "grid-first-screen"
         case .zoom: "zoom"
         case .histogram: "histogram"
+        case .rawDevelop: "raw-develop"
+        case .rawWasted: "raw-wasted"
         }
     }
 }

@@ -9,7 +9,7 @@ import Library
 /// (set `OXYS_PERF_LOG=<file>`; read it with `PerfTool log`) and quits. Does nothing otherwise.
 ///
 /// Scenarios: `open` (folder open to first image), `nav-prefetched`, `nav-cold`, `nav-held` (30 steps a second),
-/// `scrub` (1,000 frames, memory), `cull`, `zoom`, `overlays`, `grid` (scroll 10,000 files), `idle`.
+/// `scrub` (1,000 frames, memory), `cull`, `zoom`, `develop`, `develop-cancel` (V-02), `overlays`, `grid` (scroll 10,000 files), `idle`.
 @MainActor
 enum PerfBench {
     private static let environment = ProcessInfo.processInfo.environment
@@ -77,6 +77,25 @@ enum PerfBench {
                 commands.perform("zoom.fit"); await settle(.milliseconds(500))
                 commands.perform("nav.next"); await settle(.milliseconds(300))
             }
+        case "develop":
+            // R, wait for the RAW on screen, R back, next photo. `raw-ready` is press to developed frame (V-02).
+            for _ in 0..<20 {
+                await nextRaw(model)
+                let began = ContinuousClock.now
+                commands.perform("zoom.raw")
+                while loupe.developState != .raw, began.duration(to: .now) < .seconds(15) { try? await Task.sleep(for: .milliseconds(1)) }
+                if loupe.developState == .raw { Perf.record("raw-ready", ms(began.duration(to: .now))) } else { Perf.record("raw-timeout", 1) }
+                await settle(.milliseconds(300))
+                commands.perform("zoom.raw"); await settle(.milliseconds(200))
+                commands.perform("nav.next"); await settle(.milliseconds(500))
+            }
+        case "develop-cancel":
+            // R and then on to the next photo before the decode ends: `raw-wasted` must not appear in the log.
+            for _ in 0..<30 {
+                await nextRaw(model)
+                commands.perform("zoom.raw"); await settle(.milliseconds(Int(environment["OXYS_BENCH_CANCEL_MS"] ?? "") ?? 30))
+                commands.perform("nav.next"); await settle(.milliseconds(1000))
+            }
         case "overlays":
             for _ in 0..<60 {
                 for id in ["info.histogram", "info.cycle"] {
@@ -107,6 +126,16 @@ enum PerfBench {
     }
 
     // MARK: drivers
+
+    /// Steps forward until the photo on screen is a RAW (the bench folders mix in TIFF scans).
+    private static func nextRaw(_ model: AppModel) async {
+        if model.folder.currentIndex == model.folder.visible.count - 1 { model.commands.perform("nav.first"); await settle(.milliseconds(400)) }
+        for _ in 0..<10 {
+            if model.loupe.shown?.url == model.folder.currentURL, model.folder.currentPhoto?.format.isRaw == true { return }
+            model.commands.perform("nav.next")
+            await settle(.milliseconds(400))
+        }
+    }
 
     private static func held(_ commands: CommandCenter, steps: Int, every interval: Duration) async {
         let clock = ContinuousClock()

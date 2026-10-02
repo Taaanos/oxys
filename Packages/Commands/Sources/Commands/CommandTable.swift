@@ -161,6 +161,11 @@ public struct CommandTable: Sendable {
         Command("pan.pageDown", "Pan Down a View", menu: .init(.view, group: 3), modes: loupe, requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.downArrow), [.option, .shift])]),
 
+        // Develop the RAW (V-02). `R` swaps the embedded preview for the decoded RAW in place, and back. While it
+        // decodes, `R` cancels. Moving to another photo cancels it too.
+        Command("zoom.raw", "Show RAW", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
+                kind: .toggle, keys: [Shortcut(.position(.r))]),
+
         // Info on the image (M-18). `I` cycles off, filename and stars, plus EXIF, plus histogram; `⇧I` toggles the
         // histogram on its own. `⌥⌘I` opens the inspector (every mode); "Move Focus to Inspector" puts the keyboard
         // there, since `⇥` belongs to the toolbar. In Loupe `↑` and `↓` walk the EXIF values (M-16), `⌘C` copies the

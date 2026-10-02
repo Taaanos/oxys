@@ -27,7 +27,7 @@ make corpus        # fetch the pixls files in scripts/corpus.tsv into TestData/,
 make bench-folders # TestData/bench/{24mp-1000,hires-1000,scan-5000,grid-10000} (APFS clones)
 make sidecar-stress # 1,000 decisions over 60 s through the write queue, then verify every sidecar
 make sidecar-gate   # M-25: 10,000 real sidecar writes with outside writers and killed writers
-make perf-bench SCENARIO=nav-cold FOLDER=TestData/bench/24mp-1000   # M-26: in-app scenario (open, nav-*, scrub, cull, zoom, overlays, grid, idle)
+make perf-bench SCENARIO=nav-cold FOLDER=TestData/bench/24mp-1000   # M-26: in-app scenario (open, nav-*, scrub, cull, zoom, develop, develop-cancel, overlays, grid, idle)
 make perf-selftest # record + report synthetic signposts (pipeline check)
 make ui-walk       # drive the built app with key events only, then check the sidecars (needs Accessibility permission)
 scripts/perf-record.sh <Oxys.app> [seconds]   # record signposts, print p50/p95 per interval

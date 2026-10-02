@@ -1,4 +1,5 @@
 import CoreGraphics
+import CoreImage
 import Diagnostics
 import ImageIO
 import Metal
@@ -28,6 +29,8 @@ public final class LoupeGPU: @unchecked Sendable {
     let sampler: any MTLSamplerState
     /// For 1:1 and beyond: shows the actual pixels, never blended (M-14 open question 1).
     let nearestSampler: any MTLSamplerState
+    /// Renders developed RAWs (V-02) on the same queue, in extended linear Display P3 so nothing clips on the way.
+    private let ciContext: CIContext
 
     private init?() {
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue(),
@@ -56,6 +59,10 @@ public final class LoupeGPU: @unchecked Sendable {
         nearest.tAddressMode = .clampToEdge
         guard let nearestSampler = device.makeSamplerState(descriptor: nearest) else { return nil }
         (self.device, self.queue, self.pipeline, self.sampler, self.nearestSampler) = (device, queue, pipeline, sampler, nearestSampler)
+        ciContext = CIContext(mtlCommandQueue: queue, options: [
+            .workingColorSpace: CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3) as Any,
+            .cacheIntermediates: false,
+        ])
     }
 
     /// Uploads `image` with a full mip chain. The pixels are drawn into a BGRA context in the image's own color
@@ -98,6 +105,63 @@ public final class LoupeGPU: @unchecked Sendable {
         let size = orientation.swapsAxes ? CGSize(width: height, height: width) : CGSize(width: width, height: height)
         return PreparedImage(texture: texture, orientation: orientation, colorSpace: colorSpace, displaySize: size,
                              byteCost: width * height * 4 * 4 / 3)
+    }
+
+    /// Renders `image` (upright, extent from the origin) straight into a mipmapped texture at its own pixel size,
+    /// encoded as Display P3. Every texel is one pixel of `image`: nothing is resampled, which is what 1:1 needs.
+    /// Throws `CancellationError` when the task was cancelled before the render started, and nil when the image is
+    /// empty or larger than the GPU allows.
+    public func prepare(developed image: CIImage) throws -> PreparedImage? {
+        let extent = image.extent.integral
+        let width = Int(extent.width), height = Int(extent.height)
+        guard width > 0, height > 0, width <= 16384, height <= 16384 else { return nil }
+        let token = Perf.begin(.textureUpload)
+        defer { Perf.end(token) }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: Self.pixelFormat, width: width,
+                                                                  height: height, mipmapped: true)
+        descriptor.usage = [.shaderRead, .shaderWrite, .renderTarget]
+        descriptor.storageMode = .private
+        guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
+        let space = CGColorSpace(name: CGColorSpace.displayP3)!
+        let destination = CIRenderDestination(mtlTexture: texture, commandBuffer: nil)
+        destination.colorSpace = space
+        // Core Image's origin is bottom left, a texture's top left.
+        destination.isFlipped = true
+        try Task.checkCancellation()
+        do {
+            _ = try ciContext.startTask(toRender: image, from: extent, to: destination, at: .zero).waitUntilCompleted()
+        } catch {
+            return nil
+        }
+        try Task.checkCancellation()
+        guard let buffer = queue.makeCommandBuffer(), let blit = buffer.makeBlitCommandEncoder() else { return nil }
+        blit.generateMipmaps(for: texture)
+        blit.endEncoding()
+        buffer.commit()
+        buffer.waitUntilCompleted()
+        return PreparedImage(texture: texture, orientation: .up, colorSpace: space,
+                             displaySize: CGSize(width: width, height: height), byteCost: width * height * 4 * 4 / 3)
+    }
+
+    /// The pixels of `image` at the smallest mip level whose long edge is at most `maxEdge` (level 0 when it is
+    /// smaller already), as tightly packed B, G, R, A bytes. For the histogram of a frame that was rendered on the
+    /// GPU and never exists as a `CGImage`.
+    public func readback(_ image: PreparedImage, maxEdge: Int) -> (bgra: [UInt8], width: Int, height: Int)? {
+        let texture = image.texture
+        var level = 0
+        while max(texture.width >> level, texture.height >> level) > maxEdge, level + 1 < texture.mipmapLevelCount { level += 1 }
+        let w = max(1, texture.width >> level), h = max(1, texture.height >> level)
+        let bytesPerRow = w * 4
+        guard let staging = device.makeBuffer(length: bytesPerRow * h, options: .storageModeShared),
+              let buffer = queue.makeCommandBuffer(), let blit = buffer.makeBlitCommandEncoder() else { return nil }
+        blit.copy(from: texture, sourceSlice: 0, sourceLevel: level, sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+                  sourceSize: MTLSize(width: w, height: h, depth: 1), to: staging, destinationOffset: 0,
+                  destinationBytesPerRow: bytesPerRow, destinationBytesPerImage: bytesPerRow * h)
+        blit.endEncoding()
+        buffer.commit()
+        buffer.waitUntilCompleted()
+        let bytes = Array(UnsafeBufferPointer(start: staging.contents().assumingMemoryBound(to: UInt8.self), count: bytesPerRow * h))
+        return (bytes, w, h)
     }
 
     // One quad as a triangle strip (top-left, top-right, bottom-left, bottom-right). The CPU gives the rect in

@@ -65,10 +65,16 @@ public final class LoupeView: NSView {
     /// Shows `image`, or the empty canvas for nil. `keyToFrame` ends when the frame is on screen. The same
     /// photo's better frame (`sameZoom`) keeps the zoom and the spot, and so does any frame while sticky zoom
     /// is on; otherwise a photo opens at Fit. `zoomSizeFactor` is for a stand-in (see `sizeFactor`).
+    /// `keepView` is for the same photo at another resolution (the developed RAW over its preview, V-02): a zoomed-in
+    /// view is rescaled so the same part of the picture stays under the same pixels of the screen.
     public func show(_ image: PreparedImage?, keyToFrame token: Perf.Token? = nil, sameZoom: Bool = false,
-                     zoomSizeFactor: CGFloat = 1) {
+                     zoomSizeFactor: CGFloat = 1, keepView: Bool = false) {
         if let stale = pendingToken { Perf.end(stale) }
         pendingToken = token
+        if keepView, let old = self.image, let image, case .scale(let s) = zoom {
+            let oldWidth = zoomSize(of: old).width, newWidth = image.displaySize.width * zoomSizeFactor
+            zoom = .scale(ZoomGeometry.scale(s, keepingSizeFrom: oldWidth, to: newWidth))
+        }
         self.image = image
         sizeFactor = zoomSizeFactor
         if !stickyZoom && !(sameZoom && image != nil) { resetZoom() }

@@ -49,6 +49,14 @@ public enum ZoomSteps {
 /// Where the image sits when zoomed, in drawable pixels with a top-left origin. All of it is pure so it can be
 /// tested without a window.
 public enum ZoomGeometry {
+    /// The scale that keeps the picture the same size on screen when its pixels change from `oldWidth` to
+    /// `newWidth` across (the preview and the developed RAW of one photo, V-02). The picture's centre is kept
+    /// as a 0...1 point, so it needs no change.
+    public static func scale(_ scale: CGFloat, keepingSizeFrom oldWidth: CGFloat, to newWidth: CGFloat) -> CGFloat {
+        guard oldWidth > 0, newWidth > 0 else { return scale }
+        return scale * oldWidth / newWidth
+    }
+
     /// Drawable pixels per image pixel at 1:1. A scaled display mode ("More Space") is rendered at a larger
     /// size than the panel and resampled by the system, so one drawable pixel is less than one physical pixel:
     /// the mode's framebuffer width over the panel's native width. 1 at the default mode, and when unknown.

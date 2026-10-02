@@ -3,6 +3,14 @@ import Testing
 @testable import Canvas
 
 @Suite struct ZoomGeometryTests {
+    @Test func swappingPreviewForRawKeepsTheSameOnScreenSize() {
+        // 100% of a 1620 px preview shows 1620 px; the same width of a 6000 px RAW is 27%, and back.
+        let toRaw = ZoomGeometry.scale(1, keepingSizeFrom: 1620, to: 6000)
+        #expect(abs(toRaw - 0.27) < 1e-9)
+        #expect(abs(ZoomGeometry.scale(toRaw, keepingSizeFrom: 6000, to: 1620) - 1) < 1e-9)
+        #expect(ZoomGeometry.scale(2, keepingSizeFrom: 0, to: 6000) == 2)
+    }
+
     let image = CGSize(width: 6000, height: 4000)
     let view = CGSize(width: 3000, height: 2000)
 
