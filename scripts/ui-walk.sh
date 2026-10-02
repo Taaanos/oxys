@@ -14,7 +14,22 @@ key() { osascript -e "tell application \"System Events\" to tell process \"Oxys\
 # Key codes (physical keys): 36 Return, 124 →, 7 X, 20 digit 3, 23 digit 5.
 # After a step, shows which sidecars exist and their ratings (the trace for a failed walk).
 # The Loupe image's VoiceOver label starts with the file name, so it says which photo is current.
-snap() { sleep 1.5; echo "-- $1 | shown: $(osascript -e 'tell application "System Events" to tell process "Oxys" to get description of (entire contents of window 1 whose description begins with "DSC")' 2>&1 | head -c 200)"; for x in "$WORK"/*.xmp(N); do echo "   $(basename "$x"): $(grep -o 'xmp:Rating="[-0-9]*"' "$x")"; done; }
+shown() {
+  osascript <<'APPLESCRIPT' 2>&1 | head -c 200
+tell application "System Events" to tell process "Oxys"
+  set found to {}
+  repeat with e in (entire contents of window 1)
+    try
+      set d to value of attribute "AXDescription" of e
+      if d begins with "DSC" then set end of found to d
+    end try
+  end repeat
+  return found
+end tell
+APPLESCRIPT
+}
+# After a step, shows the photo on screen, then which sidecars exist and their ratings (the trace for a failed walk).
+snap() { sleep 1.5; echo "-- $1 | shown: $(shown)"; for x in "$WORK"/*.xmp(N); do echo "   $(basename "$x"): $(grep -o 'xmp:Rating="[-0-9]*"' "$x")"; done; }
 pkill -x Oxys 2>/dev/null || true
 open "$APP"
 sleep 2
