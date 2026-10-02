@@ -4,7 +4,7 @@ BUILD_DIR := build
 APP       := $(BUILD_DIR)/Build/Products/Release/Oxys.app
 PACKAGES  := $(sort $(dir $(wildcard Packages/*/Package.swift)))
 
-.PHONY: build test check-arch launch-time corpus manifest bench-folders perf-selftest perf-report sidecar-stress ui-walk clean
+.PHONY: build test check-arch launch-time corpus manifest bench-folders perf-selftest perf-report sidecar-stress sidecar-gate ui-walk clean
 
 build:
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release \
@@ -45,6 +45,10 @@ perf-report:
 # M-08: 1,000 random decisions over a minute through the write queue, then every sidecar is checked.
 sidecar-stress:
 	cd Packages/Sidecar && swift run -c release SidecarStress stress 60 1000
+
+# M-25: 10,000 real file writes with outside writers and killed writers; exits 1 on any damage.
+sidecar-gate:
+	cd Packages/Sidecar && swift build -c release --product SidecarStress && .build/release/SidecarStress gate Tests/Fixtures/xmp/hand-written/lightroom-style-crs-3star-red.xmp 10000
 
 clean:
 	rm -rf $(BUILD_DIR) Packages/*/.build

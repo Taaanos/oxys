@@ -32,6 +32,7 @@ private let allFixtures = [
     "hand-written/elements-2star-green.xmp", "hand-written/xap-prefix-5star-yellow.xmp",
     "hand-written/multi-description-1star-red.xmp", "hand-written/reject-minus1.xmp",
     "hand-written/custom-label-select.xmp", "hand-written/other-namespace-ignored.xmp",
+    "hand-written/lightroom-style-crs-3star-red.xmp",
 ]
 
 @Suite struct PatcherTests {
@@ -50,6 +51,24 @@ private let allFixtures = [
             case .keep: #expect(props.label == (try XMPReader.parse(input)).label)
             }
         }
+    }
+
+    /// M-25: a Lightroom-style sidecar keeps every line it has except our three properties. Lines are compared
+    /// one by one, in order, so a moved, reformatted or dropped `crs:` setting shows up by name.
+    @Test(arguments: [SidecarEdit(rating: 5, label: .set("Green")), SidecarEdit(rating: -1, label: .remove),
+                      SidecarEdit(rating: 0, label: .keep)])
+    func lightroomStyleSidecarKeepsEveryCameraRawLine(edit: SidecarEdit) throws {
+        let input = text(try fixture("hand-written/lightroom-style-crs-3star-red.xmp"))
+        let output = text(try XMPPatcher.patch(Data(input.utf8), edit: edit, date: when))
+        func foreignLines(_ s: String) -> [String] {
+            s.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+                .filter { !$0.contains("xmp:Rating") && !$0.contains("xmp:Label") && !$0.contains("xmp:MetadataDate") }
+        }
+        #expect(foreignLines(output) == foreignLines(input))
+        #expect(output.contains("crs:Exposure2012=\"+0.35\""))
+        #expect(output.contains("<rdf:li>64, 58</rdf:li>"))
+        #expect(output.hasSuffix("<?xpacket end=\"w\"?>"))
+        #expect(output.contains("crs:LocalExposure2012=\"+0.40\""))
     }
 
     @Test func keepsEveryOtherByteOfAForeignPacket() throws {

@@ -79,7 +79,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-22 | Settings window | M-05 | done (keyboard walk-through and live naming switch not checked in the running app) |
 | M-23 | Cheat sheet and menu audit | M-05 and all MVP commands | done |
 | M-24 | Keyboard-only and accessibility pass | all MVP UI | built; VoiceOver and Full Keyboard Access not checked |
-| M-25 | MVP gate: interoperability and data safety | M-07 to M-11 | todo |
+| M-25 | MVP gate: interoperability and data safety | M-07 to M-11 | in progress (automated parts done; the Lightroom Classic, RawTherapee and ART matrix waits for you: `docs/m25-interop-matrix.md`) |
 | M-26 | MVP gate: performance | all MVP | todo |
 | **Phase 2** | **v1.0** | | |
 | V-01 | Maker notes: lens and AF point | M-16, F-03 | todo |
@@ -1212,8 +1212,21 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - A 10,000-write stress test that includes simulated outside writers and crashes.
 
 **Acceptance criteria**
-- [ ] The matrix passes for Lightroom Classic and RawTherapee; ART results are documented.
-- [ ] Zero corrupted sidecars, and zero sidecars that lost foreign data, across 10,000 writes.
+- [ ] The matrix passes for Lightroom Classic and RawTherapee; ART results are documented. **Waiting for you:** the steps are in `docs/m25-interop-matrix.md`. I cannot run them (G-10: no license, and the steps need the GUI of each tool).
+- [x] Zero corrupted sidecars, and zero sidecars that lost foreign data, across 10,000 writes.
+
+**Built**
+- `lightroom-style-crs-3star-red.xmp` (hand-written, Lightroom layout: `xpacket` padding, many `crs:` attributes, tone curve, masks, history). It is a stand-in until a real Lightroom sidecar arrives (Part C of the checklist). The diff tests (`PatcherTests`) now include it, and `lightroomStyleSidecarKeepsEveryCameraRawLine` compares every line except our three properties.
+- `make sidecar-gate` (`SidecarStress gate`): 10,000 decisions on 40 sidecars that start from the Lightroom-style file. Each decision is flushed alone, so each one is a real file write (the queue merges pending edits for one file; the older `stress` mode relies on that). Every 500 decisions, an outside program changes the Camera Raw exposure on 8 sidecars (and the rating and label on some), by atomic replace. Then one decision goes to every sidecar, so each write must start from the outside file. Then a writer process is killed with SIGKILL in the middle of its writes. After each step, every sidecar must parse, keep its foreign data (compared as text with our three properties cut out), and hold the expected rating and label.
+- Result: 10,040 decisions, 10,040 file writes, 152 outside edits, 19 killed writers; 0 unparsable, 0 with changed foreign data, 0 wrong decisions, 0 temp files left (after `removeStaleTemps`). About 77 s.
+
+**Decisions**
+- Outside edits happen between flushes, not at the same moment as a write. A real race exists: an outside program can replace the file after we read it and before we rename. The write path has no lock for it (no program can lock a file that another program replaces by rename). The gate does not test this race, and I did not find a way to close it. It stays a known limit.
+- A killed writer can leave a hidden temp file. The gate calls `removeStaleTemps` after each kill, as the app does at open.
+
+**Checked**
+- `swift test` passes in Sidecar (27 tests). `make sidecar-gate` passes.
+- **Not checked**: everything in the matrix (real Lightroom Classic, RawTherapee and ART with Sony, Canon, Nikon and Fujifilm files).
 
 ### M-26 · MVP gate: performance
 
