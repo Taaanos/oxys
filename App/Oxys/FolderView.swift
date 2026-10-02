@@ -47,7 +47,7 @@ struct FolderView: View {
             InspectorView(model: model)
                 .inspectorColumnWidth(min: 240, ideal: 280, max: 420)
         }
-        .sheet(isPresented: Bindable(model).showCheatSheet) { CheatSheetView(model: model) }
+        .overlay { if model.showCheatSheet { CheatSheetView(model: model) } }
         .toolbar(id: "oxys.main") { ToolbarItems(model: model) }
         .toolbarVisibility(model.chromeHidden ? .hidden : .visible, for: .windowToolbar)
         .navigationTitle(folder.folder?.lastPathComponent ?? "Oxys")

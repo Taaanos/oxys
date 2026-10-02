@@ -27,6 +27,9 @@ final class AppModel {
     private(set) var chromeHidden = false
     /// The `?` sheet (M-23).
     var showCheatSheet = false
+    var cheatScroll = ScrollPosition()
+    /// Kept by the sheet's scroll view so the keys can move it: current offset, visible height and content height.
+    var cheatMetrics: (offset: CGFloat, page: CGFloat, content: CGFloat) = (0, 0, 0)
     /// The inspector sidebar (⌥⌘I), remembered across launches. Hidden along with the toolbar by `⇥` (M-13).
     private(set) var showInspector = UserDefaults.standard.bool(forKey: "showInspector")
     /// True after "Move Focus to Inspector" until `Esc`: `⇥`, `⇧⇥`, `↑` and `↓` walk the inspector's rows and
@@ -45,6 +48,25 @@ final class AppModel {
         inspectorActive = true
         inspectorFocusID = id ?? inspectorFocusID.flatMap { id in inspectorRows.contains { $0.id == id } ? id : nil } ?? inspectorRows.first?.id
         if id == nil, let row = inspectorRows.first(where: { $0.id == inspectorFocusID }) { announce("\(row.label), \(row.value)") }
+    }
+
+    /// Keys while the cheat sheet is up: `Esc` or `?` close it; arrows, Page, Home, End and Space scroll it.
+    private func cheatSheetKey(_ code: UInt16, _ character: Character?) {
+        let m = cheatMetrics
+        let line: CGFloat = 40
+        let maxY = max(0, m.content - m.page)
+        func scroll(to y: CGFloat) { cheatScroll.scrollTo(y: min(max(0, y), maxY)) }
+        if character == "?" { showCheatSheet = false; return }
+        switch code {
+        case PhysicalKey.escape.rawValue: showCheatSheet = false
+        case PhysicalKey.downArrow.rawValue: scroll(to: m.offset + line)
+        case PhysicalKey.upArrow.rawValue: scroll(to: m.offset - line)
+        case PhysicalKey.space.rawValue, 121: scroll(to: m.offset + m.page - line)
+        case 116: scroll(to: m.offset - m.page + line)
+        case PhysicalKey.home.rawValue: scroll(to: 0)
+        case PhysicalKey.end.rawValue: scroll(to: maxY)
+        default: break
+        }
     }
 
     func deactivateInspector() { inspectorActive = false }
@@ -134,11 +156,9 @@ final class AppModel {
             NSWorkspace.shared.activateFileViewerSelecting(urls)
             announce(urls.count == 1 ? "Revealed 1 file in Finder" : "Revealed \(urls.count.formatted()) files in Finder")
         }
-        commands.outsideClick = { [unowned self] in
-            defer { showCheatSheet = false }
-            return showCheatSheet
-        }
         registerFilter()
+        commands.modalActive = { [unowned self] in showCheatSheet }
+        commands.modalKey = { [unowned self] code, character in cheatSheetKey(code, character) }
         commands.register("help.cheatsheet") { [unowned self] _ in showCheatSheet.toggle() }
         commands.register("view.loupe") { [unowned self] _ in commands.mode = .loupe }
         commands.register("view.grid") { [unowned self] _ in commands.mode = .grid }

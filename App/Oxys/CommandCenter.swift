@@ -21,9 +21,10 @@ final class CommandCenter {
     var mode: ViewMode = .loupe
     /// Offered every bare or `⌥` key first (M-18): code, shift, option. True when the inspector used the key.
     @ObservationIgnored var inspectorKey: (UInt16, Bool, Bool) -> Bool = { _, _, _ in false }
-    /// A click on the window behind a sheet (the sheet is modal, so the window would only beep): return true to
-    /// dismiss the sheet.
-    @ObservationIgnored var outsideClick: () -> Bool = { false }
+    /// True while an in-window overlay (the cheat sheet) owns the keyboard; it gets every key but `⌘` chords.
+    @ObservationIgnored var modalActive: () -> Bool = { false }
+    /// Offered each key-down of a modal overlay: key code and the character the key types.
+    @ObservationIgnored var modalKey: (UInt16, Character?) -> Void = { _, _ in }
     /// Bumped when the input source changes, so menus re-read the key labels.
     private(set) var layoutRevision = 0
 
@@ -121,13 +122,9 @@ final class CommandCenter {
 
     func start() {
         guard monitor == nil else { return }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .leftMouseDown]) { [weak self] event in
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             // Local monitors run on the main thread, but the closure type is not isolated.
             nonisolated(unsafe) let event = event
-            if event.type == .leftMouseDown {
-                if event.window?.attachedSheet != nil { MainActor.assumeIsolated { _ = self?.outsideClick() } }
-                return event
-            }
             let consumed = MainActor.assumeIsolated { self?.route(event) == true }
             return consumed ? nil : event
         }
@@ -149,6 +146,10 @@ final class CommandCenter {
         guard let window = event.window, window.isKeyWindow, !(window is NSPanel), window.sheetParent == nil,
               let input = KeyInput(event: event, layout: KeyLayout.asciiCapable())
         else { return false }
+        if modalActive(), !event.modifierFlags.contains(.command) {
+            if event.type == .keyDown { modalKey(event.keyCode, input.character) }
+            return true
+        }
         let focus: KeyFocus = if let tv = window.firstResponder as? NSTextView, tv.isEditable || tv.isFieldEditor {
             .textInput
         } else { .canvas }

@@ -2,49 +2,60 @@ import Commands
 import Library
 import SwiftUI
 
-/// The `?` sheet (M-23): the current mode's commands in the PRD's groups, with the keys of the current keymap,
-/// printed the way the menus print them. `?` or `Esc` closes it; the list scrolls with the arrow, Page and
-/// Home/End keys. It is a sheet, so the command key monitor leaves its keys alone.
+/// The `?` overlay (M-23): the current mode's commands in the PRD's groups, with the keys of the current keymap,
+/// printed the way the menus print them, on a dimmed backdrop. A click outside the panel, `?` or `Esc` closes it;
+/// the arrows, Page keys, Home, End and Space scroll it. It is not a window, so `CommandCenter` hands it the keys
+/// (`AppModel.cheatSheetKey`) and swallows the rest.
 struct CheatSheetView: View {
     let model: AppModel
-    @Environment(\.dismiss) private var dismiss
-    @FocusState private var focused: Bool
 
     var body: some View {
         let center = model.commands
         let sections = CheatSheet.sections(table: center.table, keymap: center.keymap, mode: center.mode)
-        VStack(spacing: 0) {
-            HStack {
-                Text("Keyboard Shortcuts").font(.title3.bold())
-                Text(center.mode.rawValue.capitalized).foregroundStyle(.secondary)
-                Spacer()
-                Button("Close") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-            }
-            .padding([.horizontal, .top], 20)
-            .padding(.bottom, 10)
-            Divider()
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 18, pinnedViews: []) {
-                    ForEach(sections, id: \.group) { section in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(section.group.title).font(.headline).accessibilityAddTraits(.isHeader)
-                            ForEach(section.entries) { entry in row(entry) }
+        ZStack {
+            Color.black.opacity(0.35)
+                .contentShape(Rectangle())
+                .onTapGesture { model.showCheatSheet = false }
+                .accessibilityHidden(true)
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Keyboard Shortcuts").font(.title3.bold())
+                    Text(center.mode.rawValue.capitalized).foregroundStyle(.secondary)
+                    Spacer()
+                    Text("? or Esc to close").font(.callout).foregroundStyle(.secondary)
+                }
+                .padding([.horizontal, .top], 20)
+                .padding(.bottom, 10)
+                Divider()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        ForEach(sections, id: \.group) { section in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(section.group.title).font(.headline).accessibilityAddTraits(.isHeader)
+                                ForEach(section.entries) { entry in row(entry) }
+                            }
+                        }
+                        if !center.keymapProblems.isEmpty {
+                            Text("Some of your Keymap.json was ignored; see Console for details.").foregroundStyle(.secondary)
                         }
                     }
-                    if !center.keymapProblems.isEmpty {
-                        Text("Some of your Keymap.json was ignored; see Console for details.").foregroundStyle(.secondary)
-                    }
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .scrollPosition(Bindable(model).cheatScroll)
+                .onScrollGeometryChange(for: [CGFloat].self) { g in
+                    [g.contentOffset.y, g.containerSize.height, g.contentSize.height]
+                } action: { _, v in
+                    model.cheatMetrics = (v[0], v[1], v[2])
+                }
             }
-            .focusable()
-            .focused($focused)
+            .frame(maxWidth: 560, maxHeight: 640)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .shadow(radius: 24)
+            .padding(24)
+            .accessibilityElement(children: .contain)
+            .accessibilityAddTraits(.isModal)
         }
-        .frame(minWidth: 520, idealWidth: 560, minHeight: 360, idealHeight: 620)
-        .onAppear { focused = true }
-        .onKeyPress(characters: ["?"]) { _ in dismiss(); return .handled }
     }
 
     private func row(_ entry: CheatSection.Entry) -> some View {

@@ -1164,7 +1164,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 
 **Built (decisions and results)**
 - `CheatSheet.swift` (Commands): `CheatGroup` (Rate, Label and Reject; Move and Switch View; Zoom and Pan; Info; Select; Filter and Sort; Files; Help). A command's group comes from its ID prefix, so new commands need no extra entry and an unmapped prefix fails the test. `CheatSheet.sections(table:keymap:mode:)` returns the current mode's commands with the keys of the live keymap (so user remaps show), commands without a key included.
-- `help.cheatsheet` ("Keyboard Shortcuts", `?`, every mode) is in the Help menu. `CheatSheetView` is a sheet on the window: keys print as the menus print them, `?` or `Esc` closes it, the list scrolls by keyboard (focusable scroll view), each row is one VoiceOver element ("Reject", value "X"). A sheet is an `NSPanel`, so the command key monitor leaves its keys alone.
+- `help.cheatsheet` ("Keyboard Shortcuts", `?`, every mode) is in the Help menu. `CheatSheetView` is an in-window overlay on a dimmed backdrop: keys print as the menus print them; a click outside, `?` or `Esc` closes it; arrows, Page, Home, End and Space scroll it (the command center gives it every key but `⌘` chords while it is up, so nothing leaks to the grid). Each row is one VoiceOver element ("Reject", value "X").
 - Help search: the system Help menu search indexes menu items, and every command has one (tested).
 
 **Checked**
