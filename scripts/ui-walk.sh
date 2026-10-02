@@ -12,6 +12,8 @@ cp "$SRC/DSC01014.ARW" "$SRC/DSC09025.ARW" "$SRC/DSC00204.dng" "$WORK/"
 
 key() { osascript -e "tell application \"System Events\" to tell process \"Oxys\" to key code $1 ${2:-}"; sleep "${KEY_DELAY:-0.4}"; }
 # Key codes (physical keys): 36 Return, 124 →, 7 X, 20 digit 3, 23 digit 5.
+# After a step, shows which sidecars exist and their ratings (the trace for a failed walk).
+snap() { sleep 1.5; echo "-- $1"; for x in "$WORK"/*.xmp(N); do echo "   $(basename "$x"): $(grep -o 'xmp:Rating="[-0-9]*"' "$x")"; done; }
 pkill -x Oxys 2>/dev/null || true
 open "$APP"
 sleep 2
@@ -25,9 +27,12 @@ key 36; sleep 0.5; key 36; sleep 2
 key 36
 # 2. First pass: rate 3, next, reject, next, rate 5 with ⇧ (applies and advances).
 key 20            # 3
+snap "after 3"
 key 124           # next
 key 7             # X
+snap "after X (next photo should be rejected)"
 key 124
+snap "after next"
 key 23 "using shift down"   # ⇧5
 sleep 2           # the write queue settles
 # 4. Narrow: ⌥⌘3 shows 3 stars and more.
