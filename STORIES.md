@@ -85,7 +85,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-01 | Maker notes: lens and AF point | M-16, F-03 | built (Sony, Canon CR2 and DNG, Fujifilm match the reference on the corpus; Nikon and CR3 only on built files; the live `Z` check is pending) |
 | V-02 | Develop the RAW on demand | F-06, M-04, M-14 | done |
 | V-03 | RAW modes and automatic RAW at 1:1 | V-02 | done |
-| V-04 | LibRaw fallback | F-06, V-02, G-2 | parked |
+| V-04 | LibRaw fallback | F-06, V-02, G-2 | parked (closed: not needed for v1.0) |
 | V-05 | Truth badge | V-02 | todo |
 | V-06 | Focus peaking | M-15 | todo |
 | V-07 | Highlight and shadow clipping | M-17 | todo |
@@ -1377,8 +1377,10 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - [ ] A license review is done and recorded.
 
 **Open questions**
-1. Is it needed at all? *Proposed:* decide after F-06.
-2. LibRaw's LGPL-2.1 or CDDL-1.0 terms against the chosen app license: see G-2.
+1. Is it needed at all? *Proposed:* decide after F-06. **Decided (closed, not needed for v1.0):** F-06 made every decodable corpus RAW neutral with CIRAWFilter, and its output was never sharper than LibRaw's. V-02 and V-03 have shipped on CIRAWFilter alone and no camera has returned an empty decode. LibRaw would add a native dependency, a license duty and a second decode path for no known camera. Nothing was built.
+2. LibRaw's LGPL-2.1 or CDDL-1.0 terms against the chosen app license: see G-2. **Not needed:** no LibRaw code is used, so G-2 does not depend on it.
+
+**Reopen if** a real camera returns no image, or a wrong `nativeSize`, from CIRAWFilter. Then build the Scope above.
 
 ### V-05 · Truth badge
 
