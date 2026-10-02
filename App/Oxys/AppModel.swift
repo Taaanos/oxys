@@ -4,6 +4,7 @@ import Commands
 import Library
 import Metadata
 import Observation
+import Sidecar
 import SwiftUI
 
 /// Lets the model answer `applicationShouldTerminate` without the SwiftUI app owning an AppKit delegate by hand.
@@ -89,6 +90,11 @@ final class AppModel {
     private(set) var findRequest = 0
     private(set) var recentFolders: [URL] = NSDocumentController.shared.recentDocumentURLs
 
+    /// The sidecar naming style chosen in Settings (`name.xmp` until changed).
+    static var configuredNaming: SidecarNaming {
+        SidecarNaming(rawValue: UserDefaults.standard.string(forKey: "sidecarNaming") ?? "") ?? .stem
+    }
+
     init() {
         commands = CommandCenter(folder: folder)
         grid = GridController(folder: folder, loupe: loupe)
@@ -99,6 +105,14 @@ final class AppModel {
             Task { _ = await saveDecisionsElsewhere() }
         }
         AppDelegate.confirmQuit = { [unowned self] in confirmQuit() }
+        // Settings (M-22): the sidecar naming style applies at once. Existing sidecars are never renamed (M-22/Q1).
+        folder.sidecarNaming = Self.configuredNaming
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [folder] _ in
+            MainActor.assumeIsolated {
+                let naming = AppModel.configuredNaming
+                if folder.sidecarNaming != naming { folder.sidecarNaming = naming }
+            }
+        }
         // A card that was reseated or a share that came back: try the failed writes again when the app returns.
         NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [folder] _ in
             MainActor.assumeIsolated { if folder.unsavedCount > 0 { folder.retryUnsaved() } }

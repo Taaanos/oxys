@@ -20,22 +20,7 @@ struct OxysApp: App {
         }
 
         Settings {
-            SettingsStubView()
+            SettingsView()
         }
-    }
-}
-
-private struct SettingsStubView: View {
-    @AppStorage("prefetchBudgetMB") private var budgetMB = 0
-
-    var body: some View {
-        Form {
-            Stepper(value: $budgetMB, in: 0...32_768, step: 256) {
-                Text(budgetMB == 0 ? "Frame cache: automatic (up to 2 GB)" : "Frame cache: \(budgetMB) MB")
-            }
-            Text("The rest of Settings arrives with M-22.").foregroundStyle(.secondary)
-        }
-        .padding()
-        .frame(width: 420, height: 160)
     }
 }

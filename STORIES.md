@@ -76,7 +76,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-19 | Selection | M-12 | built, not checked in the live app |
 | M-20 | Filter and sort bar | M-19 | built, not checked in the live app |
 | M-21 | Reveal in Finder | M-19 | built (live Finder check pending) |
-| M-22 | Settings window | M-05 | todo |
+| M-22 | Settings window | M-05 | done (keyboard walk-through and live naming switch not checked in the running app) |
 | M-23 | Cheat sheet and menu audit | M-05 and all MVP commands | todo |
 | M-24 | Keyboard-only and accessibility pass | all MVP UI | todo |
 | M-25 | MVP gate: interoperability and data safety | M-07 to M-11 | todo |
@@ -1137,7 +1137,16 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - [ ] Every control is reachable by keyboard, and changes apply without a relaunch.
 
 **Open questions**
-1. Switching naming style when sidecars already exist in the old one: rename them? *Proposed:* no renaming. New writes use the new style, reads fall back to the old one (M-07), and the inspector shows which file is in use.
+1. Switching naming style when sidecars already exist in the old one: rename them? **Decided** as proposed: no renaming. New writes use the new style, reads fall back to the old one (M-07), and the inspector shows which file is in use.
+
+**Built (decisions and results)**
+- `SettingsView.swift` replaces the stub: a `TabView` with General (an Automatic toggle, plus a frame-cache slider and a number field that edit the same value in MB, clamped from 256 MB to the RAM size; 0 stays "automatic" in the defaults) and Sidecars (radio group `name.xmp` / `name.ext.xmp`, the RawTherapee "XMP sidecar style" hint, and a note that nothing is renamed). Keys, Analysis and Editors panes arrive with their stories.
+- Values are `@AppStorage`: `prefetchBudgetMB` (already applied live by the loupe controller) and `sidecarNaming`. `AppModel` sets `folder.sidecarNaming` at launch and on every defaults change, so a switch applies to the next write and read without a relaunch. The inspector already shows the sidecar file in use.
+- The `Settings` scene gives `⌘,` and the app-menu item; controls are standard, so Full Keyboard Access reaches them.
+
+**Checked**
+- Release build clean. No package logic changed.
+- **Not checked** (this session cannot drive the window): tabbing through every control, and flipping the naming style with a folder open.
 
 ### M-23 · Cheat sheet and menu audit
 

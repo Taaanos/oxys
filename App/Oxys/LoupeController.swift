@@ -137,8 +137,11 @@ final class LoupeController {
     /// `prefetchBudgetMB` default overrides it.
     static var memoryBudget: Int {
         if let mb = UserDefaults.standard.object(forKey: "prefetchBudgetMB") as? Int, mb > 0 { return mb << 20 }
-        return min(2 << 30, Int(ProcessInfo.processInfo.physicalMemory / 4))
+        return automaticBudget
     }
+
+    /// What "automatic" means: 2 GB, or a quarter of the RAM when that is less. Settings shows it (M-22).
+    static var automaticBudget: Int { min(2 << 30, Int(ProcessInfo.processInfo.physicalMemory / 4)) }
 
     @ObservationIgnored private let thumbnails = FrameLoader.sharedThumbnails
     @ObservationIgnored private let pipeline: FramePipeline<LoupeFrame>
