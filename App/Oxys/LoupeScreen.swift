@@ -176,11 +176,9 @@ struct DecisionGlyphs: View {
             } else if decision.stars > 0 || showsEmptyStars {
                 HStack(spacing: 1) {
                     ForEach(1...5, id: \.self) { star in
-                        Image(systemName: star <= decision.stars ? "star.fill" : "star")
-                            .foregroundStyle(star <= decision.stars ? Color.yellow : Plate.secondary)
+                        StarGlyph(index: star, filled: star <= decision.stars, isLast: star == decision.stars, pulse: trigger)
                     }
                 }
-                .symbolEffect(.bounce, options: .nonRepeating, value: trigger)
             }
             if let label = decision.label {
                 LabelChip(label: label)
@@ -192,6 +190,64 @@ struct DecisionGlyphs: View {
         .font(.callout)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(decision.summary)
+    }
+}
+
+/// One star. When a cull key lands (`pulse` changes), the new stars fill one after another, 30 ms apart: each
+/// morphs from outline to filled (Magic Replace) and flashes, so the motion counts the stars. Only the last
+/// filled star bounces, once, so the cue is one pulse and not one per star. Stars that did not change stay
+/// still, and so does a change with no key behind it, such as moving to another photo. `pulse` stays 0 under
+/// Reduce Motion, which makes every change instant.
+private struct StarGlyph: View {
+    let index: Int
+    let filled: Bool
+    let isLast: Bool
+    let pulse: Int
+    @State private var shown: Bool
+    @State private var bounce = 0
+    @State private var flash = 0
+    /// True only while a cull key fills this star. Magic Replace runs on any symbol change, so without this flag
+    /// walking from a 4-star photo to a 5-star one would animate the fifth star.
+    @State private var morphs = false
+    /// The delayed fill; a newer change cancels it so a fast `5` then `1` cannot fill a star late.
+    @State private var pending: Task<Void, Never>?
+
+    init(index: Int, filled: Bool, isLast: Bool, pulse: Int) {
+        self.index = index
+        self.filled = filled
+        self.isLast = isLast
+        self.pulse = pulse
+        _shown = State(initialValue: filled)
+    }
+
+    private struct Key: Equatable { let filled: Bool; let pulse: Int }
+
+    var body: some View {
+        Image(systemName: shown ? "star.fill" : "star")
+            .foregroundStyle(shown ? Color.yellow : Plate.secondary)
+            .contentTransition(morphs ? .symbolEffect(.replace) : .identity)
+            .symbolEffect(.bounce, options: .nonRepeating, value: bounce)
+            .phaseAnimator([0.0, 0.3, 0.0], trigger: flash) { star, glow in star.brightness(glow) } animation: { glow in
+                glow == 0 ? .easeOut(duration: 0.2) : .easeOut(duration: 0.08)
+            }
+            .onChange(of: Key(filled: filled, pulse: pulse)) { old, new in
+                pending?.cancel()
+                guard new.pulse != old.pulse, new.filled else {
+                    morphs = false
+                    shown = new.filled
+                    return
+                }
+                pending = Task {
+                    try? await Task.sleep(for: .milliseconds(30 * (index - 1)))
+                    guard !Task.isCancelled else { return }
+                    if !shown {
+                        morphs = true
+                        withAnimation(.spring(duration: 0.3, bounce: 0.3)) { shown = true }
+                        flash += 1
+                    }
+                    if isLast { bounce += 1 }
+                }
+            }
     }
 }
 
@@ -221,7 +277,7 @@ private extension ColorLabel {
 }
 
 /// `⌥I`: the photo's rating at the bottom-left, for when the info strip is off. It is the strip's rating mark
-/// alone, so culling with a bare window still shows what a key did; VoiceOver hears the controller's announcement.
+/// alone on a Liquid Glass capsule, tinted dark so the stars keep their contrast over a bright photo, so culling with a bare window still shows what a key did; VoiceOver hears the controller's announcement.
 struct RatingCorner: View {
     let decision: Decision
     let pulse: Int
@@ -230,7 +286,8 @@ struct RatingCorner: View {
         DecisionGlyphs(decision: decision, pulse: pulse, showsEmptyStars: true)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .infoPlate()
+            .environment(\.colorScheme, .dark)
+            .glassEffect(.regular.tint(.black.opacity(0.35)), in: .capsule)
             .padding(12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             .allowsHitTesting(false)
