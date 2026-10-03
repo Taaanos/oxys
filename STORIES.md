@@ -125,7 +125,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | D-07 | Glass for the EXIF panel and the histogram | D-02 | built, not measured (D-01 gives no valid numbers in this session; see the story) |
 | D-08 | Corners concentric with the window | D-02, V-08 | built, partly checked (window and inspector checked by eye; full screen and the glass labels see the story) |
 | D-09 | The app icon in every appearance | none | built, partly checked (build and sheets done; your eye on 16 px and on the Dock, Finder and Spotlight is open; see the story) |
-| D-10 | Symbols in the menus | M-05, M-23 | todo |
+| D-10 | Symbols in the menus | M-05, M-23 | done |
 | D-11 | Spike: the info strip as a floating glass bar | D-01, D-02 | todo |
 | D-12 | Spike: a glass HUD for commands with no visible result | D-02 | todo |
 
@@ -2622,6 +2622,13 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 **Open questions**
 1. Which items get a symbol? *Proposed:* only items whose symbol already shows on the screen or in the toolbar. A symbol on every row is noise.
 2. The five rating items ("1 Star" to "5 Stars") would all show the same star. *Proposed:* no symbol on them; reject, the labels and the overlays get one. Check how the system menus look next to them before the build.
+
+**Decisions (built)**
+- `Command.symbol` is an optional field. `TableItems` shows it through `MenuTitle` (a `Label`, or plain text when nil). The toolbar Filter Bar and Inspector items read it from the table; the filled Filter Bar symbol (a filter is narrowing) is the table symbol plus `.fill`.
+- Eight commands have a symbol: Reject and Clear Filter (`xmark.circle`), Focus Peaking (`scope`), Highlight and Shadow Clipping (`sun.max.fill`, `moon.fill`), Show Inspector (`sidebar.trailing`), Show Filter Bar (`line.3.horizontal.decrease.circle`), Auto-Advance (`forward.end.fill`). Open question 1: as proposed. Open question 2: the rating items get none (a test checks this).
+- Tests: every symbol name resolves to an SF Symbol. The cheat sheet reads titles only, so it is unchanged.
+- Not checked by eye: how the menu draws a symbol on a toggle item next to its checkmark, and VoiceOver on the menu. Check both on the next UI pass.
+
 
 ### D-11 · Spike: the info strip as a floating glass bar
 

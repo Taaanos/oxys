@@ -72,10 +72,12 @@ public struct Command: Sendable, Identifiable {
     public var defaultKeys: [Shortcut]
     /// Every key of this command also has a `⇧` twin that runs it and then moves to the next photo (M-06).
     public var shiftAdvances: Bool
+    /// An SF Symbol name for the menu item, the same one the screen shows for this command (D-10). Nil shows none.
+    public var symbol: String?
 
     public init(_ id: CommandID, _ title: String, menu: MenuPlacement?, modes: Set<ViewMode> = [],
                 requires: Requirements = [], kind: CommandKind = .action, repeats: Bool = false,
-                shiftAdvances: Bool = false, keys: [Shortcut] = []) {
+                shiftAdvances: Bool = false, symbol: String? = nil, keys: [Shortcut] = []) {
         self.id = id
         self.title = title
         self.menu = menu
@@ -85,6 +87,7 @@ public struct Command: Sendable, Identifiable {
         self.repeats = repeats
         self.defaultKeys = keys
         self.shiftAdvances = shiftAdvances
+        self.symbol = symbol
     }
 
     public var behavior: KeyBehavior {

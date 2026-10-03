@@ -94,6 +94,9 @@ struct FolderView: View {
 private struct ToolbarItems: CustomizableToolbarContent {
     let model: AppModel
 
+    /// The symbol the command table gives a command (D-10), so the toolbar and the menu show the same one.
+    private func symbol(_ id: CommandID) -> String { model.commands.table[id]?.symbol ?? "questionmark" }
+
     var body: some CustomizableToolbarContent {
         ToolbarItem(id: "mode") {
             Picker("Mode", selection: Binding(
@@ -120,8 +123,8 @@ private struct ToolbarItems: CustomizableToolbarContent {
         // A Toggle with the button style: the system draws the on state on the glass, so the symbol does not have to.
         // The command still decides, so the menu item and the key stay the one way in.
         ToolbarItem(id: "filter") {
-            Toggle("Filter Bar", systemImage: model.folder.filter.isNarrowing
-                   ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle",
+            // The table has the plain symbol; the filled one says that a filter is narrowing the folder.
+            Toggle("Filter Bar", systemImage: model.folder.filter.isNarrowing ? "\(symbol("filter.bar")).fill" : symbol("filter.bar"),
                    isOn: Binding(
                     get: { model.showFilterBar },
                     set: { on in
@@ -134,7 +137,7 @@ private struct ToolbarItems: CustomizableToolbarContent {
         }
         ToolbarSpacer(.flexible)
         ToolbarItem(id: "inspector", placement: .primaryAction) {
-            Toggle("Inspector", systemImage: "sidebar.trailing", isOn: Binding(
+            Toggle("Inspector", systemImage: symbol("info.inspector"), isOn: Binding(
                 get: { model.showInspector },
                 set: { on in
                     guard on != model.showInspector else { return }

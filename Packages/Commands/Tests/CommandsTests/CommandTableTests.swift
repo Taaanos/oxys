@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import Commands
@@ -448,4 +449,19 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(keys(r, "file.extractCancel") == [Shortcut(.position(.period), [.command])])
     #expect(CommandTable.standard["file.extract"]?.menu?.menu == .photo)
     #expect(CommandTable.standard["file.extract"]?.title == "Export…")
+}
+
+@Test func everyMenuSymbolIsARealSFSymbol() {
+    let withSymbol = CommandTable.standard.commands.filter { $0.symbol != nil }
+    #expect(!withSymbol.isEmpty)
+    for command in withSymbol {
+        #expect(NSImage(systemSymbolName: command.symbol!, accessibilityDescription: nil) != nil,
+                "\(command.id.rawValue) has an unknown symbol \(command.symbol!)")
+    }
+}
+
+@Test func ratingItemsCarryNoSymbol() {
+    for command in CommandTable.standard.commands where command.id.rawValue.hasPrefix("cull.rate.") {
+        #expect(command.symbol == nil)
+    }
 }

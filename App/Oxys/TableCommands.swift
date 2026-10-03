@@ -52,14 +52,26 @@ private struct TableItems: View {
         let enabled = center.isEnabled(command)
         switch command.kind {
         case .action:
-            Button(center.title(for: command)) { center.perform(command.id) }
+            Button { center.perform(command.id) } label: { MenuTitle(title: center.title(for: command), symbol: command.symbol) }
                 .keyboardShortcut(shortcut)
                 .disabled(!enabled)
         case .toggle, .toggleOrHold:
-            Toggle(command.title, isOn: Binding(get: { center.isOn(command) }, set: { _ in center.perform(command.id) }))
+            Toggle(isOn: Binding(get: { center.isOn(command) }, set: { _ in center.perform(command.id) })) {
+                MenuTitle(title: command.title, symbol: command.symbol)
+            }
                 .keyboardShortcut(shortcut)
                 .disabled(!enabled)
         }
+    }
+}
+
+/// A menu item's title with its symbol (D-10). Without a symbol it is the plain text, so the item is as before.
+private struct MenuTitle: View {
+    let title: String
+    let symbol: String?
+
+    var body: some View {
+        if let symbol { Label(title, systemImage: symbol) } else { Text(title) }
     }
 }
 

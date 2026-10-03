@@ -67,12 +67,12 @@ public struct CommandTable: Sendable {
         // Filter and sort (M-20). `\` shows the bar, `⌘L` turns filtering on and off, `⌘F` finds by filename, `⌥⌘0`–`⌥⌘5`
         // set the minimum stars, `⌥⌘6`–`⌥⌘9` toggle the red, yellow, green and blue labels, `⌥⌘X` cycles the rejects.
         Command("filter.bar", "Show Filter Bar", menu: .init(.filter, group: 0), requires: .photos,
-                kind: .toggle, keys: [Shortcut(.position(.backslash))]),
+                kind: .toggle, symbol: "line.3.horizontal.decrease.circle", keys: [Shortcut(.position(.backslash))]),
         Command("filter.enabled", "Filter Photos", menu: .init(.filter, group: 0), requires: .photos,
                 kind: .toggle, keys: [Shortcut(.position(.l), [.command])]),
         Command("filter.find", "Find by Filename", menu: .init(.filter, group: 0), requires: .photos,
                 keys: [Shortcut(.position(.f), [.command])]),
-        Command("filter.clear", "Clear Filter", menu: .init(.filter, group: 0), requires: .photos),
+        Command("filter.clear", "Clear Filter", menu: .init(.filter, group: 0), requires: .photos, symbol: "xmark.circle"),
         Command("filter.stars.0", "Any Rating", menu: .init(.filter, group: 1), requires: .photos,
                 kind: .toggle, keys: [Shortcut(.position(.digit0), [.command, .option])]),
         Command("filter.stars.1", "1 Star or More", menu: .init(.filter, group: 1), requires: .photos,
@@ -193,16 +193,16 @@ public struct CommandTable: Sendable {
         // Focus peaking (V-06). `F` toggles the overlay and shows it only while held; `⇧F` switches between Edges and
         // Fine detail (and turns the overlay on if it is off). Color and sensitivity are in Settings.
         Command("overlay.peaking", "Focus Peaking", menu: .init(.view, group: 5), modes: loupeAndCompare, requires: .photos,
-                kind: .toggleOrHold, keys: [Shortcut(.position(.f))]),
+                kind: .toggleOrHold, symbol: "scope", keys: [Shortcut(.position(.f))]),
         Command("overlay.peakingMode", "Peaking Mode", menu: .init(.view, group: 5), modes: loupeAndCompare, requires: .photos,
                 keys: [Shortcut(.position(.f), [.shift])]),
 
         // Clipping (V-07). `H` marks blown highlights, `S` blocked shadows; each toggles and shows only while held.
         // `⌥H` opens the thresholds popover. The percentages persist (Settings → Analysis has them too).
         Command("overlay.highlights", "Highlight Clipping", menu: .init(.view, group: 5), modes: loupeAndCompare, requires: .photos,
-                kind: .toggleOrHold, keys: [Shortcut(.position(.h))]),
+                kind: .toggleOrHold, symbol: "sun.max.fill", keys: [Shortcut(.position(.h))]),
         Command("overlay.shadows", "Shadow Clipping", menu: .init(.view, group: 5), modes: loupeAndCompare, requires: .photos,
-                kind: .toggleOrHold, keys: [Shortcut(.position(.s))]),
+                kind: .toggleOrHold, symbol: "moon.fill", keys: [Shortcut(.position(.s))]),
         Command("overlay.clippingThresholds", "Clipping Thresholds…", menu: .init(.view, group: 5), modes: loupeAndCompare, requires: .photos,
                 keys: [Shortcut(.position(.h), [.option])]),
 
@@ -217,7 +217,7 @@ public struct CommandTable: Sendable {
         Command("info.histogram", "Show Histogram", menu: .init(.view, group: 4), modes: loupe, requires: .photos,
                 kind: .toggle, keys: [Shortcut(.position(.i), [.shift])]),
         Command("info.inspector", "Show Inspector", menu: .init(.view, group: 4), requires: .photos,
-                kind: .toggle, keys: [Shortcut(.position(.i), [.command, .option])]),
+                kind: .toggle, symbol: "sidebar.trailing", keys: [Shortcut(.position(.i), [.command, .option])]),
         Command("info.inspectorFocus", "Move Focus to Inspector", menu: .init(.view, group: 4), requires: .photos,
                 keys: [Shortcut(.position(.i), [.command, .control])]),
         Command("info.fieldNext", "Next EXIF Value", menu: .init(.view, group: 4), modes: loupe, requires: .photos, repeats: true,
@@ -256,7 +256,7 @@ public struct CommandTable: Sendable {
         Command("cull.rate.up", "Increase Rating", menu: .init(.photo, group: 1), modes: cull, requires: .photos,
                 shiftAdvances: true, keys: [Shortcut(.character("]"))]),
         Command("cull.reject", "Reject", menu: .init(.photo, group: 2), modes: cull, requires: .photos, shiftAdvances: true,
-                keys: [Shortcut(.position(.x))]),
+                symbol: "xmark.circle", keys: [Shortcut(.position(.x))]),
         Command("cull.label.red", "Red Label", menu: .init(.photo, group: 3), modes: cull, requires: .photos, shiftAdvances: true,
                 keys: [Shortcut(.position(.digit6)), Shortcut(.position(.keypad6))]),
         Command("cull.label.yellow", "Yellow Label", menu: .init(.photo, group: 3), modes: cull, requires: .photos, shiftAdvances: true,
@@ -268,7 +268,7 @@ public struct CommandTable: Sendable {
         Command("cull.label.purple", "Purple Label", menu: .init(.photo, group: 3), modes: cull, requires: .photos),
         // Auto-advance (V-11): every rating, label and reject moves on; `⇧` then applies without moving.
         Command("cull.autoAdvance", "Auto-Advance After Rating", menu: .init(.photo, group: 5), modes: cull, kind: .toggle,
-                keys: [Shortcut(.position(.a))]),
+                symbol: "forward.end.fill", keys: [Shortcut(.position(.a))]),
 
         // Reveal (M-21): one Finder window with the selection (or the active photo) highlighted.
         Command("file.reveal", "Reveal in Finder", menu: .init(.photo, group: 4), requires: .photos,
