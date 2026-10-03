@@ -67,7 +67,7 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
-        panel.prompt = "Export Here"
+        panel.prompt = "Export"
         panel.message = sources.count == 1 ? "Choose a folder for the exported photo" : "Choose a folder for \(sources.count.formatted()) exported photos"
         if let lastFolder { panel.directoryURL = URL(fileURLWithPath: lastFolder, isDirectory: true) }
         panel.delegate = self

@@ -61,7 +61,7 @@ Oxys can save your photos as JPEG or HEIC files. You can share them without a RA
 1. Select the photos, or leave nothing selected to use the active photo.
 2. Press `⇧⌘E`. Choose a folder. Make a new one if you need to. Do not choose a folder that holds the photos: Oxys refuses it, because it writes only sidecars into those folders.
 3. Choose the format in the `Format` menu below the folder list. Oxys remembers your choice.
-4. Press `Export Here`. Oxys works in the background. A box at the bottom left shows progress. You can keep working. Press `Cancel` or `⌘.` to stop. The file in progress is finished, the next one is not started, and no partial file stays.
+4. Press `Export`. Oxys works in the background. A box at the bottom left shows progress. You can keep working. Press `Cancel` or `⌘.` to stop. The file in progress is finished, the next one is not started, and no partial file stays.
 5. When it ends, the box shows a summary. It lists the photos that have no embedded JPEG, the RAW files that Oxys could not develop, the files that are not RAW (JPEG and HEIC are skipped), the files that failed, and the files that got a new name. Press `Show in Finder` to see the files. Press `Close` or `⌘.` to close the box.
 
 What you get, for all three formats:
