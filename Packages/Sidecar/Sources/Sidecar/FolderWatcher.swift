@@ -7,6 +7,8 @@ public final class FolderWatcher: @unchecked Sendable {
     private let folderPath: String
     private let handler: @Sendable ([String]) -> Void
     private let queue = DispatchQueue(label: "dev.oxys.folder-watcher", qos: .utility)
+    private let queueKey = DispatchSpecificKey<Void>()
+    private let lock = NSLock()
     private var stream: FSEventStreamRef?
 
     /// `latency` is how long FSEvents gathers changes before reporting; the acceptance bound is 1 s.
@@ -19,6 +21,7 @@ public final class FolderWatcher: @unchecked Sendable {
             folderPath = folder.path
         }
         self.handler = handler
+        queue.setSpecific(key: queueKey, value: ())
         var context = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(self).toOpaque(),
                                            retain: nil, release: nil, copyDescription: nil)
         let callback: FSEventStreamCallback = { _, info, count, paths, _, _ in
@@ -30,18 +33,24 @@ public final class FolderWatcher: @unchecked Sendable {
         let flags = UInt32(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagNoDefer | kFSEventStreamCreateFlagUseCFTypes)
         guard let stream = FSEventStreamCreate(nil, callback, &context, [self.folderPath] as CFArray,
                                                FSEventStreamEventId(kFSEventStreamEventIdSinceNow), latency, flags) else { return }
-        self.stream = stream
+        lock.withLock { self.stream = stream }
         FSEventStreamSetDispatchQueue(stream, queue)
         FSEventStreamStart(stream)
     }
 
-    /// Stops the stream. Safe to call twice; `deinit` calls it too.
+    /// Stops the stream and waits for a callback that is running. Safe to call twice; `deinit` calls it too.
+    /// After it returns, no callback touches this object (B-4): the context holds no retain, so this wait
+    /// is what keeps a running callback from using freed memory.
     public func stop() {
-        guard let stream else { return }
-        self.stream = nil
+        guard let stream = lock.withLock({ () -> FSEventStreamRef? in
+            defer { self.stream = nil }
+            return self.stream
+        }) else { return }
         FSEventStreamStop(stream)
         FSEventStreamInvalidate(stream)
         FSEventStreamRelease(stream)
+        // Called from the queue itself (a handler that drops the last reference): waiting would deadlock.
+        if DispatchQueue.getSpecific(key: queueKey) == nil { queue.sync {} }
     }
 
     deinit { stop() }

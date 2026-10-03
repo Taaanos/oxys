@@ -48,6 +48,11 @@ public enum SidecarWriter {
         let token = Perf.begin(.sidecarWrite)
         defer { Perf.end(token) }
         do {
+            // A sidecar that is a link is never replaced or written through (B-1, Q-5): refuse, leave it alone.
+            var linkInfo = stat()
+            if lstat(url.path, &linkInfo) == 0, (linkInfo.st_mode & S_IFMT) == S_IFLNK {
+                return (.refused(url, reason: "Sidecar is a link"), nil)
+            }
             let existing: Data?
             do { existing = try Data(contentsOf: url) } catch CocoaError.fileReadNoSuchFile { existing = nil }
             if let existing {
@@ -99,13 +104,16 @@ public enum SidecarWriter {
     @discardableResult
     public static func removeStaleTemps(in folder: URL, olderThan age: TimeInterval = 60) -> Int {
         let fm = FileManager.default
-        let entries = (try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey],
+        let entries = (try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
                                                    options: [])) ?? []
         var removed = 0
         for url in entries where url.lastPathComponent.hasPrefix(".") && url.lastPathComponent.contains(tempMarker) {
-            let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+            // Regular files only: this is the one delete that runs in a photographer's folder (B-6).
+            let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .isRegularFileKey])
+            guard values?.isRegularFile == true else { continue }
+            let modified = values?.contentModificationDate
             if let modified, Date().timeIntervalSince(modified) < age { continue }
-            if (try? fm.removeItem(at: url)) != nil { removed += 1 }
+            if unlink(url.path) == 0 { removed += 1 }
         }
         return removed
     }

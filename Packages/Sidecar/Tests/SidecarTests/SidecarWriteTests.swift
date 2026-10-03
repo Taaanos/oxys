@@ -193,6 +193,28 @@ private let allFixtures = [
         #expect(FileManager.default.fileExists(atPath: fresh.path))
     }
 
+    @Test func staleTempCleanupLeavesFoldersAlone() throws {
+        let dir = try folder(); defer { try? FileManager.default.removeItem(at: dir) }
+        let tempFolder = dir.appendingPathComponent(".a.xmp\(SidecarWriter.tempMarker)dir")
+        try FileManager.default.createDirectory(at: tempFolder, withIntermediateDirectories: true)
+        let inner = tempFolder.appendingPathComponent("keep.txt")
+        try Data("x".utf8).write(to: inner)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-3600)], ofItemAtPath: tempFolder.path)
+        #expect(SidecarWriter.removeStaleTemps(in: dir) == 0)
+        #expect(FileManager.default.fileExists(atPath: inner.path))
+    }
+
+    @Test func aSidecarThatIsALinkIsRefusedAndLeftAlone() throws {
+        let dir = try folder(); defer { try? FileManager.default.removeItem(at: dir) }
+        let real = dir.appendingPathComponent("real.xmp"), link = dir.appendingPathComponent("a.xmp")
+        try fixture("hand-written/attributes-4star-blue.xmp").write(to: real)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        let outcome = SidecarWriter.write(SidecarEdit(rating: 1, label: .keep), to: SidecarTarget(primary: link))
+        #expect(outcome == .refused(link, reason: "Sidecar is a link"))
+        #expect(try FileManager.default.destinationOfSymbolicLink(atPath: link.path) == real.path)
+        #expect(try Data(contentsOf: real) == fixture("hand-written/attributes-4star-blue.xmp"))
+    }
+
     @Test func killingTheWriterMidWriteLeavesAWholeSidecar() throws {
         let tool = packageRoot.appendingPathComponent(".build/debug/SidecarStress")
         try #require(FileManager.default.isExecutableFile(atPath: tool.path), "build SidecarStress first (swift build)")
