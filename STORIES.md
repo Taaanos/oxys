@@ -5,7 +5,7 @@ Derived from [PRD.md](PRD.md) (Sep 30, 2026). "Oxys" is a working name taken fro
 ## How to use this document
 
 - Stories are listed in the suggested build order. Each one is a thin increment you can run and check before moving on.
-- IDs: `F-` foundation and spikes, `M-` MVP, `V-` v1.0, `P-` performance (Phase 2b, before the v1.0 gate), `B-` / `L-` backlog (v1.x / Later).
+- IDs: `F-` foundation and spikes, `M-` MVP, `V-` v1.0, `P-` performance (Phase 2b, before the v1.0 gate), `D-` design (Phase 2c, Liquid Glass), `B-` / `L-` backlog (v1.x / Later).
 - Open questions are numbered per story, so we can refer to them as `M-08/Q1`. Every question has a *Proposed* default, so an unanswered question never blocks work: we build the default and revisit later. When one is settled, change *Proposed* to **Decided** where it stands.
 - Questions that touch many stories live in [Cross-cutting open questions](#cross-cutting-open-questions); stories link to them as `G-n`.
 - Status lives in the [Story index](#story-index): `todo`, `in progress`, `done`, `parked`.
@@ -114,6 +114,19 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | P-09 | Zero idle CPU in Loupe | P-01 | done (criterion met in Grid, 0.006%; in Loupe 0.014% against 0.01%: the rest is AppKit's own wake-ups; see the story) |
 | P-10 | RAW develop and extraction on real files | P-01 | todo |
 | P-11 | Performance gate | P-02 to P-10 | todo |
+| **Phase 2c** | **Design (Liquid Glass)** (see G-14) | | |
+| D-01 | Contrast probe for labels on the photo | M-18, V-05, P-01 | todo |
+| D-02 | Glass for the badges on the photo | D-01 | todo |
+| D-03 | Glass for the floating panels | D-02 | todo |
+| D-04 | The write banner as a floating glass notice | D-03 | todo |
+| D-05 | The toolbar on macOS 27 | M-13 | todo |
+| D-06 | The filter bar under the toolbar | D-05, M-20 | todo |
+| D-07 | Glass for the EXIF panel and the histogram | D-02 | todo |
+| D-08 | Corners concentric with the window | D-02, V-08 | todo |
+| D-09 | The app icon in every appearance | none | todo |
+| D-10 | Symbols in the menus | M-05, M-23 | todo |
+| D-11 | Spike: the info strip as a floating glass bar | D-01, D-02 | todo |
+| D-12 | Spike: a glass HUD for commands with no visible result | D-02 | todo |
 
 ### Dependency map (foundations and MVP)
 
@@ -173,6 +186,7 @@ These are questions, plus gaps I found in the PRD while splitting it, that affec
 | G-11 | Do the performance targets apply on SD cards and network shares too? | **Decided:** the targets apply on the internal SSD only. No SD card or SMB share is available. The request tokens that prevent stale frames are the only protection on slow media; P-01 checks them with a delay injected into the loader, not on real media. | M-26, P-01 |
 | G-12 | Auto-repeat on cull keys: holding `⇧3` would rate and advance through many frames. | Cull keys and overlay toggles ignore auto-repeat; only navigation, zoom and pan repeat. | F-05, M-06 |
 | G-13 | `Esc` means both "return focus to the image" (from a text field) and "go to Grid". | First `Esc` leaves the text field or closes the popover or cheat sheet; the next `Esc` goes to Grid. | M-05, M-13 |
+| G-14 | Does v1.0 (V-18) wait for the design phase (Phase 2c)? | D-01 to D-10 come before V-18, because the Apple Design Award entry is the v1.0 app. The spikes D-11 and D-12 do not block v1.0: if one is not done, it moves to v1.x. | D-01 to D-12, V-18 |
 
 ---
 
@@ -2193,6 +2207,329 @@ The code changes the M-26 diagnosis in two places, found while planning this pha
 
 **Acceptance criteria**
 - [ ] Every PRD performance target passes, or has a recorded decision from you.
+
+---
+
+## Phase 2c: Design (Liquid Glass)
+
+**Goal:** the app looks and feels made for macOS 27, so that it can be a candidate for an Apple Design Award (Visuals and Graphics, Interaction, Inclusivity). Liquid Glass is the main tool. The photo stays the most important thing on the screen. When v1.0 waits for this phase is G-14.
+
+**The rule for glass.** Glass is for small controls and labels that float above the content. It is not for the content, and not for full-width panels of data. Glass blurs and bends what is under it. Use it only where the user does not need to see that part of the photo.
+
+**Already on glass before this phase:** the rating corner (`⌥I`, M-06 "Changed later") and the truth badge when the info strip is off (V-05, commit `f81ab77`). Both use `.regular.tint(.black.opacity(0.35))` in a capsule, with a dark color scheme. No story measured their contrast, so D-01 measures them too.
+
+**Not on glass, and why.** Do not propose these again without new facts.
+- The canvas, and the grid cells with their badge strip. They are content. The canvas stays neutral gray (PRD). The grid has up to 10,000 cells, drawn as layers.
+- `backgroundExtensionEffect` next to the inspector. It puts a blurred copy of the photo beside the canvas. Then the surround is not neutral, and it can bias exposure judgments.
+- The empty state. Only the window background is behind it, so glass shows a flat gray shape.
+- Glass buttons (`.buttonStyle(.glass)`) inside a glass panel. Apple advises against glass on glass.
+- The toolbar, the inspector, popovers, menus and the Settings window. The system draws them on glass already. D-05 checks only the toolbar groups.
+
+**Definition of done for a design story** (in addition to the general one):
+- Contrast: text on the photo keeps 4.5:1, and marks keep 3:1, on every D-01 test frame. The D-01 report shows the values.
+- Accessibility settings: check with Reduce Transparency, Increase Contrast and Reduce Motion on. With Reduce Motion on, no glass morph or materialize transition runs.
+- Light and dark system appearance. Labels on the photo stay dark in both, because they sit on the neutral canvas. Window chrome follows the system.
+- Speed: the window server composites glass, outside our process, so our signposts do not see its cost. Run `make perf-gate` before and after. No scenario can be worse than the run-to-run noise. Record `scrub`, `zoom` and `nav-held` once in Instruments (Animation Hitches). Idle CPU stays at the P-09 value.
+- Everything on the cull loop is a cut, not an animation: cull keys, `←`/`→` and the overlay toggles (`F`, `H`, `S`, `I`). This is the PRD's "Instant means instant" and V-05.
+- Screenshots before and after in `docs/design/`, on the D-01 test frames only, never on camera files.
+
+**Order:** D-01 first, because each later story needs its measurement. D-11 and D-12 are spikes: each ends with a decision, and the code can be removed.
+
+### D-01 · Contrast probe for labels on the photo
+
+**Depends on:** M-18, V-05, P-01
+
+> As the team, we want a measured contrast value for every label on the photo, so that we can change its material and know that it is still readable.
+
+**Why:** M-18 computed 6.7:1 for a black plate at 70%. That calculation works only for a plate with a fixed opacity. Glass changes with the pixels under it, and it adapts its look to bright and dark content. So we must measure it on the screen.
+
+**Scope**
+- Test frames, made by a script into `TestData/design/` (git-ignored, no camera files): pure white, pure black, 18% gray, saturated yellow (the star color), saturated red, a fine black-and-white checker (the worst case for blur), and a frame that is half white and half black, with the edge under the corner labels.
+- A bench scenario `contrast` in `PerfBench`. It opens each frame in Loupe and in Compare, turns on each label (info strip, rating corner, truth badge, auto-advance, peaking, clipping, EXIF panel, histogram, pane titles) and captures the window.
+- A bench flag hides the text and the symbols of the labels, but keeps their background. Then the capture shows only the plate or the glass. The scenario writes the frame of each label, in window points, to a JSON file.
+- `scripts/contrast-report.py`. For each label, it takes the brightest 1% of the plate pixels (the worst case for white text). It computes the contrast ratio against white, `Plate.secondary` and the mark colors (yellow star, `Plate.warning`, `Plate.reject`, the accent color). It writes `docs/design/contrast.md`: label, material, frame, worst plate luminance, ratio for each foreground, pass or fail.
+- `make contrast` runs it. Run it with Reduce Transparency and Increase Contrast, each on and off.
+
+**Acceptance criteria**
+- [ ] `make contrast` writes the report for every label on every test frame, in Loupe and in Compare.
+- [ ] The report has today's values: the black plates (about 6.7:1 is expected for secondary text over white) and the two glass capsules that already shipped (rating corner, truth badge).
+- [ ] A label that fails shows as a fail, and `make contrast` exits 1.
+- [ ] `scripts/contrast-report.py --selftest` checks the WCAG luminance math against known pairs (white on black is 21:1, `#767676` on white is 4.54:1).
+- [ ] The probe writes nothing into the photo folders. The captures and the JSON go to the bench output folder.
+
+**Open questions**
+1. How do we capture the window? The window server composites the glass and the Metal canvas, so `NSView.cacheDisplay` does not show them. *Proposed:* `screencapture -l <window id> -o` from the script, with the window ID from the bench log. Terminal needs the Screen Recording permission once, as `make ui-walk` needs Accessibility.
+2. Which part of the plate counts? *Proposed:* the brightest 1% of the pixels inside the shape, inset by 2 pt. The glass rim is bright on purpose, and no text sits on it.
+3. Is the probe also a gate for later stories? *Proposed:* yes. Each design story runs `make contrast` and puts the changed rows in its result.
+
+### D-02 · Glass for the badges on the photo
+
+**Depends on:** D-01
+
+> As a photographer, I want all small labels on the photo to look like one family, so that the screen looks calm and finished.
+
+**Why:** two labels are glass now, and the others are black plates. The truth badge (glass) sits directly above the Auto-advance plate (black), so one stack has two materials. That looks like a mistake.
+
+**Scope**
+- One modifier, `glassPlate(in:)`, in `InfoPlate.swift`. It sets the glass, the tint, the white foreground and the dark color scheme in one place. `RatingCorner` and `TruthBadgeView` use it instead of their own copies.
+- Move to `glassPlate`: `AutoAdvanceBadge` (Loupe, Compare and Grid), `PeakingBadgeView`, `ClippingReadout` and Compare's `PaneTitle`.
+- Shapes: a capsule for a label of one line. A rounded rectangle for the clipping readout (two or three lines).
+- A `GlassEffectContainer` around each group of labels that sit near each other: bottom right (truth badge, auto-advance) and bottom left (rating corner, peaking, clipping). Then the system draws each group in one pass, and blends shapes that touch.
+- A label appears and disappears with a cut (`.glassEffectTransition(.identity)`), because its toggle is on the cull loop.
+- `infoPlate()` stays for the info strip, the EXIF panel, the histogram, the extract panel and the grid badge strip, until their stories.
+
+**Acceptance criteria**
+- [ ] Every label that moved passes D-01 on every test frame, with the accessibility settings on and off.
+- [ ] The tint has one value in the code (`glassPlate`), and every glass label uses it.
+- [ ] In Loupe, Compare and Grid, the auto-advance mark and the truth badge have the same material.
+- [ ] `F`, `S` and `⇧I` show and hide their labels in the next frame, with no materialize animation. `peaking-still`, `clipping-still` and `overlays` are not slower than before.
+- [ ] With every label on: no new hitches in `scrub`, `zoom` and `nav-held`.
+- [ ] The VoiceOver labels do not change.
+
+**Open questions**
+1. Tint strength? *Proposed:* keep black at 35% if D-01 passes. If not, use the smallest value that passes on the white frame, the same for every label.
+2. `.regular` or `.clear` glass? Apple suggests `.clear` over media, with a dimming layer under it. *Proposed:* `.regular`, because it gives more contrast with no extra layer. Measure `.clear` once with D-01 and record the values.
+3. Peaking and clipping stack at the bottom left with fixed offsets (`padding(.bottom, 34)` and `74`), and the rating corner uses the same corner when the strip is off. *Proposed:* one `VStack` in the container, with no fixed offsets. That also keeps the stack correct when the strip height changes.
+4. The Compare pane title is the only label at the top. Glass or plate? *Proposed:* glass, so that all labels are one family.
+
+### D-03 · Glass for the floating panels
+
+**Depends on:** D-02
+
+> As a photographer, I want the cheat sheet, the editor chooser and the extract panel to look like the system's own popovers.
+
+**Why:** macOS 26 and later draw popovers, menus and sheets on glass. Our three panels use `.regularMaterial` or the black plate, with a custom shadow. Next to the `⌥H` popover, which the system draws, they look one release old.
+
+**Scope**
+- `CheatSheetView` and `EditorChooserView`: `.glassEffect(.regular, in: .rect(cornerRadius: 12))` instead of `.regularMaterial`. Remove `.shadow(radius: 24)`, because glass draws its own edge and depth. They follow the system appearance, as window chrome does.
+- Keep the dim backdrop (black at 35%). It shows that the panel is modal, and a click outside still closes it.
+- `ExtractPlate`: `glassPlate` in a rounded rectangle. It stays dark, because it sits on the canvas. Its Cancel and Done buttons keep their standard style (no glass on glass).
+- The panels appear and disappear with `.glassEffectTransition(.materialize)`. With Reduce Motion on, they use a cut. These panels are not on the cull loop.
+- The highlighted row in the chooser keeps its accent background.
+
+**Acceptance criteria**
+- [ ] `?`, `⌥⌘E` and `⇧⌘E` open the panels, and their keys work as before (the `CommandCenter` routing does not change).
+- [ ] The cheat sheet and chooser text keeps 4.5:1 in light and dark appearance: over Grid thumbnails, and over the white and checker frames in Loupe.
+- [ ] With Reduce Motion on, the panels appear and disappear with a cut.
+- [ ] With Reduce Transparency on, the panels are opaque (the system does this; check it).
+- [ ] VoiceOver: the panels are still modal containers with the same labels.
+
+**Open questions**
+1. Keep the dim backdrop? Apple's popovers do not dim. *Proposed:* yes. These panels take all the keys, so the screen must show that the photo is not active.
+2. Should the extract panel follow the system appearance, as chrome does? *Proposed:* no. It sits on the canvas, with the other labels.
+
+### D-04 · The write banner as a floating glass notice
+
+**Depends on:** D-03
+
+> As a photographer, I want a write problem to show as a clear notice below the toolbar, so that I see it at once and it does not look like a broken toolbar.
+
+**Why:** the banner is a full-width strip of material, with a line under it, directly below the toolbar. In macOS 26 and later the toolbar floats. A solid strip under it is the old design, and it looks like a part of the toolbar.
+
+**Scope**
+- `WriteBanner` (`FolderView.swift`) becomes a glass panel: inset from the window edges, centered at the top, below the toolbar. When `⇥` hides the toolbar, it sits at the top edge with the same inset. Maximum width about 640 pt. The message wraps to two lines.
+- The warning triangle uses multicolor rendering (yellow with a black mark), so it is not color alone. The check mark for a saved copy stays.
+- Retry, Save Decisions To… and Dismiss are standard buttons inside the panel.
+- It never takes focus and never blocks a key (M-11).
+- It appears with materialize, and with a cut when Reduce Motion is on.
+
+**Acceptance criteria**
+- [ ] Each case (read-only folder, write failed, saved copy) shows the new panel with the correct buttons.
+- [ ] The panel never covers the toolbar or the subtitle (the photo count).
+- [ ] With the chrome hidden (`⇥`), the panel sits at the top edge with the same inset.
+- [ ] VoiceOver announces the message as before.
+- [ ] The text keeps 4.5:1 in light and dark appearance, over Grid thumbnails and over the white frame in Loupe.
+
+**Open questions**
+1. Should a "saved copy" notice (good news) close by itself after some seconds? *Proposed:* no. M-11 decided that the banner stays until Dismiss. This story changes only how it looks.
+
+### D-05 · The toolbar on macOS 27
+
+**Depends on:** M-13
+
+> As a photographer, I want each group in the toolbar to be one idea, so that I understand it at a glance.
+
+**Why:** macOS 26 and later put adjacent toolbar items on one shared glass shape. Unrelated items on one shape look like one control. The filter and inspector buttons also show their state only with a filled symbol and a VoiceOver value.
+
+**Scope**
+- Look at the toolbar in the live app (light, dark, full screen, `⇥`), and record what the system groups.
+- Use `ToolbarSpacer` to separate unrelated items: the mode picker; the filter-bar toggle; the inspector toggle at the trailing edge, where Mac apps put it.
+- The filter-bar and inspector buttons become `Toggle`s with the button style, so the system draws the on state on the glass. They still run the command through `model.commands.perform`, so the menus and the keys do not change.
+- Check `WindowToolbarCollapser` and `toolbarVisibility` with the glass toolbar: no flash and no gap when `⇥` hides it.
+- The title and subtitle stay: the folder name and the count (PRD).
+
+**Acceptance criteria**
+- [ ] Each glass group holds one idea: mode, filter, inspector.
+- [ ] The filter-bar and inspector toggles show the on state the system way, and VoiceOver reads it.
+- [ ] Toolbar customization (Customize Toolbar…) still works, and the default set does not change.
+- [ ] `⇥` hides and shows the toolbar with no gap or flash, in a window and in full screen.
+
+**Open questions**
+1. Put the inspector toggle in the inspector's own toolbar section, as some system apps do? *Proposed:* no. It must work while the inspector is closed, so it stays in the window toolbar, at the trailing edge.
+2. Show a count on the filter toggle when the filter narrows? *Proposed:* no. The subtitle already says "312 of 1,204 shown", and the filled symbol shows that a filter is on.
+
+### D-06 · The filter bar under the toolbar
+
+**Depends on:** D-05, M-20
+
+> As a photographer, I want the filter bar to be a part of the toolbar, so that Grid scrolls under it, as Finder does.
+
+**Why:** the bar paints `.background(.bar)` and a divider: a solid strip under a floating glass toolbar. The macOS 26 way is a bar that shares the toolbar's scroll edge effect. Content scrolls under it and becomes soft at the edge.
+
+**Scope**
+- Spike first (about an hour): `.safeAreaBar(edge: .top)` with the bar, and no background or divider. Check that the scroll edge effect reaches Grid, which is an AppKit `NSScrollView` inside an `NSViewRepresentable`. If it does not, try the AppKit way: an `NSTitlebarAccessoryViewController` with `preferredScrollEdgeEffectStyle` (macOS 26.1).
+- Loupe and Compare: the photo must not go under the bar. Today the bar is layout (the `VStack` in `FolderView`), so the canvas becomes smaller and Fit uses the area under the bar. Keep that, as V-20 does for the film strip.
+- The dim when the filter is off (opacity 0.6) stays.
+- `⌘F` into the search field and `Esc` back to the image do not change.
+
+**Acceptance criteria**
+- [ ] In Grid, the thumbnails scroll under the bar with a soft edge, in light and dark appearance.
+- [ ] In Loupe and Compare at Fit, no pixel of the photo is under the bar.
+- [ ] The search field, the toggles and the pickers keep their keyboard and VoiceOver behavior (M-20).
+- [ ] `\` and `⇥` still hide and show the bar. With the chrome hidden, an open bar still keeps the titlebar strip (the `FolderView` comment).
+- [ ] The `grid` scenario is not slower.
+
+**Open questions**
+1. What if neither way reaches the AppKit grid? *Proposed:* keep today's bar, but remove the divider and use the window background, so that the bar and the toolbar look like one surface. Record the result.
+2. Soft or hard edge? *Proposed:* the system's automatic style.
+
+### D-07 · Glass for the EXIF panel and the histogram
+
+**Depends on:** D-02
+
+> As a photographer, I want the EXIF panel and the histogram to match the other labels, with no loss in how accurately I read them.
+
+**Why:** after D-02, these two and the info strip are the last black plates on the photo. They are larger and they hold data. The histogram is an instrument: its gray fill (white at 35%) is drawn relative to the plate. If the plate changes with the photo, the same data can look different.
+
+**Scope**
+- The EXIF panel (`ExifPanel` in `LoupeScreen.swift`): `glassPlate` in a rounded rectangle. The focused row keeps its accent highlight.
+- The histogram in the Loupe corner (`HistogramView`; the inspector copy does not change): `glassPlate` in a rounded rectangle.
+- Measure each one with D-01 and decide each one alone. If one fails, it keeps `infoPlate()`, and the story records the values.
+
+**Acceptance criteria**
+- [ ] D-01 passes for the EXIF text and for the histogram text (clipped percents, source).
+- [ ] The histogram fill and the three channel lines have 3:1 against the brightest plate pixel on the white, black and checker frames.
+- [ ] The focused EXIF row is still clear (accent at 60%), and `⌘C` still copies it.
+- [ ] The corner histogram updates with no new hitches in `scrub`.
+
+**Open questions**
+1. Is a histogram on glass a good idea at all? *Proposed:* try it. Keep the plate if the fill does not get 3:1 on the checker frame.
+2. The same tint as the badges, or a darker one for these larger panels? *Proposed:* the same, unless D-01 fails. A second tint is a second rule to remember.
+
+### D-08 · Corners concentric with the window
+
+**Depends on:** D-02, V-08
+
+> As a photographer, I want shapes near the window corners to follow the window's curve, so that the window looks made as one piece.
+
+**Why:** in macOS 26 and later, windows have larger corner radii. A shape with a small fixed radius near a large window corner looks wrong there. `ConcentricRectangle` and `.rect(corners: .concentric)` get the radius from the container: the container's radius less the inset.
+
+**Scope**
+- Compare panes: the clip shape and the active ring (today `RoundedRectangle(cornerRadius: 4)`, 6 pt from the window edge). The outer corners are concentric with the window. The inner corners, between the panes, stay small.
+- The glass labels in the window corners (D-02): rounded rectangles become concentric. Capsules stay capsules.
+- In full screen the window corners are square. Set a `minimum`, so that the shapes do not become sharp.
+
+**Acceptance criteria**
+- [ ] In a window, the outer corners of the Compare panes and the ring follow the window curve, with the same gap all around.
+- [ ] In full screen, the corners use the minimum radius.
+- [ ] With the inspector open, a pane corner next to the inspector is not at a window corner, and does not use the window radius.
+- [ ] Screenshots before and after in `docs/design/`.
+
+**Open questions**
+1. Does `ConcentricRectangle` find the window's corner on macOS 27 with no help? *Proposed:* check this first. If it does not, set `.containerShape` on the root view with a radius measured from a screenshot, and record it. I know of no public API for the window's corner radius.
+
+### D-09 · The app icon in every appearance
+
+**Depends on:** none
+
+> As a Mac user who chooses Dark, Clear or Tinted icons, I want the Oxys icon to look designed for my choice.
+
+**Why:** the icon is one flat bird layer on black (`AppIcon.icon`, made by `scripts/export-app-icon.py`). The system puts glass on that one layer, so the eye, the beak and the feather marks get no depth of their own. Icon Composer uses separate layers for depth and highlights, and it can hold a variant for each appearance. The icon is the first thing a judge sees.
+
+**Scope**
+- `export-app-icon.py` writes several layers from the SVG parts in `make-icon-moods.py`: body, feather marks, eye (with its highlight), beak. Each layer has its own glass setting.
+- Look at the icon in Default, Dark, Clear (light and dark) and Tinted (System Settings > Appearance > Icon and widget style), in the Dock, in Finder and in Spotlight. Add a variant for an appearance only where the default does not work.
+- `scripts/icon-size-sheet.py` makes a sheet at 16 to 128 px for each appearance.
+
+**Acceptance criteria**
+- [ ] `make build` builds the icon with no asset catalog warning.
+- [ ] The eye stays the focus at 16 px and 32 px in every appearance.
+- [ ] In Clear and Tinted, the bird shape is clear, and the black fill does not become a gray blob.
+- [ ] `docs/design/icon.md` holds the sheets and the choices.
+
+**Open questions**
+1. Who decides the look? *Proposed:* I export the layers and the sheets, and you judge them by eye. Icon Composer shows each appearance before a build.
+2. How many layers? *Proposed:* four (body, feather marks, eye, beak). More layers make the 16 px icon busy.
+
+### D-10 · Symbols in the menus
+
+**Depends on:** M-05, M-23
+
+> As a photographer, I want the menu items I use most to show the same symbol as the screen, so that I learn the app faster.
+
+**Why:** this is macOS 27 design, not glass. macOS 26 and later show symbols next to many standard menu items. Our own menus (Photo, Filter and our View items) show none, so they look less finished next to the system items. The command table is the one source for the menus, the keys and the cheat sheet, so one field can give a command its symbol everywhere.
+
+**Scope**
+- An optional `symbol` field in the command table (`Commands`). `TableItems` uses `Button(title, systemImage:)` when it is set.
+- Use the symbol that the screen already shows: `xmark.circle` for reject, `scope` for peaking, `sidebar.trailing` for the inspector, `line.3.horizontal.decrease.circle` for the filter bar, and so on. A command with no clear symbol gets none.
+- The toolbar items read the same field, so each symbol is defined once.
+
+**Acceptance criteria**
+- [ ] Every command with a symbol shows it in its menu. The others show none. No item loses its key equivalent.
+- [ ] A unit test checks that every symbol name in the table exists (`NSImage(systemSymbolName:accessibilityDescription:)` is not nil).
+- [ ] The cheat sheet does not change (text only).
+- [ ] VoiceOver reads the menu items as before.
+
+**Open questions**
+1. Which items get a symbol? *Proposed:* only items whose symbol already shows on the screen or in the toolbar. A symbol on every row is noise.
+2. The five rating items ("1 Star" to "5 Stars") would all show the same star. *Proposed:* no symbol on them; reject, the labels and the overlays get one. Check how the system menus look next to them before the build.
+
+### D-11 · Spike: the info strip as a floating glass bar
+
+**Depends on:** D-01, D-02
+
+> As a photographer, I want to know if a floating glass strip shows more of the photo and still reads well, before we change the label I see most.
+
+**Why:** the strip is a full-width black band over the bottom of the photo. Today I think that it should stay a plate: it holds dense data, and a full-width sheet of glass is a pattern Apple moved away from. But a floating, inset bar, like QuickTime Player's controls, shows more of the photo's edges and matches the other labels. It is worth a try, with a clear gate.
+
+**Scope**
+- Behind a debug default (`OxysInfoStripStyle=glass`): the strip is a glass bar, inset 12 pt from the window edges, with the same height and content as today. In Compare, one bar for each pane.
+- Try a morph with `glassEffectID` when `I` turns the strip off and the rating corner takes its place. `I` is not a cull key, so a short morph can be acceptable. With Reduce Motion on, it is a cut.
+- Measure with D-01 and the perf gate. Use it for one real culling session.
+
+**Acceptance criteria** (the gate)
+- [ ] D-01 passes for all text in the strip on every frame, including the warning tint and Compare's EXIF differences (bold, underlined, warning tint).
+- [ ] `cull` (`cull-feedback` p95) and `overlays` are not worse. No new hitches in `scrub`.
+- [ ] You compare it with the plate, side by side, on 20 real frames, bright and dark.
+- [ ] The story records the decision: keep the plate and remove the flag, or make glass the default and remove the flag.
+
+**Open questions**
+1. Width: the full width less the inset, or only as wide as the content? *Proposed:* the full width less the inset, so that the truth badge text keeps its place at the right end.
+2. Morph on `I`? *Proposed:* try it. Remove it if the change starts later than the next frame.
+
+### D-12 · Spike: a glass HUD for commands with no visible result
+
+**Depends on:** D-02
+
+> As a photographer with the chrome and the strip hidden, I want a short sign that a key worked when nothing else on the screen changes.
+
+**Why:** with the chrome hidden, some commands change nothing on the screen: `⌘C` on an EXIF row, `⌘L` (filter on or off) with the filter bar and the subtitle hidden, a zoom step with the strip off. VoiceOver users already hear an announcement for most of them. A short HUD shows the same phrase to every user. That is Inclusivity: the same feedback for all.
+
+**Scope**
+- One HUD view: a glass capsule at the top center of the canvas, with the announcement text. It shows for about 1.2 s, then fades out. It appears with a cut, never takes focus and never blocks a key. A new HUD replaces the old one at once.
+- It uses the existing announcement phrases (`AppModel.announce`, `CompareController.announce`), only for a fixed list of commands with no visible result. Never for cull keys or `←`/`→`, because their result is already on the screen.
+
+**Acceptance criteria** (the gate)
+- [ ] Each command on the list shows the HUD. Cull keys and navigation never show it.
+- [ ] With Reduce Motion on, there is no fade: the HUD disappears with a cut.
+- [ ] D-01 passes for the HUD text.
+- [ ] After the HUD is gone, idle CPU is at the P-09 value again (the fade timer stops).
+- [ ] You use it for one session, and the story records the decision: keep it or remove it.
+
+**Open questions**
+1. Do we want it at all? The PRD says "Feedback without interruption", and a HUD that shows too often is an interruption. *Proposed:* try it for one session, then decide.
+2. Which commands? *Proposed:* `⌘C` copy, filter on, off and clear, a sort change, zoom steps when the strip is off, and Compare's linked zoom (`⇧Z`).
+3. A setting to turn it off? *Proposed:* not at first. Add one only if the spike keeps the HUD.
 
 ---
 
