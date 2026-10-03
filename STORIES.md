@@ -121,7 +121,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | D-03 | Glass for the floating panels | D-02 | built, checks open |
 | D-04 | The write banner as a floating glass notice | D-03 | built, not checked on screen |
 | D-05 | The toolbar on macOS 27 | M-13 | built, not checked on screen |
-| D-06 | The filter bar under the toolbar | D-05, M-20 | built, Grid edge not checked |
+| D-06 | The filter bar under the toolbar | D-05, M-20 | built, partly checked |
 | D-07 | Glass for the EXIF panel and the histogram | D-02 | todo |
 | D-08 | Corners concentric with the window | D-02, V-08 | todo |
 | D-09 | The app icon in every appearance | none | todo |
@@ -2505,7 +2505,9 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 - The bar is `.safeAreaBar(edge: .top, spacing: 0)` on the Grid/Loupe/Compare stack in `FolderView`, with no background and no divider in `FilterBar`. The photo area is still inset by the bar, so Fit uses the space under it.
 - Checked on screen: in Loupe at Fit the photo starts right under the bar, with no pixel under it.
 - Side fix: the Grid's right section inset is 18 pt (was 8), so the scroller knob does not sit on the last column.
-- Not checked yet: the soft edge in Grid (light and dark), Compare, VoiceOver and keys in the bar, `\` and `⇥` with the chrome hidden, the `grid` scenario. Q1 (fallback) is open until the Grid edge is seen.
+- Checked on screen: Grid looks right with the bar and the new inset. Q1 (fallback) is not needed.
+- `perf-bench grid` on 24mp-1000: `grid-frame-ms` p50 16.67, p95 16.67, max 34.3 (one frame). No before run was made, so this is not a comparison; the full `perf-gate` is still to run.
+- Not checked yet: Compare, light vs dark edge, VoiceOver and keys in the bar, `\` and `⇥` with the chrome hidden.
 
 ### D-07 · Glass for the EXIF panel and the histogram
 
