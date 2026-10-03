@@ -26,8 +26,7 @@ struct FolderView: View {
             case .photos:
                 let mode = model.commands.mode
                 let loupeActive = mode == .loupe
-                VStack(spacing: 0) {
-                    if model.showFilterBar { FilterBar(model: model) }
+                do {
                     ZStack {
                         LoupeScreen(model: model, active: loupeActive)
                             .opacity(loupeActive ? 1 : 0)
@@ -38,6 +37,9 @@ struct FolderView: View {
                     }
                     // With the chrome hidden the photo reclaims the titlebar strip; an open filter bar keeps it.
                     .ignoresSafeArea(.container, edges: model.chromeHidden && !model.showFilterBar ? .top : [])
+                    .safeAreaBar(edge: .top, spacing: 0) {
+                        if model.showFilterBar { FilterBar(model: model) }
+                    }
                 }
             }
         }

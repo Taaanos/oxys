@@ -84,7 +84,8 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         let layout = NSCollectionViewFlowLayout()
         layout.minimumInteritemSpacing = 6
         layout.minimumLineSpacing = 6
-        layout.sectionInset = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+        // The right side leaves room for the scroller, so its knob does not sit on the last column.
+        layout.sectionInset = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 18)
         layout.itemSize = NSSize(width: size, height: size)
 
         let collection = NSCollectionView()

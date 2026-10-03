@@ -49,8 +49,6 @@ struct FilterBar: View {
         .controlSize(.small)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(.bar)
-        .overlay(alignment: .bottom) { Divider() }
         .opacity(filter.isOn ? 1 : 0.6)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Filter and sort")
