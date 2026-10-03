@@ -120,7 +120,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | D-02 | Glass for the badges on the photo | D-01 | in progress (built; contrast passes in the dark appearance; the perf gate and the accessibility-setting runs are open) |
 | D-03 | Glass for the floating panels | D-02 | built, checks open |
 | D-04 | The write banner as a floating glass notice | D-03 | built, not checked on screen |
-| D-05 | The toolbar on macOS 27 | M-13 | todo |
+| D-05 | The toolbar on macOS 27 | M-13 | built, not checked on screen |
 | D-06 | The filter bar under the toolbar | D-05, M-20 | todo |
 | D-07 | Glass for the EXIF panel and the histogram | D-02 | todo |
 | D-08 | Corners concentric with the window | D-02, V-08 | todo |
@@ -2466,6 +2466,14 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 **Open questions**
 1. Put the inspector toggle in the inspector's own toolbar section, as some system apps do? *Proposed:* no. It must work while the inspector is closed, so it stays in the window toolbar, at the trailing edge.
 2. Show a count on the filter toggle when the filter narrows? *Proposed:* no. The subtitle already says "312 of 1,204 shown", and the filled symbol shows that a filter is on.
+
+**Decisions and checks**
+- Q1 **Decided:** no, as proposed. The inspector toggle stays in the window toolbar, at the trailing edge (`placement: .primaryAction`).
+- Q2 **Decided:** no count, as proposed.
+- Order is now: mode picker, `ToolbarSpacer(.fixed)`, filter toggle, `ToolbarSpacer(.flexible)`, inspector toggle. Each glass group holds one idea. The default set of items does not change.
+- The filter and inspector items are `Toggle`s with `.toggleStyle(.button)`. `isOn` reads `model.showFilterBar` and `model.showInspector`; the setter runs `model.commands.perform`, so the menus and keys are unchanged. The filter symbol still fills when the filter narrows. The manual `accessibilityValue` is removed, because the toggle gives the on/off value itself.
+- `WindowToolbarCollapser` and `toolbarVisibility` are not changed.
+- Checked: `make build` has no warnings. Not checked yet: the groups on screen (light, dark, full screen), the on state, VoiceOver, Customize Toolbar…, and `⇥` with no gap or flash.
 
 ### D-06 · The filter bar under the toolbar
 

@@ -114,19 +114,32 @@ private struct ToolbarItems: CustomizableToolbarContent {
             .accessibilityLabel("View mode")
             .disabled(model.folder.content != .photos)
         }
+        ToolbarSpacer(.fixed)
+        // A Toggle with the button style: the system draws the on state on the glass, so the symbol does not have to.
+        // The command still decides, so the menu item and the key stay the one way in.
         ToolbarItem(id: "filter") {
-            Button("Filter Bar", systemImage: model.folder.filter.isNarrowing
-                   ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle") {
-                model.commands.perform("filter.bar")
-            }
-            .help("Filter bar (\\)")
-            .accessibilityValue(model.showFilterBar ? "Shown" : "Hidden")
-            .disabled(model.folder.content != .photos)
+            Toggle("Filter Bar", systemImage: model.folder.filter.isNarrowing
+                   ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle",
+                   isOn: Binding(
+                    get: { model.showFilterBar },
+                    set: { on in
+                        guard on != model.showFilterBar else { return }
+                        model.commands.perform("filter.bar")
+                    }))
+                .toggleStyle(.button)
+                .help("Filter bar (\\)")
+                .disabled(model.folder.content != .photos)
         }
-        ToolbarItem(id: "inspector") {
-            Button("Inspector", systemImage: "sidebar.trailing") { model.commands.perform("info.inspector") }
+        ToolbarSpacer(.flexible)
+        ToolbarItem(id: "inspector", placement: .primaryAction) {
+            Toggle("Inspector", systemImage: "sidebar.trailing", isOn: Binding(
+                get: { model.showInspector },
+                set: { on in
+                    guard on != model.showInspector else { return }
+                    model.commands.perform("info.inspector")
+                }))
+                .toggleStyle(.button)
                 .help("Inspector (⌥⌘I)")
-                .accessibilityValue(model.showInspector ? "Shown" : "Hidden")
                 .disabled(model.folder.content != .photos)
         }
     }
