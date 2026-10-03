@@ -124,8 +124,14 @@ struct InfoStrip: View {
     /// Changes when a cull key took effect; the rating glyphs bounce.
     var pulse = 0
 
-    /// D-11 spike: `defaults write <bundle id> OxysInfoStripStyle glass` draws the strip as a floating glass bar.
-    static var style: InfoStripStyle { UserDefaults.standard.string(forKey: "OxysInfoStripStyle") == "glass" ? .glass : .plate }
+    /// D-11 spike: `defaults write <bundle id> OxysInfoStripStyle glass` draws the strip as a floating glass bar; `glass-split` as two capsules, the photo's state at the left and the truth badge at the right.
+    static var style: InfoStripStyle {
+        switch UserDefaults.standard.string(forKey: "OxysInfoStripStyle") {
+        case "glass": .glass
+        case "glass-split": .split
+        default: .plate
+        }
+    }
 
     private var exifSpoken: String? {
         exifFields.isEmpty ? nil : exifFields.map { $0.differs ? "\($0.label) \($0.value), differs" : $0.value }.joined(separator: ", ")
@@ -137,42 +143,79 @@ struct InfoStrip: View {
             + (truth.map { ", " + $0.spoken } ?? "")
     }
 
+    @ViewBuilder private func state(_ photo: Photo) -> some View {
+        Text(photo.name).font(.callout.monospaced())
+        if let companion = photo.companion {
+            Text("RAW+JPEG").font(.caption.weight(.semibold)).foregroundStyle(Plate.secondary)
+                .help("\(photo.name) and \(companion.url.lastPathComponent) are one frame; the decision goes to both")
+        }
+        if let decision, !decision.isUndecided { DecisionGlyphs(decision: decision, pulse: pulse) }
+        if let note = photo.sidecar.notes.first {
+            PlateLabel(text: note, systemImage: photo.sidecar.problem == nil ? "info.circle" : "exclamationmark.triangle.fill",
+                       tint: photo.sidecar.problem == nil ? Plate.secondary : Plate.warning)
+                .lineLimit(1)
+                .help(photo.sidecar.notes.joined(separator: "\n"))
+        }
+        if !exifFields.isEmpty { CompareExifLine(fields: exifFields) }
+        if let zoom {
+            Text(zoom.level.isFit ? "Fit \(zoom.percent)%" : zoom.isActualSize ? "1:1" : "\(zoom.percent)%").foregroundStyle(Plate.secondary)
+                .monospacedDigit()
+        }
+    }
+
+    private var uses: [ContrastProbe.Use] {
+        // Compare's EXIF line draws a differing value as text in the warning tint; Loupe uses that tint only for icons.
+        [.text(.white), .text(.secondary), .mark(.star), .mark(.reject), exifFields.isEmpty ? .mark(.warning) : .text(.warning)]
+    }
+
+    private func spoken(_ photo: Photo) -> String {
+        ([photo.name, photo.isPair ? "RAW and JPEG" : nil, decision?.summary].compactMap { $0 } + photo.sidecar.notes).joined(separator: ", ") + (exifSpoken.map { ", " + $0 } ?? "") + zoomSpoken
+    }
+
     var body: some View {
         if let photo {
-            HStack(spacing: 12) {
-                Text(photo.name).font(.callout.monospaced())
-                if let companion = photo.companion {
-                    Text("RAW+JPEG").font(.caption.weight(.semibold)).foregroundStyle(Plate.secondary)
-                        .help("\(photo.name) and \(companion.url.lastPathComponent) are one frame; the decision goes to both")
+            if Self.style == .split {
+                // The state capsule keeps the leading edge and the truth capsule the trailing edge, so only the inner edges move while `→` is held.
+                GlassEffectContainer {
+                    HStack(spacing: 12) {
+                        HStack(spacing: 12) { state(photo) }
+                            .probeContent()
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .glassPlate()
+                            .contrastProbe("info-strip", .glass, shape: .capsule, uses: uses)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel(spoken(photo))
+                        Spacer(minLength: 0)
+                        if let truth {
+                            TruthText(badge: truth)
+                                .probeContent()
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .glassPlate()
+                                .contrastProbe("info-strip-truth", .glass, shape: .capsule, uses: [.text(.secondary), .mark(.warning)])
+                                .accessibilityHidden(true)
+                        }
+                    }
                 }
-                if let decision, !decision.isUndecided { DecisionGlyphs(decision: decision, pulse: pulse) }
-                if let note = photo.sidecar.notes.first {
-                    PlateLabel(text: note, systemImage: photo.sidecar.problem == nil ? "info.circle" : "exclamationmark.triangle.fill",
-                               tint: photo.sidecar.problem == nil ? Plate.secondary : Plate.warning)
-                        .lineLimit(1)
-                        .help(photo.sidecar.notes.joined(separator: "\n"))
+                .padding(12)
+            } else {
+                HStack(spacing: 12) {
+                    state(photo)
+                    Spacer()
+                    if let truth { TruthText(badge: truth) }
                 }
-                if !exifFields.isEmpty { CompareExifLine(fields: exifFields) }
-                if let zoom {
-                    Text(zoom.level.isFit ? "Fit \(zoom.percent)%" : zoom.isActualSize ? "1:1" : "\(zoom.percent)%").foregroundStyle(Plate.secondary)
-                }
-                Spacer()
-                if let truth { TruthText(badge: truth) }
+                .probeContent()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity)
+                .modifier(StripBacking(style: Self.style, uses: uses))
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(spoken(photo))
             }
-            .probeContent()
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity)
-            .modifier(StripBacking(style: Self.style, uses: [.text(.white), .text(.secondary), .mark(.star), .mark(.reject),
-                                                           // Compare's EXIF line draws a differing value as text in the warning tint; Loupe uses that tint only for icons.
-                                                           exifFields.isEmpty ? .mark(.warning) : .text(.warning)]))
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(([photo.name, photo.isPair ? "RAW and JPEG" : nil, decision?.summary].compactMap { $0 } + photo.sidecar.notes).joined(separator: ", ") + (exifSpoken.map { ", " + $0 } ?? "") + zoomSpoken)
         }
     }
 }
 
-enum InfoStripStyle { case plate, glass }
+enum InfoStripStyle { case plate, glass, split }
 
 /// The strip's backing. The plate is a full-width black band; the glass bar floats 12 pt in from the window edges (D-11).
 private struct StripBacking: ViewModifier {
@@ -187,7 +230,7 @@ private struct StripBacking: ViewModifier {
                 .contrastProbe("info-strip", .plate, shape: .rect, uses: uses)
                 .foregroundStyle(.white)
                 .environment(\.colorScheme, .dark)
-        case .glass:
+        case .glass, .split:
             content
                 .glassPlate(in: .rect(cornerRadius: 12))
                 .contrastProbe("info-strip", .glass, shape: .rounded(12), uses: uses)

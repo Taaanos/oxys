@@ -2651,6 +2651,7 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 
 **Built so far**
 - `defaults write dev.oxys.Oxys OxysInfoStripStyle glass` makes `InfoStrip` a glass bar (`glassPlate`, 12 pt corner radius, 12 pt inset on all three sides). Same height and content; Compare uses the same view, so each pane has its own bar. Default is still the plate. Open question 1: as proposed (full width less the inset). The D-01 probe name `info-strip` is kept, with the `.glass` material.
+- `OxysInfoStripStyle=glass-split` (tried after the first look at the full-width bar): two capsules in one `GlassEffectContainer`, the state (name, pair, decision, note, zoom) at the leading edge and the truth badge at the trailing edge, so only the inner edges move on `→`. Probes: `info-strip` and `info-strip-truth`. Compare's EXIF line sits in the left capsule and may need to truncate in a narrow pane; not checked.
 - Not done: the `glassEffectID` morph on `I` (open question 2), the D-01 run, `cull` and `overlays` perf gates, the 20-frame side-by-side and the real session. The decision (keep the plate or make glass the default) is not made.
 
 **Open questions**
