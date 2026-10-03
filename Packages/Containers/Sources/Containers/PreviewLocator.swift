@@ -9,7 +9,7 @@ public enum PreviewLocator {
     }
 
     public static func locate(at url: URL) throws -> LocatedPreviews? {
-        locate(in: try Data(contentsOf: url, options: .alwaysMapped))
+        locate(in: try FileBytes.load(url))
     }
 
     /// The JPEG bytes of one located preview.

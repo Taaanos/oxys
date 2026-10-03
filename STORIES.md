@@ -480,7 +480,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - `Library.PreviewInfo` (upright pixel size) is stored on `Photo.preview` through `FolderModel.setPreview`. The window's stand-in (`PreviewStandIn`) loads the first photo's preview off the main thread, shows it or an error tile, and fills `Photo.preview`. M-03 replaces the view.
 - Signposts: `preview-read` around open and `decode` around each decode. Not yet measured in the app.
 - `PreviewCheck <out-dir> <files...>` in `Packages/Imaging` writes upright Loupe and Grid PNGs and prints what was found, for checking by eye.
-- Known limit: files are memory-mapped, so a file truncated by another process (a card pulled mid-read) can fault the process (SIGBUS). A truncated file already on disk is handled.
+- Memory mapping (B-3): `FileBytes.load` (Containers) maps a file only on an internal, non-ejectable local volume. On a card, a USB disk, a network share or an unknown volume it reads the whole file once, so a card pulled mid-read gives an error and not SIGBUS. Cost: one full read of each file from such a volume. ImageIO's own file access (`CGImageSourceCreateWithURL` in the Exif, GPS and sidecar-embedded readers) is not covered. A truncated file already on disk is handled.
 
 
 ### M-03 · Loupe canvas

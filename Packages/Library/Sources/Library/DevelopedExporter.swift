@@ -20,7 +20,7 @@ public enum DevelopedExporter {
                               sidecar: URL? = nil, renderer: DevelopedRenderer,
                               isCancelled: () -> Bool = { false }) throws -> ExportedFile {
         if let known = PhotoFormat(pathExtension: source.pathExtension), !known.isRaw { throw ExportFailure.notRaw }
-        let data = try Data(contentsOf: source, options: .alwaysMapped)
+        let data = try FileBytes.load(source)
         let preview = PreviewLocator.locate(in: data)?.largest
         let minLongEdge = max(512, preview.map { max($0.width, $0.height) } ?? 0)
 

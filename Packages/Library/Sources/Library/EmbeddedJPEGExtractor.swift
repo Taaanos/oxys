@@ -19,7 +19,7 @@ public enum EmbeddedJPEGExtractor {
         let token = Perf.begin(.extractFile)
         defer { Perf.end(token) }
         if let format = PhotoFormat(pathExtension: source.pathExtension), !format.isRaw { throw Failure.notRaw }
-        let data = try Data(contentsOf: source, options: .alwaysMapped)
+        let data = try FileBytes.load(source)
         guard let found = PreviewLocator.locate(in: data), let best = found.largest else { throw Failure.noEmbeddedJPEG }
         var bytes = PreviewLocator.bytes(of: best, in: data)
 
