@@ -136,6 +136,8 @@ struct ExtractPlate: View {
 private struct SummaryView: View {
     let summary: ExportSummary
     let job: ExtractJob
+    /// Height of the lists, so the scroll area is no taller than they are.
+    @State private var listHeight: CGFloat = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -151,15 +153,18 @@ private struct SummaryView: View {
                         list("No embedded JPEG", summary.withoutEmbeddedJPEG, icon: "exclamationmark.triangle.fill")
                         list("Could not be developed", summary.couldNotDevelop.map { "\($0.name): \($0.detail)" }, icon: "xmark.octagon.fill")
                         list("XMP not copied (the packet could not be read)", summary.xmpSkipped, icon: "exclamationmark.triangle.fill")
-                        list("Maker note not copied", summary.makerNoteSkipped, icon: "exclamationmark.triangle.fill")
+                        list("Maker note not copied", summary.makerNoteSkipped, icon: "info.circle", tint: Plate.secondary,
+                             note: "It could not be moved into the new file. Most apps do not read maker notes.")
                         list("File attributes not fully copied", summary.attributeWarnings.map { "\($0.name): \($0.detail)" }, icon: "exclamationmark.triangle.fill")
                         list("Not a RAW file, skipped", summary.notRaw, icon: "minus.circle")
                         list("Failed", summary.failed.map { "\($0.name): \($0.detail)" }, icon: "xmark.octagon.fill")
-                        list("Renamed, the name was taken", summary.renamed.map { "\($0.name) → \($0.detail)" }, icon: "arrow.right.circle")
+                        list("Renamed, the name was taken", summary.renamed.map { "\($0.name) → \($0.detail)" }, icon: "arrow.right.circle", tint: Plate.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { listHeight = $0 }
                 }
-                .frame(maxHeight: 160)
+                // A scroll view takes all the height it may; this one is only as tall as its lists, up to 160 pt.
+                .frame(height: listHeight > 0 ? min(listHeight, 160) : 160)
             }
             HStack {
                 if let folder = summary.destination, summary.written > 0 {
@@ -175,9 +180,11 @@ private struct SummaryView: View {
     /// What the written files carry, in one paragraph.
     private var note: String {
         let format = job.format
-        var text = "\(summary.exifAdded.formatted()) got the RAW's EXIF" + (format.isDeveloped ? " and GPS" : "")
-            + (summary.xmpAdded > 0 ? " and XMP (rating and label)" : "")
-            + ". File dates, permissions and extended attributes were copied."
+        let what = ["EXIF"] + (format.isDeveloped ? ["GPS"] : []) + (summary.xmpAdded > 0 ? ["XMP (rating and label)"] : [])
+        let who = summary.exifAdded == summary.written
+            ? (summary.written == 1 ? "The file got" : "All \(summary.written.formatted()) files got")
+            : "\(summary.exifAdded.formatted()) of \(summary.written.formatted()) files got"
+        var text = "\(who) the RAW's \(what.formatted(.list(type: .and, width: .standard))). File dates, permissions and extended attributes were copied."
         switch format {
         case .embeddedJPEG: text += " The image data is unchanged."
         case .developedJPEG: text += " Developed at the decoder's defaults, as sRGB."
@@ -192,10 +199,11 @@ private struct SummaryView: View {
     }
 
     @ViewBuilder
-    private func list(_ title: String, _ items: [String], icon: String) -> some View {
+    private func list(_ title: String, _ items: [String], icon: String, tint: Color = Plate.warning, note: String? = nil) -> some View {
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
-                PlateLabel(text: "\(title) (\(items.count.formatted()))", systemImage: icon, tint: Plate.warning).font(.callout)
+                PlateLabel(text: "\(title) (\(items.count.formatted()))", systemImage: icon, tint: tint).font(.callout)
+                if let note { Text(note).font(.caption).foregroundStyle(Plate.secondary).fixedSize(horizontal: false, vertical: true) }
                 ForEach(items.prefix(50), id: \.self) { Text($0).font(.caption).lineLimit(1).truncationMode(.middle) }
                 if items.count > 50 { Text("and \((items.count - 50).formatted()) more").font(.caption).foregroundStyle(Plate.secondary) }
             }
