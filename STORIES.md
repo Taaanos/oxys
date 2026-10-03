@@ -119,7 +119,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | D-01 | Contrast probe for labels on the photo | M-18, V-05, P-01 | done (measured in dark appearance only; the Reduce Transparency, Increase Contrast and light runs are open) |
 | D-02 | Glass for the badges on the photo | D-01 | in progress (built; contrast passes in the dark appearance; the perf gate and the accessibility-setting runs are open) |
 | D-03 | Glass for the floating panels | D-02 | built, checks open |
-| D-04 | The write banner as a floating glass notice | D-03 | todo |
+| D-04 | The write banner as a floating glass notice | D-03 | built, not checked on screen |
 | D-05 | The toolbar on macOS 27 | M-13 | todo |
 | D-06 | The filter bar under the toolbar | D-05, M-20 | todo |
 | D-07 | Glass for the EXIF panel and the histogram | D-02 | todo |
@@ -2432,6 +2432,15 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 
 **Open questions**
 1. Should a "saved copy" notice (good news) close by itself after some seconds? *Proposed:* no. M-11 decided that the banner stays until Dismiss. This story changes only how it looks.
+
+**Decisions and checks**
+- Q1 **Decided:** no auto-close, as proposed.
+- `WriteBanner` is a `GlassEffectContainer` with `glassPlate(in: .rect(cornerRadius: 14))`: the same dark glass as the other notices, so the text keeps its contrast over any frame (D-01). Not the system appearance, because it sits on the photo. Max width 640 pt, 12 pt inset from the sides and the top. The overlay sits in the safe area, so it is below the toolbar; with `⇥` the safe area is empty and the inset is the same.
+- Layout: icon, then the message (up to three lines) with the buttons in a row under it, so the message has the full width. Buttons are standard.
+- The warning triangle is palette-rendered: black mark on `Plate.warning` (yellow). The saved-copy check mark stays.
+- Transition: `.materialize`, or `.identity` with Reduce Motion on. `FolderView` animates on `banner != nil` with `.smooth(duration: 0.25)`, or with no animation under Reduce Motion.
+- The VoiceOver label, the announcement and the focus behavior are not changed.
+- Checked: `make build` has no warnings. Not checked yet: the three cases on screen, the position with `⇥`, `make contrast` for the panel, Reduce Motion and VoiceOver.
 
 ### D-05 · The toolbar on macOS 27
 

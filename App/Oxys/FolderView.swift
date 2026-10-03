@@ -64,6 +64,7 @@ struct FolderView: View {
         .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: model.showCheatSheet)
         .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: model.showEditorChooser)
         .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: model.extract.isShowing)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: folder.banner != nil)
         .toolbar(id: "oxys.main") { ToolbarItems(model: model) }
         .toolbarVisibility(model.chromeHidden ? .hidden : .visible, for: .windowToolbar)
         .background(WindowToolbarCollapser(hidden: model.chromeHidden))
@@ -137,24 +138,37 @@ private struct WriteBanner: View {
     let unsaved: Int
     let model: AppModel
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon).accessibilityHidden(true)
-            Text(message).lineLimit(2)
-            Spacer(minLength: 8)
-            if case .writeFailed = banner {
-                Button("Retry") { model.folder.retryUnsaved() }
+        GlassEffectContainer {
+            HStack(alignment: .top, spacing: 10) {
+                icon
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(message)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 8) {
+                        if case .writeFailed = banner {
+                            Button("Retry") { model.folder.retryUnsaved() }
+                        }
+                        if showsSave {
+                            Button("Save Decisions To…") { Task { await model.saveDecisionsElsewhere() } }
+                        }
+                        Button("Dismiss") { model.folder.dismissBanner() }
+                    }
+                }
             }
-            if showsSave {
-                Button("Save Decisions To…") { Task { await model.saveDecisionsElsewhere() } }
-            }
-            Button("Dismiss") { model.folder.dismissBanner() }
+            .font(.callout)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            // Dark glass like the other notices on the photo, so the text keeps its contrast over any frame (D-01).
+            .glassPlate(in: .rect(cornerRadius: 14), transition: reduceMotion ? .identity : .materialize)
         }
-        .font(.callout)
+        .frame(maxWidth: 640)
+        // The overlay sits below the toolbar; with the chrome hidden the safe area is empty and the inset is the same.
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.regularMaterial)
-        .overlay(alignment: .bottom) { Divider() }
+        .padding(.top, 12)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(message)
         .onAppear { announce() }
@@ -166,8 +180,16 @@ private struct WriteBanner: View {
         return true
     }
 
-    private var icon: String {
-        if case .savedCopy = banner { "checkmark.circle" } else { "exclamationmark.triangle.fill" }
+    /// The warning is a yellow triangle with a black mark, so it reads by shape and not by color alone.
+    @ViewBuilder private var icon: some View {
+        if case .savedCopy = banner {
+            Image(systemName: "checkmark.circle").accessibilityHidden(true)
+        } else {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.black, Plate.warning)
+                .accessibilityHidden(true)
+        }
     }
 
     private var message: String {
