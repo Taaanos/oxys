@@ -96,7 +96,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-12 | External editors | M-19, M-22 | built, needs a live check (ART first; RawTherapee and Lightroom Classic untested) |
 | V-13 | Extract embedded JPEGs | M-02, M-19 | built, needs a live check (the ⇧⌘E panel and plate not clicked through; cold-cache time over the limit) |
 | V-14 | Key remapping and presets | M-22, M-23 | todo |
-| V-15 | Session resume | M-20 | built (quit-and-relaunch checked in the live app with a scripted session file; keys and the unsaved-decision path on a locked card not clicked through) |
+| V-15 | Session resume | M-20 | built (checked in the live app on a read-only disk image; filter and selection restore not clicked through) |
 | V-16 | Interop guidance | M-22, F-04 | todo |
 | V-17 | Distribution | G-2 | todo |
 | V-19 | Optional lens correction for RAW | V-02, M-22 | todo (spike done: `docs/spikes/lens-correction.md`) |
@@ -1757,7 +1757,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 2. Reopen the last folder automatically at launch? *Proposed:* yes, unless its volume is gone.
 3. How long to keep state for folders never reopened? *Proposed:* 90 days or 500 folders, whichever comes first.
 
-**Status:** built (live check of a real quit and relaunch pending)
+**Status:** built (live check done on a read-only disk image; filter and selection restore not clicked through)
 
 **Decisions**
 - Q1 **decided** as proposed, with one detail: the file is found by path first, then by volume UUID plus the place on the volume (a renamed card). A reformatted card at the same path keeps its session. A moved folder on one volume is a new folder.
@@ -1769,6 +1769,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Unsaved decisions (M-11/Q2) are written again when the folder reopens, unless another program changed that sidecar after the session was saved. The quit alert now says Oxys keeps them (button "Quit Anyway" is now "Quit").
 - A session is never saved while a restore is still being applied, so a quick quit cannot erase it.
 - Reload (the new-files banner) keeps the current photo and selection.
+- Live check: a read-only `hdiutil` image with a session holding one unsaved decision. The app reopened in Loupe on the saved photo, the write failed, the decision stayed unsaved, and the 15 s save kept it in the session file. Quitting showed the M-11 alert; choosing "Save Decisions To…" wrote the sidecar elsewhere and emptied the list, as designed.
 - Not restored: zoom, Compare pair, scroll position in Grid.
 
 ### V-16 · Interop guidance
