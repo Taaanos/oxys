@@ -23,6 +23,14 @@ extension View {
 }
 
 enum Plate {
+    /// The shape of a Compare pane and its ring (D-08). The small radius is for every corner that is not at a window corner.
+    static let paneRadius: CGFloat = 4
+    static func paneShape(topLeading: CGFloat, bottomLeading: CGFloat, bottomTrailing: CGFloat, topTrailing: CGFloat) -> UnevenRoundedRectangle {
+        UnevenRoundedRectangle(topLeadingRadius: topLeading, bottomLeadingRadius: bottomLeading,
+                               bottomTrailingRadius: bottomTrailing, topTrailingRadius: topTrailing)
+    }
+    /// The window's corner radius, which has no public API: about 26 pt for a window with a toolbar, measured from a screenshot.
+    static let windowRadius: CGFloat = 26
     static let opacity = 0.7
     /// The one tint of every glass label (D-02/Q1), the share of black over the glass.
     static let glassOpacity = 0.5

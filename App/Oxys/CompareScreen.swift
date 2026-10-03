@@ -7,15 +7,28 @@ import SwiftUI
 /// own truth badge, decision and info; the cull keys reach the active one. Zoom, pan and the overlays reach both (V-09).
 struct CompareScreen: View {
     let model: AppModel
+    @State private var fullScreen = NSApp.keyWindow?.styleMask.contains(.fullScreen) == true
 
     var body: some View {
         let compare = model.compare
+        // `ConcentricRectangle` does not find the window's curve on macOS 27, even with a `.containerShape` (D-08/Q1), so
+        // the radii are set here. The window rounds at about 26 pt with a toolbar; a pane corner at a window corner takes that
+        // less the 6 pt gap. The toolbar covers the top corners unless the chrome is hidden, the inspector covers the
+        // trailing ones, and full screen is square: those corners keep the small radius.
+        let outer = fullScreen ? Plate.paneRadius : max(Plate.paneRadius, Plate.windowRadius - 6)
+        let top = model.chromeHidden ? outer : Plate.paneRadius
+        let trailing = model.showInspector && !model.chromeHidden ? Plate.paneRadius : outer
         HStack(spacing: 6) {
-            ComparePaneView(model: model, pane: compare.select, active: compare.pair?.active == .select)
-            ComparePaneView(model: model, pane: compare.candidate, active: compare.pair?.active == .candidate)
+            ComparePaneView(model: model, pane: compare.select, active: compare.pair?.active == .select,
+                            shape: Plate.paneShape(topLeading: top, bottomLeading: outer, bottomTrailing: Plate.paneRadius, topTrailing: Plate.paneRadius))
+            ComparePaneView(model: model, pane: compare.candidate, active: compare.pair?.active == .candidate,
+                            shape: Plate.paneShape(topLeading: Plate.paneRadius, bottomLeading: Plate.paneRadius, bottomTrailing: trailing,
+                                                   topTrailing: model.showInspector && !model.chromeHidden ? Plate.paneRadius : top))
         }
         .padding(6)
         .background(Color(white: LoupeView.canvasGray))
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in fullScreen = true }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in fullScreen = false }
         // Anchor for the `⌥H` popover: the bottom of the window, between the panes.
         .overlay(alignment: .bottom) {
             Color.clear.frame(width: 1, height: 1)
@@ -36,6 +49,7 @@ private struct ComparePaneView: View {
     let model: AppModel
     let pane: ComparePane
     let active: Bool
+    let shape: UnevenRoundedRectangle
 
     var body: some View {
         let compare = model.compare
@@ -72,10 +86,10 @@ private struct ComparePaneView: View {
             }
         }
         .background(Color(white: LoupeView.canvasGray))
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .clipShape(shape)
         // The ring marks the active pane. VoiceOver hears "Active" as the pane's value. The contrast probe hides it for its
         // plate capture: it covers the strip's outer 4 pt, where no text sits.
-        .overlay { RoundedRectangle(cornerRadius: 4).strokeBorder(active && !ContrastProbe.shared.blank ? Color.accentColor : .clear, lineWidth: 4).allowsHitTesting(false) }
+        .overlay { shape.strokeBorder(active && !ContrastProbe.shared.blank ? Color.accentColor : .clear, lineWidth: 4).allowsHitTesting(false) }
         .environment(\.probeScope, pane.side == .select ? "select" : "candidate")
         .accessibilityElement(children: .contain)
         .accessibilityLabel(pane.side.title)

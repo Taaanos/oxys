@@ -123,7 +123,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | D-05 | The toolbar on macOS 27 | M-13 | built, not checked on screen |
 | D-06 | The filter bar under the toolbar | D-05, M-20 | built, partly checked |
 | D-07 | Glass for the EXIF panel and the histogram | D-02 | built, not measured (D-01 gives no valid numbers in this session; see the story) |
-| D-08 | Corners concentric with the window | D-02, V-08 | todo |
+| D-08 | Corners concentric with the window | D-02, V-08 | built, partly checked (window and inspector checked by eye; full screen and the glass labels see the story) |
 | D-09 | The app icon in every appearance | none | todo |
 | D-10 | Symbols in the menus | M-05, M-23 | todo |
 | D-11 | Spike: the info strip as a floating glass bar | D-01, D-02 | todo |
@@ -2561,6 +2561,13 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 
 **Open questions**
 1. Does `ConcentricRectangle` find the window's corner on macOS 27 with no help? *Proposed:* check this first. If it does not, set `.containerShape` on the root view with a radius measured from a screenshot, and record it. I know of no public API for the window's corner radius.
+
+**Decisions and checks**
+- Q1 **Decided:** no. `ConcentricRectangle` does not find the window's corner on macOS 27: with no help the pane corners stayed at the minimum, and with a `.containerShape` on the Compare view the ring was still not concentric. So the radii are set by hand. `Plate.windowRadius` is 26 pt, about what a window with a toolbar shows in a screenshot (not measured with a tool). A pane corner at a window corner takes 26 less the 6 pt gap, so 20 pt. Every other corner keeps `Plate.paneRadius`, 4 pt.
+- `CompareScreen` builds one `UnevenRoundedRectangle` for each pane (clip and ring, `strokeBorder` as before). The select's bottom leading corner and the candidate's bottom trailing corner are at the window corners. The top corners join them only when the chrome is hidden (`⇥`), because the toolbar is above them otherwise. With the inspector open the candidate's trailing corners keep 4 pt. In full screen, tracked with the full-screen notifications, all corners keep 4 pt.
+- Checked by eye, windowed, on a 3-photo folder: the ring follows the window curve at the bottom leading corner with an even gap (`docs/design/d-08/after-corner-bottom-left.png`). With the inspector open, the bottom trailing corner of the candidate stays small (`after-corner-bottom-right-inspector.png`). In full screen all four corners are 4 pt and none is sharp.
+- **Glass labels: not changed.** The labels sit 12 pt inside a pane that is 6 pt inside the window, so a concentric radius is 8 pt for the bottom label and 14 pt in Loupe. The labels use 12 pt now; the difference is under 4 pt and a second radius is a second rule. Say if you want them to follow the corner exactly.
+- Not done: "before" screenshots (the 4 pt radius is in the git history), and the full-screen and chrome-hidden cases have no screenshot.
 
 ### D-09 · The app icon in every appearance
 
