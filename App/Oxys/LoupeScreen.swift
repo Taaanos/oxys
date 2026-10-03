@@ -253,11 +253,7 @@ private struct StarGlyph: View {
     let isLast: Bool
     let pulse: Int
     @State private var shown: Bool
-    @State private var bounce = 0
     @State private var flash = 0
-    /// True only while a cull key fills this star. Magic Replace runs on any symbol change, so without this flag
-    /// walking from a 4-star photo to a 5-star one would animate the fifth star.
-    @State private var morphs = false
     /// The delayed fill; a newer change cancels it so a fast `5` then `1` cannot fill a star late.
     @State private var pending: Task<Void, Never>?
 
@@ -271,19 +267,46 @@ private struct StarGlyph: View {
 
     private struct Key: Equatable { let filled: Bool; let isLast: Bool; let pulse: Int }
 
+    /// The filament state: how much of the filled star shows over the outline, how far its glow reaches, and how hot it
+    /// runs (0 is deep orange, 1 is yellow).
+    private struct Filament { var fill = 1.0; var glow = 0.0; var heat = 1.0 }
+
     var body: some View {
-        Image(systemName: shown ? "star.fill" : "star")
-            .foregroundStyle(shown ? Color.yellow : Plate.secondary)
-            .contentTransition(morphs ? .symbolEffect(.replace) : .identity)
-            .symbolEffect(.bounce, options: .nonRepeating, value: bounce)
-            .phaseAnimator([0.0, 0.3, 0.0], trigger: flash) { star, glow in star.brightness(glow) } animation: { glow in
-                glow == 0 ? .easeOut(duration: 0.2) : .easeOut(duration: 0.08)
+        // The outline stays under the filled star the whole time, so the star never goes dark: it warms up from what it was.
+        Image(systemName: "star")
+            .foregroundStyle(Plate.secondary)
+            .overlay {
+                if shown {
+                    Image(systemName: "star.fill")
+                        .keyframeAnimator(initialValue: Filament(), trigger: flash) { star, f in
+                            star
+                                .foregroundStyle(Color(hue: 0.07 + 0.07 * f.heat, saturation: 0.95, brightness: 1))
+                                .opacity(f.fill)
+                                .shadow(color: .orange.opacity(f.glow), radius: 14 * f.glow)
+                                .shadow(color: .yellow.opacity(f.glow * 0.7), radius: 5 * f.glow)
+                        } keyframes: { _ in
+                            // A filament warming: no flicker. The fill rises slowly from nothing, the colour moves from orange to
+                            // yellow, and the glow swells after the star is lit, then fades.
+                            KeyframeTrack(\.fill) {
+                                LinearKeyframe(0.0, duration: 0.001)
+                                CubicKeyframe(1.0, duration: 0.55)
+                            }
+                            KeyframeTrack(\.heat) {
+                                LinearKeyframe(0.0, duration: 0.001)
+                                CubicKeyframe(1.0, duration: 0.7)
+                            }
+                            KeyframeTrack(\.glow) {
+                                LinearKeyframe(0.0, duration: 0.001)
+                                CubicKeyframe(1.0, duration: 0.5)
+                                CubicKeyframe(0.0, duration: 0.8)
+                            }
+                        }
+                }
             }
             .onChange(of: Key(filled: filled, isLast: isLast, pulse: pulse)) { old, new in
                 pending?.cancel()
                 // A key that left this star as it was (a label, say) must not animate it.
                 guard new.pulse != old.pulse, new.filled, old.filled != new.filled || old.isLast != new.isLast else {
-                    morphs = false
                     shown = new.filled
                     return
                 }
@@ -291,11 +314,9 @@ private struct StarGlyph: View {
                     try? await Task.sleep(for: .milliseconds(30 * (index - 1)))
                     guard !Task.isCancelled else { return }
                     if !shown {
-                        morphs = true
-                        withAnimation(.spring(duration: 0.3, bounce: 0.3)) { shown = true }
+                        shown = true
                         flash += 1
                     }
-                    if isLast { bounce += 1 }
                 }
             }
     }
