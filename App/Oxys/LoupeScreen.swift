@@ -158,7 +158,7 @@ struct InfoStrip: View {
 }
 
 /// Stars, reject mark and label as shapes with a letter or a count, never color alone. When `pulse` changes (a cull
-/// key took effect) the stars and the reject mark bounce and the label chip swells: a cue at the edge of the frame,
+/// key took effect) the stars and the reject mark bounce and the label chip scales in, changes color or fades out: a cue at the edge of the frame,
 /// where a change is noticed without reading. Reduce Motion turns the motion off.
 struct DecisionGlyphs: View {
     let decision: Decision
@@ -169,7 +169,7 @@ struct DecisionGlyphs: View {
 
     var body: some View {
         let trigger = reduceMotion ? 0 : pulse
-        HStack(spacing: 8) {
+        HStack(spacing: 0) {
             if decision.isReject {
                 PlateLabel(text: "Rejected", systemImage: "xmark.circle.fill", tint: Plate.reject)
                     .symbolEffect(.bounce, options: .nonRepeating, value: trigger)
@@ -180,12 +180,7 @@ struct DecisionGlyphs: View {
                     }
                 }
             }
-            if let label = decision.label {
-                LabelChip(label: label)
-                    .phaseAnimator([1.0, 1.3, 1.0], trigger: trigger) { chip, scale in chip.scaleEffect(scale) } animation: { scale in
-                        scale == 1.3 ? .easeOut(duration: 0.1) : .spring(duration: 0.25, bounce: 0.4)
-                    }
-            }
+            LabelSlot(label: decision.label, pulse: trigger)
         }
         .font(.callout)
         .accessibilityElement(children: .ignore)
@@ -196,7 +191,7 @@ struct DecisionGlyphs: View {
 /// One star. When a cull key lands (`pulse` changes), the new stars fill one after another, 30 ms apart: each
 /// morphs from outline to filled (Magic Replace) and flashes, so the motion counts the stars. Only the last
 /// filled star bounces, once, so the cue is one pulse and not one per star. Stars that did not change stay
-/// still, and so does a change with no key behind it, such as moving to another photo. `pulse` stays 0 under
+/// still, and so does a key that did not touch the rating (a color label), and a change with no key behind it, such as moving to another photo. `pulse` stays 0 under
 /// Reduce Motion, which makes every change instant.
 private struct StarGlyph: View {
     let index: Int
@@ -220,7 +215,7 @@ private struct StarGlyph: View {
         _shown = State(initialValue: filled)
     }
 
-    private struct Key: Equatable { let filled: Bool; let pulse: Int }
+    private struct Key: Equatable { let filled: Bool; let isLast: Bool; let pulse: Int }
 
     var body: some View {
         Image(systemName: shown ? "star.fill" : "star")
@@ -230,9 +225,10 @@ private struct StarGlyph: View {
             .phaseAnimator([0.0, 0.3, 0.0], trigger: flash) { star, glow in star.brightness(glow) } animation: { glow in
                 glow == 0 ? .easeOut(duration: 0.2) : .easeOut(duration: 0.08)
             }
-            .onChange(of: Key(filled: filled, pulse: pulse)) { old, new in
+            .onChange(of: Key(filled: filled, isLast: isLast, pulse: pulse)) { old, new in
                 pending?.cancel()
-                guard new.pulse != old.pulse, new.filled else {
+                // A key that left this star as it was (a label, say) must not animate it.
+                guard new.pulse != old.pulse, new.filled, old.filled != new.filled || old.isLast != new.isLast else {
                     morphs = false
                     shown = new.filled
                     return
@@ -248,6 +244,45 @@ private struct StarGlyph: View {
                     if isLast { bounce += 1 }
                 }
             }
+    }
+}
+
+/// The label chip. When a cull key changes the label (`pulse` changes with it) the chip scales in, cross-fades to the
+/// new color with a short flash, or fades out. A key that left the label as it was (a rating) does nothing, and neither
+/// does a change with no key behind it, such as moving to another photo. `pulse` stays 0 under Reduce Motion.
+private struct LabelSlot: View {
+    let label: ColorLabel?
+    let pulse: Int
+    @State private var shown: ColorLabel?
+    @State private var flash = 0
+
+    init(label: ColorLabel?, pulse: Int) {
+        self.label = label
+        self.pulse = pulse
+        _shown = State(initialValue: label)
+    }
+
+    private struct Key: Equatable { let label: ColorLabel?; let pulse: Int }
+
+    var body: some View {
+        ZStack {
+            if let shown {
+                LabelChip(label: shown)
+                    .padding(.leading, 8)
+                    .phaseAnimator([0.0, 0.3, 0.0], trigger: flash) { chip, glow in chip.brightness(glow) } animation: { glow in
+                        glow == 0 ? .easeOut(duration: 0.15) : .easeOut(duration: 0.06)
+                    }
+                    .transition(.scale(scale: 0.6).combined(with: .opacity))
+            }
+        }
+        .onChange(of: Key(label: label, pulse: pulse)) { old, new in
+            guard new.pulse != old.pulse, new.label != old.label else {
+                shown = new.label
+                return
+            }
+            withAnimation(.spring(duration: 0.25, bounce: 0.3)) { shown = new.label }
+            if new.label != nil { flash += 1 }
+        }
     }
 }
 
