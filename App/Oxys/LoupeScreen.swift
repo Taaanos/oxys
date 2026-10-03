@@ -178,21 +178,20 @@ struct InfoStrip: View {
                 // The state capsule keeps the leading edge and the truth capsule the trailing edge, so only the inner edges move while `→` is held.
                 GlassEffectContainer {
                     HStack(alignment: .bottom, spacing: 12) {
-                        // The decision has its own capsule above the state, with empty stars drawn, so a rating never moves the filename.
-                        VStack(alignment: .leading, spacing: 8) {
-                            DecisionGlyphs(decision: decision ?? Decision(), pulse: pulse, showsEmptyStars: true)
-                                .probeContent()
-                                .padding(.horizontal, 12).padding(.vertical, 6)
-                                .glassPlate()
-                                .contrastProbe("info-strip-decision", .glass, shape: .capsule, uses: [.text(.white), .mark(.star), .mark(.reject)])
-                            HStack(spacing: 12) { state(photo, withDecision: false) }
-                                .probeContent()
-                                .padding(.horizontal, 12).padding(.vertical, 6)
-                                .glassPlate()
-                                .contrastProbe("info-strip", .glass, shape: .capsule, uses: uses)
-                                .accessibilityElement(children: .combine)
-                                .accessibilityLabel(spoken(photo))
+                        // The decision leads the capsule, with empty stars drawn and a slot as wide as five stars, so the filename keeps its place from frame to frame.
+                        HStack(spacing: 12) {
+                            ZStack(alignment: .leading) {
+                                DecisionGlyphs(decision: Decision(rating: 5), showsEmptyStars: true).hidden()
+                                DecisionGlyphs(decision: decision ?? Decision(), pulse: pulse, showsEmptyStars: true)
+                            }
+                            state(photo, withDecision: false)
                         }
+                        .probeContent()
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .glassPlate()
+                        .contrastProbe("info-strip", .glass, shape: .capsule, uses: uses)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel(spoken(photo))
                         Spacer(minLength: 0)
                         if let truth {
                             TruthText(badge: truth)
