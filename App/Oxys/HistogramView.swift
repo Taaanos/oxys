@@ -5,6 +5,8 @@ import SwiftUI
 /// the source's name. One view for Loupe's overlay and the inspector (M-18).
 struct HistogramView: View {
     let histogram: Histogram
+    /// True for the corner copy on the photo (D-07): glass. The inspector copy keeps the black plate.
+    var onPhoto = false
 
     private static let width: CGFloat = 256, height: CGFloat = 80
 
@@ -49,8 +51,8 @@ struct HistogramView: View {
         }
         .probeContent()
         .padding(10)
-        .infoPlate()
-        .contrastProbe("histogram", .plate, shape: .rounded(8), uses: [.text(.secondary), .text(.warning), .text(.cyan)])
+        .plateStyle(onPhoto: onPhoto)
+        .contrastProbe("histogram", onPhoto ? .glass : .plate, shape: .rounded(onPhoto ? 12 : 8), uses: [.text(.secondary), .text(.warning), .text(.cyan)])
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spoken)
     }
@@ -62,5 +64,11 @@ struct HistogramView: View {
 
     private static func percent(_ value: Double) -> String {
         value == 0 ? "0%" : value < 0.1 ? "<0.1%" : String(format: "%.1f%%", value)
+    }
+}
+
+private extension View {
+    @ViewBuilder func plateStyle(onPhoto: Bool) -> some View {
+        if onPhoto { glassPlate(in: .rect(cornerRadius: 12)) } else { infoPlate() }
     }
 }

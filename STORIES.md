@@ -122,7 +122,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | D-04 | The write banner as a floating glass notice | D-03 | built, not checked on screen |
 | D-05 | The toolbar on macOS 27 | M-13 | built, not checked on screen |
 | D-06 | The filter bar under the toolbar | D-05, M-20 | built, partly checked |
-| D-07 | Glass for the EXIF panel and the histogram | D-02 | todo |
+| D-07 | Glass for the EXIF panel and the histogram | D-02 | built, not measured (D-01 gives no valid numbers in this session; see the story) |
 | D-08 | Corners concentric with the window | D-02, V-08 | todo |
 | D-09 | The app icon in every appearance | none | todo |
 | D-10 | Symbols in the menus | M-05, M-23 | todo |
@@ -2531,6 +2531,14 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 **Open questions**
 1. Is a histogram on glass a good idea at all? *Proposed:* try it. Keep the plate if the fill does not get 3:1 on the checker frame.
 2. The same tint as the badges, or a darker one for these larger panels? *Proposed:* the same, unless D-01 fails. A second tint is a second rule to remember.
+
+**Decisions and checks**
+- Q1 **Decided:** try it, as proposed. Keep the plate for a panel if D-01 or the 3:1 fill check fails.
+- Q2 **Decided:** the same tint as the badges (`Plate.glassTint`), as proposed.
+- `ExifPanel` uses `glassPlate(in: .rect(cornerRadius: 12))`; the focused-row accent highlight is not changed. The Loupe corner histogram is `HistogramView(onPhoto: true)`, glass with the same shape. The inspector copy keeps `infoPlate()` (the default, `onPhoto: false`). The probe entries are now `.glass` with a 12 pt corner.
+- Checked: `make build` has no warnings.
+- **Not measured.** `make contrast-quick` fails every label with about the same low values (secondary 1.66 on white), and it fails the same way on the code before this change, including the D-02 badges that passed before. So the probe gives no valid numbers in this session. Do not read the D-07 rows as results. Find out why the capture is wrong (display, permission or appearance), then run D-01 for `exif-panel` and `histogram` and decide each panel alone.
+- Not checked yet: the 3:1 fill and line check on the white, black and checker frames, the focused EXIF row, `⌘C`, and `scrub`.
 
 ### D-08 · Corners concentric with the window
 

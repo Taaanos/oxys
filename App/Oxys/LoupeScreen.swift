@@ -23,7 +23,7 @@ struct LoupeScreen: View {
             }
             // The inspector has its own Histogram section, so the corner one steps aside while it is open.
             if loupe.showHistogram, loupe.showInfoStrip, !(model.showInspector && !model.chromeHidden), let histogram = loupe.histogram, loupe.failure == nil {
-                HistogramView(histogram: histogram)
+                HistogramView(histogram: histogram, onPhoto: true)
                     .padding(12)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
@@ -105,8 +105,8 @@ private struct ExifPanel: View {
         }
         .probeContent()
         .padding(10)
-        .infoPlate()
-        .contrastProbe("exif-panel", .plate, shape: .rounded(8), uses: [.text(.white), .text(.secondary)])
+        .glassPlate(in: .rect(cornerRadius: 12))
+        .contrastProbe("exif-panel", .glass, shape: .rounded(12), uses: [.text(.white), .text(.secondary)])
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
