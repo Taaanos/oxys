@@ -9,6 +9,7 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
     private let sources: [URL]
     private let formats: [ExportFormat]
     private let menu = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let caption = NSTextField(wrappingLabelWithString: "")
 
     /// `remembered` is the raw value of the format used last time.
     init(sources: [URL], remembered: String?) {
@@ -21,15 +22,39 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
         menu.addItems(withTitles: formats.map(Self.title))
         menu.selectItem(at: formats.firstIndex { $0.rawValue == remembered } ?? 0)
         menu.setAccessibilityLabel("Export format")
-        menu.setAccessibilityHelp("Choose the embedded JPEG, or the RAW developed to JPEG or HEIC")
+        menu.target = self
+        menu.action = #selector(formatChanged)
+        caption.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        caption.textColor = .secondaryLabelColor
+        caption.preferredMaxLayoutWidth = 380
+        caption.setAccessibilityElement(false)   // VoiceOver reads it as the menu's help instead
+        formatChanged()
     }
 
     static func title(_ format: ExportFormat) -> String {
         switch format {
-        case .embeddedJPEG: "Embedded JPEG (the camera's own, unchanged)"
-        case .developedJPEG: "Developed JPEG (sRGB, 8-bit)"
-        case .developedHEIC: "Developed HEIC (Display P3, 10-bit)"
+        case .embeddedJPEG: "Embedded JPEG"
+        case .developedJPEG: "Developed JPEG"
+        case .developedHEIC: "Developed HEIC"
         }
+    }
+
+    /// One short sentence about what the file is, then what it keeps. Shown under the menu.
+    static func detail(_ format: ExportFormat) -> String {
+        switch format {
+        case .embeddedJPEG:
+            "The camera's own JPEG from inside the RAW, not changed. The fastest choice. Keeps EXIF, your rating, file dates and tags."
+        case .developedJPEG:
+            "The RAW developed at full size by macOS. sRGB, 8-bit: opens the same everywhere. Keeps EXIF, GPS, your rating, file dates and tags."
+        case .developedHEIC:
+            "The RAW developed at full size by macOS. Display P3, 10-bit: more colors, smoother gradients. Keeps EXIF, GPS, your rating, file dates and tags, but no maker note."
+        }
+    }
+
+    @objc private func formatChanged() {
+        let format = formats[max(0, menu.indexOfSelectedItem)]
+        caption.stringValue = Self.detail(format)
+        menu.setAccessibilityHelp(Self.detail(format))
     }
 
     /// Shows the panel. Nil when the user cancels.
@@ -44,13 +69,19 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
         if let lastFolder { panel.directoryURL = URL(fileURLWithPath: lastFolder, isDirectory: true) }
         panel.delegate = self
 
+        // A label column and a field column, as in the Save panel: "Format:" right-aligned, the menu and its caption
+        // left-aligned under each other. The insets match the toolbar of the panel above (about 20 pt).
         let label = NSTextField(labelWithString: "Format:")
-        let row = NSStackView(views: [label, menu])
-        row.orientation = .horizontal
-        row.spacing = 8
-        row.edgeInsets = NSEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
-        panel.accessoryView = row
         label.setAccessibilityElement(false)
+        let grid = NSGridView(views: [[label, menu], [NSGridCell.emptyContentView, caption]])
+        grid.columnSpacing = 8
+        grid.rowSpacing = 6
+        grid.column(at: 0).xPlacement = .trailing
+        grid.column(at: 1).xPlacement = .leading
+        grid.row(at: 0).yPlacement = .center
+        let container = NSStackView(views: [grid])
+        container.edgeInsets = NSEdgeInsets(top: 12, left: 20, bottom: 12, right: 20)
+        panel.accessoryView = container
 
         guard panel.runModal() == .OK, let destination = panel.url else { return nil }
         return (destination, formats[max(0, menu.indexOfSelectedItem)])
