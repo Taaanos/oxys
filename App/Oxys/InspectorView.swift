@@ -43,6 +43,7 @@ struct InspectorView: View {
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .environment(\.probeScope, "inspector")
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Inspector")
         .task(id: photo?.url) { exif = nil; if let url = photo?.url { exif = await model.loupe.exifInfo(for: url) } }

@@ -21,11 +21,13 @@ struct TruthBadgeView: View {
                         Text(badge.text).foregroundStyle(.white)
                     }
                 }
+                .probeContent()
                 .font(.callout.weight(.semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .environment(\.colorScheme, .dark)
                 .glassEffect(.regular.tint(.black.opacity(0.35)), in: .capsule)
+                .contrastProbe("truth-badge", .glass, shape: .capsule, uses: [.text(.white), .mark(.warning)])
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(badge.spoken)
             }
@@ -42,10 +44,12 @@ struct TruthBadgeView: View {
 struct AutoAdvanceBadge: View {
     var body: some View {
         PlateLabel(text: "Auto-advance", systemImage: "forward.end.fill", tint: Plate.secondary)
+            .probeContent()
             .font(.callout.weight(.semibold))
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .infoPlate(cornerRadius: 8)
+            .contrastProbe("auto-advance", .plate, shape: .rounded(8), uses: [.text(.secondary)])
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Auto-advance is on. Shift applies a rating without advancing.")
     }

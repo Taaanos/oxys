@@ -13,10 +13,12 @@ struct ClippingReadout: View {
             }
             Text(label.source).foregroundStyle(Plate.secondary).font(.caption)
         }
+        .probeContent()
         .font(.callout.weight(.semibold).monospacedDigit())
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .infoPlate(cornerRadius: 8)
+        .contrastProbe("clipping", .plate, shape: .rounded(8), uses: [.text(.secondary)])
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         .padding(.bottom, label.stackedOverPeaking ? 74 : 34)

@@ -17,7 +17,8 @@ import Metadata
 /// `compare-view` (Compare stays up for 40 s, for a screenshot), `overlays`, `peaking` (V-06: F on and off, then browsing with it on),
 /// `peaking-still` (the overlay on one photo), `peaking-view` (stays up for 40 s; `OXYS_BENCH_ZOOM=1` goes to 1:1 first),
 /// `clipping` and `clipping-still` (the same for H and S, V-07), `grid` (scroll 10,000 files), `idle`,
-/// `load-memory` (P-02: the working memory of one frame load), `zoom-from-screen` (P-03: 1:1 over a screen-size frame).
+/// `load-memory` (P-02: the working memory of one frame load), `zoom-from-screen` (P-03: 1:1 over a screen-size frame),
+/// `contrast` (D-01: every label on the test frames, captured by `scripts/contrast.sh`; see `ContrastProbe`).
 /// `scripts/perf-gate.sh` (P-01) runs the ones in `scripts/perf-targets.tsv` against the PRD limits.
 /// `OXYS_BENCH_DELAY_MS=<n>` makes every frame load wait n ms first, as slow media would (see `FrameLoader`).
 @MainActor
@@ -85,6 +86,8 @@ enum PerfBench {
             await compareWalk(model)
         case "compare-link":
             await compareLinkWalk(model)
+        case "contrast":
+            await ContrastProbe.run(model)
         case "compare-view":
             // Compare stays up for 40 s so a screenshot can look at it.
             commands.perform("compare.enter"); await settle(.seconds(1))

@@ -18,4 +18,4 @@ TestData/
 dist/
 
 # Generated icon previews and variations (scripts/make-icon-*.py, scripts/export-app-icon.py)
-design/
+/design/

@@ -4,7 +4,7 @@ BUILD_DIR := build
 APP       := $(BUILD_DIR)/Build/Products/Release/Oxys.app
 PACKAGES  := $(sort $(dir $(wildcard Packages/*/Package.swift)))
 
-.PHONY: build test check-arch launch-time corpus manifest bench-folders perf-bench perf-gate perf-selftest perf-report sidecar-stress extract-bench sidecar-gate ui-walk ui-walk-compare clean
+.PHONY: build test check-arch launch-time corpus manifest bench-folders perf-bench perf-gate perf-selftest perf-report sidecar-stress extract-bench sidecar-gate contrast contrast-selftest ui-walk ui-walk-compare clean
 
 build:
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release \
@@ -63,6 +63,14 @@ extract-bench:
 # M-25: 10,000 real file writes with outside writers and killed writers; exits 1 on any damage.
 sidecar-gate:
 	cd Packages/Sidecar && swift build -c release --product SidecarStress && .build/release/SidecarStress gate Tests/Fixtures/xmp/hand-written/lightroom-style-crs-3star-red.xmp 10000
+
+# D-01: every label on the photo over the test frames, in Loupe and Compare; writes docs/design/contrast.md, exits 1 on a fail.
+# The terminal needs the Screen Recording permission once. Run again with Reduce Transparency and Increase Contrast on.
+contrast: build
+	scripts/contrast.sh
+
+contrast-selftest:
+	python3 scripts/contrast-report.py --selftest
 
 clean:
 	rm -rf $(BUILD_DIR) Packages/*/.build

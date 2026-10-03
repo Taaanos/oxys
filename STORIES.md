@@ -115,7 +115,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | P-10 | RAW develop and extraction on real files | P-01 | todo |
 | P-11 | Performance gate | P-02 to P-10 | todo |
 | **Phase 2c** | **Design (Liquid Glass)** (see G-14) | | |
-| D-01 | Contrast probe for labels on the photo | M-18, V-05, P-01 | todo |
+| D-01 | Contrast probe for labels on the photo | M-18, V-05, P-01 | done (measured in dark appearance only; the Reduce Transparency, Increase Contrast and light runs are open) |
 | D-02 | Glass for the badges on the photo | D-01 | todo |
 | D-03 | Glass for the floating panels | D-02 | todo |
 | D-04 | The write banner as a floating glass notice | D-03 | todo |
@@ -2251,16 +2251,36 @@ The code changes the M-26 diagnosis in two places, found while planning this pha
 - `make contrast` runs it. Run it with Reduce Transparency and Increase Contrast, each on and off.
 
 **Acceptance criteria**
-- [ ] `make contrast` writes the report for every label on every test frame, in Loupe and in Compare.
-- [ ] The report has today's values: the black plates (about 6.7:1 is expected for secondary text over white) and the two glass capsules that already shipped (rating corner, truth badge).
-- [ ] A label that fails shows as a fail, and `make contrast` exits 1.
-- [ ] `scripts/contrast-report.py --selftest` checks the WCAG luminance math against known pairs (white on black is 21:1, `#767676` on white is 4.54:1).
-- [ ] The probe writes nothing into the photo folders. The captures and the JSON go to the bench output folder.
+- [x] `make contrast` writes the report for every label on every test frame, in Loupe and in Compare. A label that the layout must show and that does not report itself is a `missing` row, and a fail.
+- [x] The report has today's values: the black plates (6.7:1 for secondary text over white, as M-18 calculated) and the two glass capsules that already shipped (rating corner, truth badge).
+- [x] A label that fails shows as a fail, and `make contrast` exits 1.
+- [x] `scripts/contrast-report.py --selftest` checks the WCAG luminance math against known pairs (white on black is 21:1, `#767676` on white is 4.54:1, and M-18's 6.72:1), the shape mask and the 1% cut.
+- [x] The probe writes nothing into the photo folders. The captures and the JSON go to `build/contrast/<time>/`. `scripts/contrast.sh` compares the names, sizes and dates of the frame folder before and after, and exits 1 on a change.
 
 **Open questions**
-1. How do we capture the window? The window server composites the glass and the Metal canvas, so `NSView.cacheDisplay` does not show them. *Proposed:* `screencapture -l <window id> -o` from the script, with the window ID from the bench log. Terminal needs the Screen Recording permission once, as `make ui-walk` needs Accessibility.
-2. Which part of the plate counts? *Proposed:* the brightest 1% of the pixels inside the shape, inset by 2 pt. The glass rim is bright on purpose, and no text sits on it.
-3. Is the probe also a gate for later stories? *Proposed:* yes. Each design story runs `make contrast` and puts the changed rows in its result.
+1. How do we capture the window? The window server composites the glass and the Metal canvas, so `NSView.cacheDisplay` does not show them. **Decided:** `screencapture -l <window id> -o` from the script. The app and the script use a handshake in the output folder: the app writes `req-<n>.json` (window ID, image name) and waits for the image. The script captures. The terminal needs the Screen Recording permission once, as `make ui-walk` needs Accessibility. The app does not capture itself: an ad hoc signed app gets a new code hash at each build, so it would ask for the permission again after each build. Note: `screencapture` does not write a file whose name starts with a dot.
+2. Which part of the plate counts? **Decided:** the brightest 1% of the pixels inside the shape, inset by 2 pt. The mask follows the shape (capsule, rounded rectangle, rectangle), so the corners of the box are not counted. Check on the white frame: inside the glass capsules, the median is L 0.181 and the brightest 1% is L 0.20, so the 1% value is the inside of the glass, not the rim.
+3. Is the probe also a gate for later stories? **Decided:** yes. Each design story runs `make contrast` and puts the changed rows in its result.
+
+**Decisions and checks**
+- Test frames: `scripts/make-contrast-frames.py` writes seven sRGB TIFFs (deflate) of 6000 × 4000 px into `TestData/design/`: white, black, 18% gray (sRGB 118), the star yellow (`#FFD60A`), red, a checker of 2 px squares and a split frame (white left, black right). They carry Make, Model and DateTime, so the EXIF panel has rows. At 1:1 a frame fills the whole canvas, also each Compare pane, so every label sits on the frame and not on the gray surround.
+- The split frame: the bench pans the edge under each label that is not on the middle of its canvas, and captures again. The strip is on the middle, so the first capture has the edge under it.
+- Layouts: the strip at its last level (strip, EXIF panel, histogram), and the strip off (rating corner, truth badge). Peaking, highlight and shadow clipping and Auto-advance are on in both. The EXIF panel is a level of the strip, so it is not in the second layout. Grid's Auto-advance mark is not measured: Grid shows thumbnails, not a test frame.
+- The overlays are analyzed (their labels need the numbers) but not painted: `LoupeView.paintsOverlays = false`. Otherwise the clipping overlay paints the white frame red, and no label is measured over white.
+- Two captures per position: the plate capture (`ContrastProbe.blank`: each label's text and symbols at opacity 0) and the text capture, as the user sees it. The text captures can be the before and after screenshots of later stories. Compare's active ring is hidden in the plate capture: it covers the outer 4 pt of the strip, where no text sits.
+- Each label reports its frame with `onGeometryChange` in the global space, its shape, its material and the inks drawn on it (`.contrastProbe(...)` after the plate, `.probeContent()` on the content). The scope (`loupe`, `select`, `candidate`, `inspector`) keeps two copies of a view apart: the inspector's histogram once removed Loupe's record. A view removes only its own record. With the probe off, both modifiers return the view as it is.
+- The app resolves each ink in sRGB in the dark appearance (the high-contrast dark appearance when Increase Contrast is on), so the report uses the colors of this system and this accent color. The script blends an ink with alpha (secondary is white at 85%) over the plate in sRGB values, as the window server composites. That gives M-18's 6.7:1.
+- The capture carries the display's profile; `sips -m` converts it to sRGB before the measurement.
+- Text keeps 4.5:1, a mark 3:1. The inks of each label say which is which (for example the truth badge: white text, a warning triangle as a mark). The histogram's clipped percents are text. Compare's differing EXIF values in the warning tint are text; in Loupe the strip uses that tint only for icons.
+- Each combination of appearance, Reduce Transparency and Increase Contrast writes its rows to `docs/design/contrast/<combination>.tsv`; `docs/design/contrast.md` is made from all of them. A run replaces only its own combination.
+- The probe changes view settings that the app remembers (info level, histogram, rating corner, Auto-advance, inspector). `scripts/contrast.sh` saves them first and puts them back on exit, also when the run is stopped.
+- One run: 58 positions, 116 captures, about 5 minutes. Two runs gave the same values to two decimals.
+
+**Result (3 Oct 2026, Apple M4, window 1470 × 923 pt at 2x, dark appearance, Reduce Transparency and Increase Contrast off).** 31 of 105 rows fail. The full table is in [docs/design/contrast.md](docs/design/contrast.md).
+- Black plates (70%): the worst plate is `#4C4C4C` (L 0.072) on the white frame. Secondary text 6.7:1, white 8.5:1, star 6.0:1, reject 3.0:1. They pass on every frame.
+- Glass capsules (`.regular`, black 35%): the worst plate is about `#7C7C7C` (L 0.20) on the white frame, almost three times as bright as a black plate. Truth badge: white text 4.1:1, warning triangle 1.8:1. Rating corner: secondary text (the word "Rejected") 3.5:1, star 2.9:1 (3.0:1 in Compare), reject mark 1.5:1. The reject mark fails even on the 18% gray frame (2.6:1). These are the inputs for D-02/Q1.
+- Older fails that the probe found, not from glass: the histogram's clipped highlight percent in orange is text at 3.8:1 (D-04); Compare's differing EXIF values in the warning tint are text at 3.8:1 (D-11); the active dot of the Compare pane title in the accent color is a mark at 2.1:1 (D-02/Q4).
+- Open: runs with Reduce Transparency on, with Increase Contrast on, and in the light appearance. Each one needs a change in System Settings, then `make contrast`.
 
 ### D-02 · Glass for the badges on the photo
 

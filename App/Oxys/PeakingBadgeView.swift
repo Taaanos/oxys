@@ -7,10 +7,12 @@ struct PeakingBadgeView: View {
 
     var body: some View {
         PlateLabel(text: label.text, systemImage: "scope", tint: Plate.secondary)
+            .probeContent()
             .font(.callout.weight(.semibold))
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .infoPlate(cornerRadius: 8)
+            .contrastProbe("peaking", .plate, shape: .rounded(8), uses: [.text(.secondary)])
             .padding(12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             .padding(.bottom, 34)

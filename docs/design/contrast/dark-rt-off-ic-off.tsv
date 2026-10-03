@@ -1,0 +1,111 @@
+# Dark appearance, Reduce Transparency off, Increase Contrast off
+# date	2026-10-03
+# window	1470 x 923 pt at 2x
+# captures	58
+# inks	white=#FFFFFF  secondary=#FFFFFF@0.85  star=#FFD600  warning=#FF9230  reject=#FF6B66  accent=#007AFF  cyan=#3CD3FE
+mode	label	material	frame	plate	luminance	white	secondary	star	warning	reject	accent	cyan	result
+loupe	auto-advance	plate, black 70%	white	#4C4C4C	0.0723		t 6.76						pass
+loupe	auto-advance	plate, black 70%	black	#000000	0.0000		t 14.84						pass
+loupe	auto-advance	plate, black 70%	gray18	#232323	0.0168		t 11.68						pass
+loupe	auto-advance	plate, black 70%	yellow	#4C410B	0.0534		t 7.86						pass
+loupe	auto-advance	plate, black 70%	red	#4D0806	0.0176		t 11.34						pass
+loupe	auto-advance	plate, black 70%	checker	#4C4C4C	0.0723		t 6.76						pass
+loupe	auto-advance	plate, black 70%	split	#000000	0.0000		t 14.84						pass
+loupe	clipping	plate, black 70%	white	#4C4C4C	0.0723		t 6.76						pass
+loupe	clipping	plate, black 70%	black	#000000	0.0000		t 14.84						pass
+loupe	clipping	plate, black 70%	gray18	#232323	0.0168		t 11.68						pass
+loupe	clipping	plate, black 70%	yellow	#4C410B	0.0534		t 7.86						pass
+loupe	clipping	plate, black 70%	red	#4D0806	0.0176		t 11.34						pass
+loupe	clipping	plate, black 70%	checker	#4C4C4C	0.0723		t 6.76						pass
+loupe	clipping	plate, black 70%	split	#4C4C4C	0.0723		t 6.76						pass
+loupe	exif-panel	plate, black 70%	white	#4C4C4C	0.0723	t 8.59	t 6.76						pass
+loupe	exif-panel	plate, black 70%	black	#000000	0.0000	t 21.00	t 14.84						pass
+loupe	exif-panel	plate, black 70%	gray18	#232323	0.0168	t 15.72	t 11.68						pass
+loupe	exif-panel	plate, black 70%	yellow	#4C410B	0.0534	t 10.15	t 7.86						pass
+loupe	exif-panel	plate, black 70%	red	#4D0806	0.0176	t 15.52	t 11.34						pass
+loupe	exif-panel	plate, black 70%	checker	#4C4C4C	0.0723	t 8.59	t 6.76						pass
+loupe	exif-panel	plate, black 70%	split	#4C4C4C	0.0723	t 8.59	t 6.76						pass
+loupe	histogram	plate, black 70%	white	#4C4C4C	0.0723		t 6.76		t 3.85			t 4.88	fail
+loupe	histogram	plate, black 70%	black	#000000	0.0000		t 14.84		t 9.41			t 11.94	pass
+loupe	histogram	plate, black 70%	gray18	#232323	0.0168		t 11.68		t 7.04			t 8.94	pass
+loupe	histogram	plate, black 70%	yellow	#4C410B	0.0534		t 7.86		t 4.55			t 5.77	pass
+loupe	histogram	plate, black 70%	red	#4D0806	0.0176		t 11.34		t 6.95			t 8.83	pass
+loupe	histogram	plate, black 70%	checker	#4C4C4C	0.0723		t 6.76		t 3.85			t 4.88	fail
+loupe	histogram	plate, black 70%	split	#4C4C4C	0.0723		t 6.76		t 3.85			t 4.88	fail
+loupe	info-strip	plate, black 70%	white	#4C4C4C	0.0723	t 8.59	t 6.76	m 6.08	m 3.85	m 3.09			pass
+loupe	info-strip	plate, black 70%	black	#000000	0.0000	t 21.00	t 14.84	m 14.87	m 9.41	m 7.55			pass
+loupe	info-strip	plate, black 70%	gray18	#232323	0.0168	t 15.72	t 11.68	m 11.13	m 7.04	m 5.65			pass
+loupe	info-strip	plate, black 70%	yellow	#4C410B	0.0534	t 10.15	t 7.86	m 7.19	m 4.55	m 3.65			pass
+loupe	info-strip	plate, black 70%	red	#4D0806	0.0176	t 15.52	t 11.34	m 10.99	m 6.95	m 5.58			pass
+loupe	info-strip	plate, black 70%	checker	#4C4C4C	0.0723	t 8.59	t 6.76	m 6.08	m 3.85	m 3.09			pass
+loupe	info-strip	plate, black 70%	split	#4C4C4C	0.0723	t 8.59	t 6.76	m 6.08	m 3.85	m 3.09			pass
+loupe	peaking	plate, black 70%	white	#4C4C4C	0.0723		t 6.76						pass
+loupe	peaking	plate, black 70%	black	#000000	0.0000		t 14.84						pass
+loupe	peaking	plate, black 70%	gray18	#232323	0.0168		t 11.68						pass
+loupe	peaking	plate, black 70%	yellow	#4C410B	0.0534		t 7.86						pass
+loupe	peaking	plate, black 70%	red	#4D0806	0.0176		t 11.34						pass
+loupe	peaking	plate, black 70%	checker	#4C4C4C	0.0723		t 6.76						pass
+loupe	peaking	plate, black 70%	split	#4C4C4C	0.0723		t 6.76						pass
+loupe	rating-corner	glass, regular, black 35%	white	#7C7C7C	0.2016		t 3.51	m 2.96		m 1.50			fail
+loupe	rating-corner	glass, regular, black 35%	black	#1B1B1B	0.0110		t 12.66	m 12.20		m 6.19			pass
+loupe	rating-corner	glass, regular, black 35%	gray18	#575757	0.0953		t 5.78	m 5.12		m 2.60			fail
+loupe	rating-corner	glass, regular, black 35%	yellow	#8E7600	0.1871		t 3.68	m 3.14		m 1.59			fail
+loupe	rating-corner	glass, regular, black 35%	red	#C51610	0.1248		t 4.63	m 4.25		m 2.16			fail
+loupe	rating-corner	glass, regular, black 35%	checker	#5B5B5B	0.1046		t 5.46	m 4.81		m 2.44			fail
+loupe	rating-corner	glass, regular, black 35%	split	#7C7C7C	0.2016		t 3.51	m 2.96		m 1.50			fail
+loupe	truth-badge	glass, regular, black 35%	white	#7D7D7D	0.2051	t 4.12			m 1.84				fail
+loupe	truth-badge	glass, regular, black 35%	black	#1B1B1B	0.0110	t 17.22			m 7.72				pass
+loupe	truth-badge	glass, regular, black 35%	gray18	#585858	0.0976	t 7.11			m 3.19				pass
+loupe	truth-badge	glass, regular, black 35%	yellow	#907700	0.1912	t 4.35			m 1.95				fail
+loupe	truth-badge	glass, regular, black 35%	red	#C51910	0.1260	t 5.96			m 2.67				fail
+loupe	truth-badge	glass, regular, black 35%	checker	#5C5C5C	0.1070	t 6.69			m 3.00				fail
+loupe	truth-badge	glass, regular, black 35%	split	#1B1B1B	0.0110	t 17.22			m 7.72				pass
+compare	auto-advance	plate, black 70%	white	#4C4C4C	0.0723		t 6.76						pass
+compare	auto-advance	plate, black 70%	black	#000000	0.0000		t 14.84						pass
+compare	auto-advance	plate, black 70%	gray18	#232323	0.0168		t 11.68						pass
+compare	auto-advance	plate, black 70%	yellow	#4C410B	0.0534		t 7.86						pass
+compare	auto-advance	plate, black 70%	red	#4D0806	0.0176		t 11.34						pass
+compare	auto-advance	plate, black 70%	checker	#4C4C4C	0.0723		t 6.76						pass
+compare	auto-advance	plate, black 70%	split	#4C4C4C	0.0723		t 6.76						pass
+compare	clipping	plate, black 70%	white	#4C4C4C	0.0723		t 6.76						pass
+compare	clipping	plate, black 70%	black	#000000	0.0000		t 14.84						pass
+compare	clipping	plate, black 70%	gray18	#232323	0.0168		t 11.68						pass
+compare	clipping	plate, black 70%	yellow	#4C410B	0.0534		t 7.86						pass
+compare	clipping	plate, black 70%	red	#4D0806	0.0176		t 11.34						pass
+compare	clipping	plate, black 70%	checker	#4C4C4C	0.0723		t 6.76						pass
+compare	clipping	plate, black 70%	split	#4C4C4C	0.0723		t 6.76						pass
+compare	info-strip	plate, black 70%	white	#4C4C4C	0.0723	t 8.59	t 6.76	m 6.08	t 3.85	m 3.09			fail
+compare	info-strip	plate, black 70%	black	#000000	0.0000	t 21.00	t 14.84	m 14.87	t 9.41	m 7.55			pass
+compare	info-strip	plate, black 70%	gray18	#232323	0.0168	t 15.72	t 11.68	m 11.13	t 7.04	m 5.65			pass
+compare	info-strip	plate, black 70%	yellow	#4C410B	0.0534	t 10.15	t 7.86	m 7.19	t 4.55	m 3.65			pass
+compare	info-strip	plate, black 70%	red	#4D0806	0.0176	t 15.52	t 11.34	m 10.99	t 6.95	m 5.58			pass
+compare	info-strip	plate, black 70%	checker	#4C4C4C	0.0723	t 8.59	t 6.76	m 6.08	t 3.85	m 3.09			fail
+compare	info-strip	plate, black 70%	split	#4C4C4C	0.0723	t 8.59	t 6.76	m 6.08	t 3.85	m 3.09			fail
+compare	pane-title	plate, black 70%	white	#4C4C4C	0.0723	t 8.59	m 6.76				m 2.14		fail
+compare	pane-title	plate, black 70%	black	#000000	0.0000	t 21.00	m 14.84				m 5.23		pass
+compare	pane-title	plate, black 70%	gray18	#232323	0.0168	t 15.72	m 11.68				m 3.91		pass
+compare	pane-title	plate, black 70%	yellow	#4C410B	0.0534	t 10.15	m 7.86				m 2.53		fail
+compare	pane-title	plate, black 70%	red	#4D0806	0.0176	t 15.52	m 11.34				m 3.86		pass
+compare	pane-title	plate, black 70%	checker	#4C4C4C	0.0723	t 8.59	m 6.76				m 2.14		fail
+compare	pane-title	plate, black 70%	split	#4C4C4C	0.0723	t 8.59	m 6.76				m 2.14		fail
+compare	peaking	plate, black 70%	white	#4C4C4C	0.0723		t 6.76						pass
+compare	peaking	plate, black 70%	black	#000000	0.0000		t 14.84						pass
+compare	peaking	plate, black 70%	gray18	#232323	0.0168		t 11.68						pass
+compare	peaking	plate, black 70%	yellow	#4C410B	0.0534		t 7.86						pass
+compare	peaking	plate, black 70%	red	#4D0806	0.0176		t 11.34						pass
+compare	peaking	plate, black 70%	checker	#4C4C4C	0.0723		t 6.76						pass
+compare	peaking	plate, black 70%	split	#4C4C4C	0.0723		t 6.76						pass
+compare	rating-corner	glass, regular, black 35%	white	#7A7A7A	0.1946		t 3.60	m 3.04		m 1.54			fail
+compare	rating-corner	glass, regular, black 35%	black	#1C1C1C	0.0116		t 12.54	m 12.07		m 6.13			pass
+compare	rating-corner	glass, regular, black 35%	gray18	#545454	0.0887		t 6.03	m 5.36		m 2.72			fail
+compare	rating-corner	glass, regular, black 35%	yellow	#8A7300	0.1766		t 3.84	m 3.28		m 1.67			fail
+compare	rating-corner	glass, regular, black 35%	red	#C41A15	0.1253		t 4.64	m 4.24		m 2.15			fail
+compare	rating-corner	glass, regular, black 35%	checker	#585858	0.0976		t 5.70	m 5.04		m 2.56			fail
+compare	rating-corner	glass, regular, black 35%	split	#7A7A7A	0.1946		t 3.60	m 3.04		m 1.54			fail
+compare	truth-badge	glass, regular, black 35%	white	#7C7C7C	0.2016	t 4.17			m 1.87				fail
+compare	truth-badge	glass, regular, black 35%	black	#1B1B1B	0.0110	t 17.22			m 7.72				pass
+compare	truth-badge	glass, regular, black 35%	gray18	#585858	0.0976	t 7.11			m 3.19				pass
+compare	truth-badge	glass, regular, black 35%	yellow	#8E7600	0.1871	t 4.43			m 1.98				fail
+compare	truth-badge	glass, regular, black 35%	red	#C51913	0.1261	t 5.96			m 2.67				fail
+compare	truth-badge	glass, regular, black 35%	checker	#5C5C5C	0.1070	t 6.69			m 3.00				fail
+compare	truth-badge	glass, regular, black 35%	split	#7C7C7C	0.2016	t 4.17			m 1.87				fail

@@ -47,8 +47,10 @@ struct HistogramView: View {
             .font(.caption.monospacedDigit())
             .frame(width: Self.width)
         }
+        .probeContent()
         .padding(10)
         .infoPlate()
+        .contrastProbe("histogram", .plate, shape: .rounded(8), uses: [.text(.secondary), .text(.warning), .text(.cyan)])
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spoken)
     }

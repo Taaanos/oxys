@@ -95,8 +95,10 @@ private struct ExifPanel: View {
                 .accessibilityAddTraits(focused == field.label ? .isSelected : [])
             }
         }
+        .probeContent()
         .padding(10)
         .infoPlate()
+        .contrastProbe("exif-panel", .plate, shape: .rounded(8), uses: [.text(.white), .text(.secondary)])
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -146,10 +148,14 @@ struct InfoStrip: View {
                 Spacer()
                 if let truth { TruthText(badge: truth) }
             }
+            .probeContent()
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
             .background(.black.opacity(Plate.opacity))
+            // Compare's EXIF line draws a differing value as text in the warning tint; Loupe uses that tint only for icons.
+            .contrastProbe("info-strip", .plate, shape: .rect,
+                           uses: [.text(.white), .text(.secondary), .mark(.star), .mark(.reject), exifFields.isEmpty ? .mark(.warning) : .text(.warning)])
             .foregroundStyle(.white)
             .environment(\.colorScheme, .dark)
             .accessibilityElement(children: .combine)
@@ -333,10 +339,12 @@ struct RatingCorner: View {
 
     var body: some View {
         DecisionGlyphs(decision: decision, pulse: pulse, showsEmptyStars: true)
+            .probeContent()
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .environment(\.colorScheme, .dark)
             .glassEffect(.regular.tint(.black.opacity(0.35)), in: .capsule)
+            .contrastProbe("rating-corner", .glass, shape: .capsule, uses: [.text(.secondary), .mark(.star), .mark(.reject)])
             .padding(12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             .allowsHitTesting(false)

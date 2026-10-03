@@ -51,6 +51,9 @@ public final class LoupeView: NSView {
     /// Told, on the main thread, how much of the frame is clipped, or nil when there is nothing to report (overlay
     /// off, a stand-in, no picture). Called once per analysis, not per frame.
     public var onClippingStats: (@MainActor (ClippingStats?) -> Void)?
+    /// False for the contrast probe (D-01): the overlays are analyzed and report their numbers, so their labels show,
+    /// but their marks are not painted, and every label sits on the bare test frame.
+    public static var paintsOverlays = true
     /// A thumbnail stand-in is not the picture: peaking on it would flash marks that the real frame then replaces.
     private var isStandIn = false
 
@@ -550,14 +553,14 @@ public final class LoupeView: NSView {
             let crisp = zoom != .fit && rect.width >= image.displaySize.width
             encoder.setFragmentSamplerState(crisp ? gpu.nearestSampler : gpu.sampler, index: 0)
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
-            if var pass = peakingPass {
+            if var pass = peakingPass, Self.paintsOverlays {
                 encoder.setRenderPipelineState(pass.gpu.overlay)
                 encoder.setVertexBytes(&quad, length: MemoryLayout<Quad>.stride, index: 0)
                 encoder.setFragmentTexture(pass.mask.texture, index: 0)
                 encoder.setFragmentBytes(&pass.params, length: MemoryLayout<PeakParams>.stride, index: 0)
                 encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
             }
-            if var pass = clippingPass {
+            if var pass = clippingPass, Self.paintsOverlays {
                 encoder.setRenderPipelineState(pass.gpu.overlay)
                 encoder.setVertexBytes(&quad, length: MemoryLayout<Quad>.stride, index: 0)
                 encoder.setFragmentTexture(pass.mask.texture, index: 0)

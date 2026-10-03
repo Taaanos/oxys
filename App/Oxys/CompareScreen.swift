@@ -65,8 +65,10 @@ private struct ComparePaneView: View {
         }
         .background(Color(white: LoupeView.canvasGray))
         .clipShape(RoundedRectangle(cornerRadius: 4))
-        // The ring marks the active pane. VoiceOver hears "Active" as the pane's value.
-        .overlay { RoundedRectangle(cornerRadius: 4).strokeBorder(active ? Color.accentColor : .clear, lineWidth: 4).allowsHitTesting(false) }
+        // The ring marks the active pane. VoiceOver hears "Active" as the pane's value. The contrast probe hides it for its
+        // plate capture: it covers the strip's outer 4 pt, where no text sits.
+        .overlay { RoundedRectangle(cornerRadius: 4).strokeBorder(active && !ContrastProbe.shared.blank ? Color.accentColor : .clear, lineWidth: 4).allowsHitTesting(false) }
+        .environment(\.probeScope, pane.side == .select ? "select" : "candidate")
         .accessibilityElement(children: .contain)
         .accessibilityLabel(pane.side.title)
         .accessibilityValue(active ? "Active" : "")
@@ -84,10 +86,12 @@ private struct PaneTitle: View {
         } icon: {
             Image(systemName: active ? "largecircle.fill.circle" : "circle").foregroundStyle(active ? Color.accentColor : Plate.secondary)
         }
+        .probeContent()
         .font(.callout.weight(.semibold))
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .infoPlate(cornerRadius: 8)
+        .contrastProbe("pane-title", .plate, shape: .rounded(8), uses: [.text(.white), .mark(.accent), .mark(.secondary)])
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .allowsHitTesting(false)
