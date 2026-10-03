@@ -226,3 +226,55 @@ private func makeImage(width: Int, height: Int) -> CGImage? {
     #expect(try PreviewSource.open(raw, isRaw: true).loupeLongEdge == 1600)
     #expect(try PreviewSource.open(jpeg, isRaw: false).loupeLongEdge == 640)
 }
+
+// MARK: - B-8: pixel limit
+
+/// A decodable JPEG whose frame header (SOF) says `width` x `height`. The entropy data does not match, so a decode fails,
+/// but ImageIO and the locators read the claimed size.
+private func makeJPEGClaiming(width: Int, height: Int) -> Data {
+    var jpeg = makeJPEG(width: 64, height: 64)
+    let marker = (0..<(jpeg.count - 1)).first { jpeg[$0] == 0xFF && (jpeg[$0 + 1] == 0xC0 || jpeg[$0 + 1] == 0xC2) }!
+    let sof = marker + 5  // FF C0, length (2), precision (1), then height and width
+    jpeg[sof] = UInt8(height >> 8); jpeg[sof + 1] = UInt8(height & 0xFF)
+    jpeg[sof + 2] = UInt8(width >> 8); jpeg[sof + 3] = UInt8(width & 0xFF)
+    return jpeg
+}
+
+@Test func decodedPixelsFollowTheSizeOptions() {
+    #expect(PreviewSource.decodedPixels(width: 6000, height: 4000, maxPixelSize: nil, subsample: nil) == 24_000_000)
+    #expect(PreviewSource.decodedPixels(width: 6000, height: 4000, maxPixelSize: 3000, subsample: nil) == 3000 * 2000)
+    #expect(PreviewSource.decodedPixels(width: 6000, height: 4000, maxPixelSize: 9000, subsample: nil) == 24_000_000)
+    #expect(PreviewSource.decodedPixels(width: 6000, height: 4000, maxPixelSize: nil, subsample: 4) == 1500 * 1000)
+    #expect(PreviewSource.decodedPixels(width: 65535, height: 65535, maxPixelSize: 8192, subsample: nil) == 8192 * 8192)
+}
+
+@Test func theLimitIsAboutTheOutputNotTheSource() throws {
+    try PreviewSource.checkSize(width: 65535, height: 65535, maxPixelSize: 8192, subsample: nil)
+    try PreviewSource.checkSize(width: 65535, height: 65535, maxPixelSize: nil, subsample: 8)
+    try PreviewSource.checkSize(width: 14_000, height: 14_000, maxPixelSize: nil, subsample: nil)
+    #expect(throws: PreviewError.tooLarge(megapixels: 4295)) {
+        try PreviewSource.checkSize(width: 65535, height: 65535, maxPixelSize: nil, subsample: nil)
+    }
+    #expect(throws: PreviewError.tooLarge(megapixels: 4295)) {
+        try PreviewSource.checkSize(width: 65535, height: 65535, maxPixelSize: 8192, subsample: nil, inputLimited: true)
+    }
+}
+
+@Test func aHugeJPEGIsRefusedAtFullSizeBeforeItIsDecoded() throws {
+    let url = try write(makeJPEGClaiming(width: 65535, height: 65535), named: "huge.jpg")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let source = try PreviewSource.open(url, isRaw: false)
+    #expect(throws: PreviewError.tooLarge(megapixels: 4295)) { try source.decodeLoupe() }
+    #expect(throws: PreviewError.tooLarge(megapixels: 4295)) { try source.decodeLoupe(maxPixelSize: nil, deferred: true) }
+    // Scaled down, the size is allowed: the decode goes ahead and fails on the bad bytes, not on the limit.
+    #expect(throws: PreviewError.corrupt) { try source.decodeLoupe(maxPixelSize: 8192, deferred: true) }
+    #expect(throws: PreviewError.corrupt) { try source.decodeGrid(longEdge: 320) }
+}
+
+@Test func aHugeEmbeddedPreviewIsRefusedAtFullSize() throws {
+    let url = try write(makeTIFFContainer(jpeg: makeJPEGClaiming(width: 30000, height: 30000)), named: "huge.dng")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let source = try PreviewSource.open(url, isRaw: true)
+    #expect(throws: PreviewError.tooLarge(megapixels: 900)) { try source.decodeLoupe() }
+    #expect(PreviewError.tooLarge(megapixels: 900).errorDescription == "Preview too large to show (900 megapixels).")
+}

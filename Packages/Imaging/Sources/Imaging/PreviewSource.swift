@@ -11,6 +11,9 @@ public enum PreviewError: Error, Equatable, Sendable {
     case noPreview
     /// The bytes are there but ImageIO could not decode them: a truncated or corrupt file.
     case corrupt
+    /// The image would need more than `PreviewSource.maxDecodedPixels` pixels in memory (B-8): a header that claims
+    /// 65,535 x 65,535 pixels, for example, would need about 17 GB. The value is the size in megapixels.
+    case tooLarge(megapixels: Int)
 }
 
 extension PreviewError: LocalizedError {
@@ -19,6 +22,7 @@ extension PreviewError: LocalizedError {
         case .unreadable(let reason): "Can't read this file: \(reason)"
         case .noPreview: "This file has no embedded preview."
         case .corrupt: "This file is damaged or incomplete."
+        case .tooLarge(let megapixels): "Preview too large to show (\(megapixels) megapixels)."
         }
     }
 }
@@ -59,6 +63,32 @@ public struct PreviewSource: Sendable {
     public let kind: Kind
     public let located: LocatedPreviews?
     private let data: Data
+
+    /// The most pixels one decode may produce (B-8). About 1 GB as RGBA. Real previews are far smaller (a 150 MP camera
+    /// makes a JPEG of that size, and Loupe decodes it at 8192 px on the long edge), and the Metal texture limit is
+    /// 16,384 px per side. A larger request is refused before ImageIO allocates anything.
+    public static let maxDecodedPixels = 250_000_000
+
+    /// Pixels a decode of a `width` x `height` image would produce, for the size options the decoders accept.
+    static func decodedPixels(width: Int, height: Int, maxPixelSize: Int?, subsample: Int?) -> Int {
+        if let subsample, subsample > 1 {
+            return ((width + subsample - 1) / subsample) * ((height + subsample - 1) / subsample)
+        }
+        let long = max(width, height)
+        guard let maxPixelSize, maxPixelSize < long, long > 0 else { return width * height }
+        let scale = Double(maxPixelSize) / Double(long)
+        return Int((Double(width) * scale).rounded(.up)) * Int((Double(height) * scale).rounded(.up))
+    }
+
+    /// Throws `.tooLarge` when decoding would need more than `maxDecodedPixels` (`maxPixelSize` and `subsample` shrink
+    /// the output, so they count). `inputLimited` is for formats whose decoder reads the whole image even to make a
+    /// thumbnail (everything but JPEG, which ImageIO scales while it decodes): the source size counts then.
+    static func checkSize(width: Int, height: Int, maxPixelSize: Int?, subsample: Int?,
+                          inputLimited: Bool = false) throws(PreviewError) {
+        let produced = decodedPixels(width: width, height: height, maxPixelSize: maxPixelSize, subsample: subsample)
+        let worst = inputLimited ? max(produced, width * height) : produced
+        if worst > maxDecodedPixels { throw .tooLarge(megapixels: (width * height + 500_000) / 1_000_000) }
+    }
 
     /// Below this long edge a TIFF-container image is a thumbnail, not evidence that the file is a RAW.
     static let minimumRawPreviewLongEdge = 512
@@ -158,6 +188,7 @@ public struct PreviewSource: Sendable {
 
     private func decodeEmbedded(_ preview: EmbeddedJPEG, info: ContainerInfo, maxPixelSize: Int?,
                                 deferred: Bool, subsample: Int? = nil) throws(PreviewError) -> DecodedPreview {
+        try Self.checkSize(width: preview.width, height: preview.height, maxPixelSize: maxPixelSize, subsample: subsample)
         let bytes = PreviewLocator.bytes(of: preview, in: data)
         guard let source = CGImageSourceCreateWithData(bytes as CFData, nil),
               let decoded = Self.thumbnail(of: source, maxPixelSize: maxPixelSize.map { min($0, preview.longEdge) },
@@ -186,12 +217,21 @@ public struct PreviewSource: Sendable {
 
     private func decodeOriginal(gridEdge: Int?, maxPixelSize: Int?, deferred: Bool,
                                 subsample: Int? = nil) throws(PreviewError) -> DecodedPreview {
+        // A JPEG states its size in its own header: check that before ImageIO sees the file. Other formats are checked
+        // with the size ImageIO reports, and count by their source size (their decoders read the whole image).
+        let jpegHeader = JPEGHeader.parse(ByteReader(data: data), at: 0)
+        if let jpegHeader {
+            try Self.checkSize(width: jpegHeader.width, height: jpegHeader.height, maxPixelSize: maxPixelSize, subsample: subsample)
+        }
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               CGImageSourceGetCount(source) > 0,
               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
               let width = props[kCGImagePropertyPixelWidth] as? Int,
               let height = props[kCGImagePropertyPixelHeight] as? Int
         else { throw .corrupt }
+        if jpegHeader == nil {
+            try Self.checkSize(width: width, height: height, maxPixelSize: maxPixelSize, subsample: subsample, inputLimited: true)
+        }
         let raw = props[kCGImagePropertyOrientation] as? UInt32
         let orientation = raw.flatMap(CGImagePropertyOrientation.init(rawValue:)) ?? .up
         guard let decoded = Self.thumbnail(of: source, maxPixelSize: maxPixelSize.map { min($0, max(width, height)) },
@@ -200,7 +240,7 @@ public struct PreviewSource: Sendable {
         else { throw .corrupt }
         // A JPEG with no ICC profile is sRGB, or Adobe RGB when its Exif says so. HEIC and TIFF carry their own.
         var image = decoded
-        if let header = JPEGHeader.parse(ByteReader(data: data), at: 0), !header.hasICCProfile {
+        if let header = jpegHeader, !header.hasICCProfile {
             let space = Self.colorSpace(hasICC: false, interop: header.exifInteropIndex)
             image = decoded.copy(colorSpace: space) ?? decoded
         }
