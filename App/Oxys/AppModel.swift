@@ -419,6 +419,7 @@ final class AppModel {
             MainActor.assumeIsolated {
                 folder.flushSidecarWrites()
                 saveSession()
+                UserDefaults.standard.set(false, forKey: Self.runningKey)
             }
         }
         // Developer hook, like OXYS_REPORT_LAUNCH: open a folder at launch for scripted checks.
@@ -671,6 +672,10 @@ final class AppModel {
     /// Settings → General: open the folder from last time at launch (on until switched off).
     static var reopensLastFolder: Bool { UserDefaults.standard.object(forKey: "reopenLastFolder") as? Bool ?? true }
 
+    /// True from launch until a normal quit. Still true at the next launch means the app crashed or was killed, so it
+    /// starts empty instead of reopening the folder that may have caused it (a crafted file would crash it again at once).
+    private static let runningKey = "appIsRunning"
+
     /// Writes the open folder's session if it changed since the last write. Cheap, so it runs on a timer, when the
     /// app loses focus, when another folder opens and at quit.
     func saveSession() {
@@ -703,7 +708,10 @@ final class AppModel {
         }
         watchSession()
         Task.detached { sessions.prune() }
-        if ProcessInfo.processInfo.environment["OXYS_OPEN"] == nil, Self.reopensLastFolder, let last = sessions.lastFolder { open(last) }
+        let defaults = UserDefaults.standard
+        let quitCleanly = !defaults.bool(forKey: Self.runningKey)
+        defaults.set(true, forKey: Self.runningKey)
+        if ProcessInfo.processInfo.environment["OXYS_OPEN"] == nil, Self.reopensLastFolder, quitCleanly, let last = sessions.lastFolder { open(last) }
     }
 
     func clearRecents() {
