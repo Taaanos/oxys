@@ -6,9 +6,95 @@
     {
       "layers": [
         {
+          "glass": false,
+          "image-name": "beak.png",
+          "name": "beak",
+          "blend-mode": "normal",
+          "blend-mode-specializations": [
+            {
+              "appearance": "light-clear",
+              "value": "multiply"
+            },
+            {
+              "appearance": "dark-clear",
+              "value": "multiply"
+            }
+          ]
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    },
+    {
+      "layers": [
+        {
           "glass": true,
-          "image-name": "bird.png",
-          "name": "bird"
+          "image-name": "eye.png",
+          "name": "eye",
+          "blend-mode": "normal",
+          "blend-mode-specializations": [
+            {
+              "appearance": "light-clear",
+              "value": "multiply"
+            },
+            {
+              "appearance": "dark-clear",
+              "value": "multiply"
+            }
+          ],
+          "glass-specializations": [
+            {
+              "value": true
+            },
+            {
+              "appearance": "light-clear",
+              "value": false
+            },
+            {
+              "appearance": "dark-clear",
+              "value": false
+            }
+          ]
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    },
+    {
+      "layers": [
+        {
+          "glass": false,
+          "image-name": "marks.png",
+          "name": "marks"
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    },
+    {
+      "layers": [
+        {
+          "glass": true,
+          "image-name": "body.png",
+          "name": "body"
         }
       ],
       "shadow": {

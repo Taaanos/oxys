@@ -22,6 +22,10 @@ BIRD, INK = "#f1f1f1", "#0a0a0a"
 
 def face(m):
     """The eye, brow, lid, cheek and beak line for one mood."""
+    return eye(m) + beak(m)
+
+def eye(m):
+    """The eye with its highlight, ring, lid, brow and cheek."""
     ex, ey = EYE; r = m["eye"]; out = []
     if m.get("cheek"):
         out.append(f'<ellipse cx="{ex + 38}" cy="{ey + r + 16}" rx="{m["cheek"]}" ry="{m["cheek"] * 0.65:.0f}" fill="#d4d4d4"/>')
@@ -50,6 +54,11 @@ def face(m):
     if m.get("brow"):                              # (thickness, drop of the beak-side end)
         w, drop = m["brow"]
         out.append(c.leaf((ex - r - 18, ey - r * 0.95 - 6), (ex + r + 20, ey - r * 0.95 - 6 + drop), w, INK))
+    return "".join(out)
+
+def beak(m):
+    """The beak line."""
+    out = []
     g, sm, curl = m["gape"], m["smile"], m.get("curl", 0)
     if curl:   # a straight line, then only its far end bends up
         pt = lambda f, dy=0: f"{806 - g * f:.1f} {338 + sm * f + dy:.1f}"
@@ -60,13 +69,19 @@ def face(m):
     out.append(f'<path d="{d}" stroke="{INK}" stroke-width="{m.get("beak_w", 9)}" fill="none" stroke-linecap="round"/>')
     return "".join(out)
 
-def bird(m):
+def parts(m):
+    """The bird as separate SVG fragments, back to front: body, marks, eye, beak, dots."""
     marks = "".join(c.leaf(a, b, w * m.get("mark_w", 1), m["mark"]) for a, b, w in (
         ((440, 480), (470, 940), 44), ((520, 530), (560, 940), 38), ((600, 570), (640, 900), 30),
         ((430, 260), (500, 196), 12), ((452, 304), (520, 214), 10))[: m.get("marks", 5)])
     dots = m.get("dots", 6.0)                       # None: no peaking dots along the head
-    return (f'<path d="{c.path_d(CHEST_SEGS if m.get("chest") else None)}" fill="{BIRD}"/>{marks}{face(m)}'
-            + ("" if dots is None else c.peaking_dots("#fff", EYE, rmax=dots, rmin=dots * 0.37)))
+    return dict(body=f'<path d="{c.path_d(CHEST_SEGS if m.get("chest") else None)}" fill="{BIRD}"/>', marks=marks,
+                eye=eye(m), beak=beak(m),
+                dots="" if dots is None else c.peaking_dots("#fff", EYE, rmax=dots, rmin=dots * 0.37))
+
+def bird(m):
+    p = parts(m)
+    return p["body"] + p["marks"] + p["eye"] + p["beak"] + p["dots"]
 
 MOODS = [
     ("1 delighted",  dict(eye=92, cheek=46, gape=60, smile=-4, mark="#c8c8c8", marks=3, shine=1.15)),

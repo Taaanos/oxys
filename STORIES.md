@@ -124,7 +124,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | D-06 | The filter bar under the toolbar | D-05, M-20 | built, partly checked |
 | D-07 | Glass for the EXIF panel and the histogram | D-02 | built, not measured (D-01 gives no valid numbers in this session; see the story) |
 | D-08 | Corners concentric with the window | D-02, V-08 | built, partly checked (window and inspector checked by eye; full screen and the glass labels see the story) |
-| D-09 | The app icon in every appearance | none | todo |
+| D-09 | The app icon in every appearance | none | built, partly checked (build and sheets done; your eye on 16 px and on the Dock, Finder and Spotlight is open; see the story) |
 | D-10 | Symbols in the menus | M-05, M-23 | todo |
 | D-11 | Spike: the info strip as a floating glass bar | D-01, D-02 | todo |
 | D-12 | Spike: a glass HUD for commands with no visible result | D-02 | todo |
@@ -2583,14 +2583,22 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 - `scripts/icon-size-sheet.py` makes a sheet at 16 to 128 px for each appearance.
 
 **Acceptance criteria**
-- [ ] `make build` builds the icon with no asset catalog warning.
+- [x] `make build` builds the icon with no asset catalog warning.
 - [ ] The eye stays the focus at 16 px and 32 px in every appearance.
 - [ ] In Clear and Tinted, the bird shape is clear, and the black fill does not become a gray blob.
-- [ ] `docs/design/icon.md` holds the sheets and the choices.
+- [x] `docs/design/icon.md` holds the sheets and the choices.
 
 **Open questions**
 1. Who decides the look? *Proposed:* I export the layers and the sheets, and you judge them by eye. Icon Composer shows each appearance before a build.
 2. How many layers? *Proposed:* four (body, feather marks, eye, beak). More layers make the 16 px icon busy.
+
+**Decisions and checks**
+- Q1 **Decided:** as proposed. `scripts/icon-appearance-sheet.py` renders the six appearances at 128 to 16 px with `ictool` (Icon Composer's command-line renderer), so the sheets need no screen capture.
+- Q2 **Decided:** four layers, as proposed, each in its own group. Glass on body and eye; marks and beak stay matte.
+- One variant only: in Clear, the eye and the beak blend with multiply and the eye has no glass, because the pupil went mid-grey on a mid-grey tile. Details in `docs/design/icon.md`.
+- Checked: the black fill does not become a gray blob in Clear (the tile is mid-grey, the bird is clear).
+- **Open:** "the eye stays the focus at 16 px and 32 px". At 32 px it holds in all six. At 16 px it is a speck even in Default, and weak in Clear light. This is your call by eye. Also not looked at: the Dock, Finder and Spotlight with the real System Settings choices.
+
 
 ### D-10 · Symbols in the menus
 
