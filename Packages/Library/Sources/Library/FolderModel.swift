@@ -195,7 +195,11 @@ public final class FolderModel {
 
     /// Replaces the open folder. The list is published as soon as the directory is read; capture times follow
     /// and re-sort it once. A newer `open` cancels an older one still reading.
-    public func open(_ url: URL) {
+    ///
+    /// `restoring` is a saved session (V-15): the current photo comes back as soon as the list is read; the
+    /// decisions that never reached disk are queued again at once; the filter, sort and selection are applied
+    /// when the sidecars are read, because the filter needs the ratings.
+    public func open(_ url: URL, restoring session: SessionState? = nil) {
         loading?.cancel()
         generation += 1
         let mine = generation
@@ -210,6 +214,7 @@ public final class FolderModel {
         lastWriteFailure = nil
         savedCopy = nil
         isBannerDismissed = false
+        pendingSession = session
         watcher?.stop()
         watcher = FolderWatcher(folder: url) { [weak self] names in
             Task { @MainActor in self?.handleChanges(names, generation: mine) }
@@ -231,11 +236,59 @@ public final class FolderModel {
                 photos = result.photos
                 currentURL = visible.first?.url
                 content = .photos
+                if let session { restoreEarly(session) }
                 // Both passes start now and run off the main thread; neither holds up the first image.
                 let sidecars = Task { await self.readSidecars(generation: mine) }
                 await readCaptureTimes(generation: mine)
                 await sidecars.value
+                if mine == generation, let session { restoreLate(session) }
             }
+        }
+    }
+
+    // MARK: session (V-15)
+
+    /// Set while a saved session is waiting to be applied. Until it is applied the live state is not the
+    /// photographer's, so `sessionState` returns nil and a quit in that time keeps the saved file.
+    private var pendingSession: SessionState?
+
+    /// What reopening this folder should bring back; nil while nothing is open or a restore is still running.
+    /// `withUnsaved: false` is for a reload, which keeps the write queue's own retries.
+    public func sessionState(mode: String, withUnsaved: Bool = true, now: Date = Date()) -> SessionState? {
+        guard let folder, content == .photos, pendingSession == nil else { return nil }
+        let unsaved = withUnsaved ? photos.filter(\.sidecar.unsaved).map { UnsavedDecision(name: $0.name, decision: $0.decision) } : []
+        return SessionState(identity: FolderIdentity(folder), savedAt: now, mode: mode, currentName: currentURL?.lastPathComponent,
+                            filter: filter, selected: selection.urls.map(\.lastPathComponent).sorted(),
+                            selectionAnchor: selection.anchor?.lastPathComponent, unsaved: unsaved)
+    }
+
+    private func restoreEarly(_ session: SessionState) {
+        if let name = session.currentName, let photo = photos.first(where: { $0.name == name }) { currentURL = photo.url }
+        let byName = Dictionary(photos.enumerated().map { ($1.name, $0) }, uniquingKeysWith: { first, _ in first })
+        for item in session.unsaved {
+            guard let index = byName[item.name], !sidecarChanged(since: session.savedAt, photos[index]) else { continue }
+            photos[index].decision = item.decision
+            persist(at: index)
+        }
+    }
+
+    private func restoreLate(_ session: SessionState) {
+        pendingSession = nil
+        updateFilter { $0 = session.filter }
+        let byName = Dictionary(photos.map { ($0.name, $0.url) }, uniquingKeysWith: { first, _ in first })
+        let urls = Set(session.selected.compactMap { byName[$0] })
+        let shown = Set(visible.map(\.url))
+        guard selection.isEmpty else { return }
+        selection = Selection(urls: urls.intersection(shown), anchor: session.selectionAnchor.flatMap { byName[$0] })
+    }
+
+    /// True when another program wrote this photo's sidecar after `date`: its content then beats a decision we kept.
+    private func sidecarChanged(since date: Date, _ photo: Photo) -> Bool {
+        guard let folder else { return false }
+        return [SidecarNaming.stem, .fullName].contains { naming in
+            let url = folder.appendingPathComponent(naming.fileName(for: photo.name))
+            let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+            return modified.map { $0 > date } ?? false
         }
     }
 
@@ -310,7 +363,8 @@ public final class FolderModel {
 
     /// Re-reads the open folder (the "reload" of the new-files banner).
     public func reload() {
-        if let folder { open(folder) }
+        guard let folder else { return }
+        open(folder, restoring: sessionState(mode: "", withUnsaved: false))
     }
 
     // MARK: outside changes (M-10)

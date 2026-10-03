@@ -71,6 +71,11 @@ public struct Selection: Sendable, Equatable {
 
     public init() {}
 
+    public init(urls: Set<URL>, anchor: URL?) {
+        self.urls = urls
+        self.anchor = anchor.flatMap { urls.contains($0) ? $0 : nil }
+    }
+
     public var count: Int { urls.count }
     public var isEmpty: Bool { urls.isEmpty }
     public func contains(_ url: URL) -> Bool { urls.contains(url) }

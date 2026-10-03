@@ -410,13 +410,17 @@ final class AppModel {
         commands.inspectorKey = { [unowned self] code, shift, option in inspectorKey(code: code, shift: shift, option: option) }
         commands.start()
         // Decisions are written as they are made; this waits for the last ones to land before the process exits.
-        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [folder] _ in
-            MainActor.assumeIsolated { folder.flushSidecarWrites() }
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [unowned self] _ in
+            MainActor.assumeIsolated {
+                folder.flushSidecarWrites()
+                saveSession()
+            }
         }
         // Developer hook, like OXYS_REPORT_LAUNCH: open a folder at launch for scripted checks.
         if let path = ProcessInfo.processInfo.environment["OXYS_OPEN"] {
             if PerfBench.scenario != nil { PerfBench.start(model: self, folder: URL(fileURLWithPath: path)) } else { open(URL(fileURLWithPath: path)) }
         }
+        startSessionResume()
     }
 
     // MARK: filter and sort (M-20)
@@ -569,9 +573,13 @@ final class AppModel {
     }
 
     func open(_ url: URL) {
-        commands.mode = .grid
+        saveSession()
+        let session = sessions?.load(for: url)
+        // Compare needs a live pair, so a session never reopens in it; a folder with no session starts in Grid.
+        commands.mode = session.flatMap { ViewMode(rawValue: $0.mode) }.flatMap { $0 == .compare ? nil : $0 } ?? .grid
         grid.noteOpening()
-        folder.open(url)
+        folder.open(url, restoring: session)
+        sessions?.setLastFolder(FolderIdentity(url))
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
         recentFolders = NSDocumentController.shared.recentDocumentURLs
     }
@@ -610,10 +618,10 @@ final class AppModel {
         let count = folder.photos.filter(\.sidecar.unsaved).count
         let alert = NSAlert()
         alert.messageText = count == 1 ? "1 decision is not saved" : "\(count) decisions are not saved"
-        alert.informativeText = "Their sidecars could not be written to the photo folder. Save them to another folder, or quit and lose them."
+        alert.informativeText = "Their sidecars could not be written to the photo folder. Save them to another folder, or quit: Oxys keeps them and tries again when you reopen this folder."
         alert.addButton(withTitle: "Save Decisions To…")
         alert.addButton(withTitle: "Cancel")
-        alert.addButton(withTitle: "Quit Anyway")
+        alert.addButton(withTitle: "Quit")
         switch alert.runModal() {
         case .alertFirstButtonReturn:
             Task { @MainActor in
@@ -631,6 +639,40 @@ final class AppModel {
         else { return false }
         open(url)
         return true
+    }
+
+    // MARK: session resume (V-15)
+
+    /// Per-folder state in Application Support. Nil while a script drives the app (`OXYS_OPEN`, `OXYS_REPORT_LAUNCH`),
+    /// so benches and checks neither read nor change the photographer's sessions; `OXYS_SESSION_DIR` turns it back on.
+    private let sessions: SessionStore? = {
+        let env = ProcessInfo.processInfo.environment
+        if let dir = env["OXYS_SESSION_DIR"] { return SessionStore(directory: URL(fileURLWithPath: dir, isDirectory: true)) }
+        return env["OXYS_OPEN"] == nil && env["OXYS_REPORT_LAUNCH"] == nil ? SessionStore.standard : nil
+    }()
+    private var lastSavedSession: SessionState?
+
+    /// Settings → General: open the folder from last time at launch (on until switched off).
+    static var reopensLastFolder: Bool { UserDefaults.standard.object(forKey: "reopenLastFolder") as? Bool ?? true }
+
+    /// Writes the open folder's session if it changed since the last write. Cheap, so it runs on a timer, when the
+    /// app loses focus, when another folder opens and at quit.
+    func saveSession() {
+        guard let sessions, let state = folder.sessionState(mode: commands.mode == .grid ? "grid" : "loupe") else { return }
+        if let lastSavedSession, lastSavedSession.sameContent(as: state) { return }
+        if sessions.save(state) { lastSavedSession = state }
+    }
+
+    private func startSessionResume() {
+        guard let sessions else { return }
+        NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [unowned self] _ in
+            MainActor.assumeIsolated { saveSession() }
+        }
+        Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [unowned self] _ in
+            MainActor.assumeIsolated { saveSession() }
+        }
+        Task.detached { sessions.prune() }
+        if ProcessInfo.processInfo.environment["OXYS_OPEN"] == nil, Self.reopensLastFolder, let last = sessions.lastFolder { open(last) }
     }
 
     func clearRecents() {

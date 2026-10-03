@@ -1,7 +1,7 @@
 import Foundation
 
 /// How rejects are treated by the filter (M-20).
-public enum RejectFilter: String, Sendable, CaseIterable {
+public enum RejectFilter: String, Sendable, CaseIterable, Codable {
     case showAll, hideRejected, onlyRejected
 
     public var title: String {
@@ -13,7 +13,7 @@ public enum RejectFilter: String, Sendable, CaseIterable {
     }
 }
 
-public enum SortKey: String, Sendable, CaseIterable {
+public enum SortKey: String, Sendable, CaseIterable, Codable {
     case captureTime, filename
 
     public var title: String {
@@ -25,7 +25,7 @@ public enum SortKey: String, Sendable, CaseIterable {
 }
 
 /// What the filter and sort bar holds (M-20). `isOn` is ⌘L: turning it off keeps the settings.
-public struct PhotoFilter: Sendable, Equatable {
+public struct PhotoFilter: Sendable, Equatable, Codable {
     public var isOn = true
     /// Which star ratings pass (1 to 5); empty means any. Rejects never pass a non-empty set.
     public var stars: Set<Int> = []

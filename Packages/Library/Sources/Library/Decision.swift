@@ -1,7 +1,7 @@
 import Foundation
 
 /// A color label. Purple is menu-only (no default key).
-public enum ColorLabel: String, Sendable, CaseIterable {
+public enum ColorLabel: String, Sendable, CaseIterable, Codable {
     case red, yellow, green, blue, purple
 
     public var name: String { rawValue.capitalized }

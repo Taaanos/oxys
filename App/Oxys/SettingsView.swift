@@ -29,9 +29,12 @@ struct SettingsView: View {
 private struct GeneralPane: View {
     @AppStorage("autoAdvance") private var autoAdvance = false
     @AppStorage("pairRawJpeg") private var pairRawJpeg = true
+    @AppStorage("reopenLastFolder") private var reopenLastFolder = true
 
     var body: some View {
         Form {
+            Toggle("Reopen the last folder at launch", isOn: $reopenLastFolder)
+            note("Each folder remembers its photo, filter, sort and selection, and any decision that could not be saved.")
             Toggle("Advance after rating, label or reject", isOn: $autoAdvance)
             note("Hold ⇧ with a key to apply it and stay on the photo. The A key switches this on and off.")
             Toggle("Show a RAW and its JPEG as one photo", isOn: $pairRawJpeg)

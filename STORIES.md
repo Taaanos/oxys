@@ -96,7 +96,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-12 | External editors | M-19, M-22 | built, needs a live check (ART first; RawTherapee and Lightroom Classic untested) |
 | V-13 | Extract embedded JPEGs | M-02, M-19 | built, needs a live check (the ⇧⌘E panel and plate not clicked through; cold-cache time over the limit) |
 | V-14 | Key remapping and presets | M-22, M-23 | todo |
-| V-15 | Session resume | M-20 | todo |
+| V-15 | Session resume | M-20 | built (quit-and-relaunch checked in the live app with a scripted session file; keys and the unsaved-decision path on a locked card not clicked through) |
 | V-16 | Interop guidance | M-22, F-04 | todo |
 | V-17 | Distribution | G-2 | todo |
 | V-19 | Optional lens correction for RAW | V-02, M-22 | todo (spike done: `docs/spikes/lens-correction.md`) |
@@ -793,7 +793,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Q1 and Q2 accepted. "Save Decisions To…" (⇧⌘S, enabled while something is unsaved, also in the banner) writes sidecars only, with the configured names, through the same patcher, so an existing sidecar in that folder is patched. Once copied, those photos count as saved and their failed writes are forgotten (a folder that becomes writable later is not written to). The banner then says where they went and that the files must be moved next to the photos.
 - Read-only is found on open (`volumeIsReadOnly` or not writable) and again on Retry. Writes are still attempted, so there is one failure path: `SidecarWriteQueue` keeps each `.failed` job (`retryFailed`, `unsavedCount`, `forgetFailure`); a newer decision for the same sidecar replaces it and a retry never overwrites a newer one. Refusals count as unsaved but are not retried.
 - `FolderModel` tracks `SidecarInfo.unsaved` per photo (`unsavedCount`, `banner`, `isBannerDismissed`); the info strip shows "Not saved yet" until the inspector exists. The banner appears once per opened folder (Dismiss hides it), is non-modal, never takes focus, and is announced to VoiceOver. Retry runs from the banner and whenever the app becomes active.
-- Quit: `AppDelegate.applicationShouldTerminate` retries and flushes, and only if something is still unsaved shows the one alert (Save Decisions To…, Cancel, Quit Anyway).
+- Quit: `AppDelegate.applicationShouldTerminate` retries and flushes, and only if something is still unsaved shows the one alert (Save Decisions To…, Cancel, Quit; V-15 renamed the last button).
 
 **Checked**
 - Unit tests (`Sidecar` 26, `Library` 63): read-only banner on open, decisions kept and marked unsaved, retry after unlocking, newer decision not overwritten, save to another folder with same names, folder vanishing mid-session.
@@ -1756,6 +1756,20 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 1. How do we recognize "the same folder" after a card is reinserted or a folder is moved? *Proposed:* volume UUID plus path, falling back to the path alone.
 2. Reopen the last folder automatically at launch? *Proposed:* yes, unless its volume is gone.
 3. How long to keep state for folders never reopened? *Proposed:* 90 days or 500 folders, whichever comes first.
+
+**Status:** built (live check of a real quit and relaunch pending)
+
+**Decisions**
+- Q1 **decided** as proposed, with one detail: the file is found by path first, then by volume UUID plus the place on the volume (a renamed card). A reformatted card at the same path keeps its session. A moved folder on one volume is a new folder.
+- Q2 **decided** as proposed: the last folder reopens at launch if it still exists. Settings → General has a switch (on by default). Scripted runs (`OXYS_OPEN`, `OXYS_REPORT_LAUNCH`) neither read nor write sessions, so benches stay repeatable; `OXYS_SESSION_DIR=<dir>` turns sessions on with a scratch directory.
+- Q3 **decided** as proposed: 90 days or 500 folders, pruned at launch and when a save passes 500.
+- One JSON file per folder in `~/Library/Application Support/Oxys/Sessions` (`SessionStore`, `SessionState` in Library). Photos are named by file name.
+- Saved: when another folder opens, when the app loses focus, every 15 s if something changed, and at quit. Compare is saved as Loupe.
+- On reopen the current photo and mode return at once. Filter, sort and selection are applied after the sidecars are read, because the filter needs the ratings. A selection the filter hides is dropped. Photos that are gone are skipped.
+- Unsaved decisions (M-11/Q2) are written again when the folder reopens, unless another program changed that sidecar after the session was saved. The quit alert now says Oxys keeps them (button "Quit Anyway" is now "Quit").
+- A session is never saved while a restore is still being applied, so a quick quit cannot erase it.
+- Reload (the new-files banner) keeps the current photo and selection.
+- Not restored: zoom, Compare pair, scroll position in Grid.
 
 ### V-16 · Interop guidance
 
