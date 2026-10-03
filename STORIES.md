@@ -126,7 +126,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | D-08 | Corners concentric with the window | D-02, V-08 | built, partly checked (window and inspector checked by eye; full screen and the glass labels see the story) |
 | D-09 | The app icon in every appearance | none | built, partly checked (build and sheets done; your eye on 16 px and on the Dock, Finder and Spotlight is open; see the story) |
 | D-10 | Symbols in the menus | M-05, M-23 | done |
-| D-11 | Spike: the info strip as a floating glass bar | D-01, D-02 | in progress (flag built; gate not measured, no decision yet) |
+| D-11 | Spike: the info strip as a floating glass bar | D-01, D-02 | done (glass kept; `⇧I` toggle 9 ms slower, full `make contrast`, the morph and the 20-frame comparison not done) |
 | D-12 | Spike: a glass HUD for commands with no visible result | D-02 | todo |
 
 ### Dependency map (foundations and MVP)
@@ -2656,6 +2656,11 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 - Preference after a first look (3 Oct): for the `I` strip, the split capsule with the stars first is preferred to the plate and to the full-width bar. This is not the gate decision: D-01, the perf gate and the 20-frame comparison are still open.
 - Gate, measured 3 Oct on `real-drone-840` (`make perf-bench`, 3 runs): `cull` is the same (`cull-feedback` p95 43.0 plate, 44.3 split; both over the 16.7 ms limit, so that limit already failed before D-11). `scrub` `key-to-frame` p95 51.6 plate, 42.8 split, no new hitch. `overlays` is worse: `info.histogram` p95 about 25 ms plate, 34 ms split, 28 ms for the full-width bar (also over 16.7 before). Removing the `GlassEffectContainer` did not change it, so the cost is the glass layers on the toggle. `make contrast-quick` first failed Compare's differing EXIF text in amber on glass (3.38:1); new ink `Plate.warningText` (1, 0.86, 0.50) for that text, and the probe passes on white and yellow. The full `make contrast` has not run.
 - Not done: the `glassEffectID` morph on `I` (open question 2), the D-01 run, `cull` and `overlays` perf gates, the 20-frame side-by-side and the real session. The decision (keep the plate or make glass the default) is not made.
+
+**Decision (3 Oct)**
+- Glass is the default and the only style; the `OxysInfoStripStyle` flag, the plate strip and the full-width bar are removed. The strip is two capsules in one `GlassEffectContainer`: the stars first (always drawn, in a slot as wide as five stars), the filename, the note and the zoom at the leading edge, and the truth badge at the trailing edge. `⌥I` still shows the rating in the corner while the strip is off. Open question 1: the user chose content-width capsules over a full-width bar, because they show more of the photo. Open question 2: no morph. The strip appears and disappears with a cut, as the other glass labels do.
+- Accepted cost: `overlays` `info.histogram` p95 about 25 to 34 ms. It was over 16.7 ms before D-11, and the toggle is not on the cull loop. If P-xx work reduces glass layers later, this is the first place to look.
+- Not done: the full `make contrast` (only `contrast-quick` on white and yellow), the 20-frame comparison, one real session, and the check that a reject or a color label does not move the filename.
 
 **Open questions**
 1. Width: the full width less the inset, or only as wide as the content? *Proposed:* the full width less the inset, so that the truth badge text keeps its place at the right end.

@@ -112,7 +112,7 @@ private struct ExifPanel: View {
     }
 }
 
-/// Filename, the decision (stars, label, reject) and the size of the preview shown.
+/// The decision (stars, label, reject), the filename and the size of the preview shown, on glass (D-11).
 struct InfoStrip: View {
     let photo: Photo?
     let decision: Decision?
@@ -124,15 +124,6 @@ struct InfoStrip: View {
     /// Changes when a cull key took effect; the rating glyphs bounce.
     var pulse = 0
 
-    /// D-11 spike: `defaults write <bundle id> OxysInfoStripStyle glass` draws the strip as a floating glass bar; `glass-split` as two capsules, the photo's state at the left and the truth badge at the right.
-    static var style: InfoStripStyle {
-        switch UserDefaults.standard.string(forKey: "OxysInfoStripStyle") {
-        case "glass": .glass
-        case "glass-split": .split
-        default: .plate
-        }
-    }
-
     private var exifSpoken: String? {
         exifFields.isEmpty ? nil : exifFields.map { $0.differs ? "\($0.label) \($0.value), differs" : $0.value }.joined(separator: ", ")
     }
@@ -143,13 +134,12 @@ struct InfoStrip: View {
             + (truth.map { ", " + $0.spoken } ?? "")
     }
 
-    @ViewBuilder private func state(_ photo: Photo, withDecision: Bool = true) -> some View {
+    @ViewBuilder private func state(_ photo: Photo) -> some View {
         Text(photo.name).font(.callout.monospaced())
         if let companion = photo.companion {
             Text("RAW+JPEG").font(.caption.weight(.semibold)).foregroundStyle(Plate.secondary)
                 .help("\(photo.name) and \(companion.url.lastPathComponent) are one frame; the decision goes to both")
         }
-        if withDecision, let decision, !decision.isUndecided { DecisionGlyphs(decision: decision, pulse: pulse) }
         if let note = photo.sidecar.notes.first {
             PlateLabel(text: note, systemImage: photo.sidecar.problem == nil ? "info.circle" : "exclamationmark.triangle.fill",
                        tint: photo.sidecar.problem == nil ? Plate.secondary : Plate.warning)
@@ -172,76 +162,38 @@ struct InfoStrip: View {
         ([photo.name, photo.isPair ? "RAW and JPEG" : nil, decision?.summary].compactMap { $0 } + photo.sidecar.notes).joined(separator: ", ") + (exifSpoken.map { ", " + $0 } ?? "") + zoomSpoken
     }
 
+    /// Two glass capsules (D-11): the photo's state at the leading edge and the truth badge at the trailing edge, so only
+    /// their inner edges move while `→` is held and the photo shows between them.
     var body: some View {
         if let photo {
-            if Self.style == .split {
-                // The state capsule keeps the leading edge and the truth capsule the trailing edge, so only the inner edges move while `→` is held.
-                GlassEffectContainer {
-                    HStack(alignment: .bottom, spacing: 12) {
-                        // The decision leads the capsule, with empty stars drawn and a slot as wide as five stars, so the filename keeps its place from frame to frame.
-                        HStack(spacing: 12) {
-                            ZStack(alignment: .leading) {
-                                DecisionGlyphs(decision: Decision(rating: 5), showsEmptyStars: true).hidden()
-                                DecisionGlyphs(decision: decision ?? Decision(), pulse: pulse, showsEmptyStars: true)
-                            }
-                            state(photo, withDecision: false)
+            GlassEffectContainer {
+                HStack(alignment: .bottom, spacing: 12) {
+                    // The decision leads the capsule, with empty stars drawn and a slot as wide as five stars, so the filename keeps its place from frame to frame.
+                    HStack(spacing: 12) {
+                        ZStack(alignment: .leading) {
+                            DecisionGlyphs(decision: Decision(rating: 5), showsEmptyStars: true).hidden()
+                            DecisionGlyphs(decision: decision ?? Decision(), pulse: pulse, showsEmptyStars: true)
                         }
-                        .probeContent()
-                        .padding(.horizontal, 12).padding(.vertical, 6)
-                        .glassPlate()
-                        .contrastProbe("info-strip", .glass, shape: .capsule, uses: uses)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel(spoken(photo))
-                        Spacer(minLength: 0)
-                        if let truth {
-                            TruthText(badge: truth)
-                                .probeContent()
-                                .padding(.horizontal, 12).padding(.vertical, 6)
-                                .glassPlate()
-                                .contrastProbe("info-strip-truth", .glass, shape: .capsule, uses: [.text(.secondary), .mark(.warning)])
-                                .accessibilityHidden(true)
-                        }
+                        state(photo)
+                    }
+                    .probeContent()
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .glassPlate()
+                    .contrastProbe("info-strip", .glass, shape: .capsule, uses: uses)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(spoken(photo))
+                    Spacer(minLength: 0)
+                    if let truth {
+                        TruthText(badge: truth)
+                            .probeContent()
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .glassPlate()
+                            .contrastProbe("info-strip-truth", .glass, shape: .capsule, uses: [.text(.secondary), .mark(.warning)])
+                            .accessibilityHidden(true)
                     }
                 }
-                .padding(12)
-            } else {
-                HStack(spacing: 12) {
-                    state(photo)
-                    Spacer()
-                    if let truth { TruthText(badge: truth) }
-                }
-                .probeContent()
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .frame(maxWidth: .infinity)
-                .modifier(StripBacking(style: Self.style, uses: uses))
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(spoken(photo))
             }
-        }
-    }
-}
-
-enum InfoStripStyle { case plate, glass, split }
-
-/// The strip's backing. The plate is a full-width black band; the glass bar floats 12 pt in from the window edges (D-11).
-private struct StripBacking: ViewModifier {
-    let style: InfoStripStyle
-    let uses: [ContrastProbe.Use]
-
-    func body(content: Content) -> some View {
-        switch style {
-        case .plate:
-            content
-                .background(.black.opacity(Plate.opacity))
-                .contrastProbe("info-strip", .plate, shape: .rect, uses: uses)
-                .foregroundStyle(.white)
-                .environment(\.colorScheme, .dark)
-        case .glass, .split:
-            content
-                .glassPlate(in: .rect(cornerRadius: 12))
-                .contrastProbe("info-strip", .glass, shape: .rounded(12), uses: uses)
-                .padding(12)
+            .padding(12)
         }
     }
 }
