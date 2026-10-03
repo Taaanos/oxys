@@ -143,13 +143,13 @@ struct InfoStrip: View {
             + (truth.map { ", " + $0.spoken } ?? "")
     }
 
-    @ViewBuilder private func state(_ photo: Photo) -> some View {
+    @ViewBuilder private func state(_ photo: Photo, withDecision: Bool = true) -> some View {
         Text(photo.name).font(.callout.monospaced())
         if let companion = photo.companion {
             Text("RAW+JPEG").font(.caption.weight(.semibold)).foregroundStyle(Plate.secondary)
                 .help("\(photo.name) and \(companion.url.lastPathComponent) are one frame; the decision goes to both")
         }
-        if let decision, !decision.isUndecided { DecisionGlyphs(decision: decision, pulse: pulse) }
+        if withDecision, let decision, !decision.isUndecided { DecisionGlyphs(decision: decision, pulse: pulse) }
         if let note = photo.sidecar.notes.first {
             PlateLabel(text: note, systemImage: photo.sidecar.problem == nil ? "info.circle" : "exclamationmark.triangle.fill",
                        tint: photo.sidecar.problem == nil ? Plate.secondary : Plate.warning)
@@ -177,14 +177,22 @@ struct InfoStrip: View {
             if Self.style == .split {
                 // The state capsule keeps the leading edge and the truth capsule the trailing edge, so only the inner edges move while `→` is held.
                 GlassEffectContainer {
-                    HStack(spacing: 12) {
-                        HStack(spacing: 12) { state(photo) }
-                            .probeContent()
-                            .padding(.horizontal, 12).padding(.vertical, 6)
-                            .glassPlate()
-                            .contrastProbe("info-strip", .glass, shape: .capsule, uses: uses)
-                            .accessibilityElement(children: .combine)
-                            .accessibilityLabel(spoken(photo))
+                    HStack(alignment: .bottom, spacing: 12) {
+                        // The decision has its own capsule above the state, with empty stars drawn, so a rating never moves the filename.
+                        VStack(alignment: .leading, spacing: 8) {
+                            DecisionGlyphs(decision: decision ?? Decision(), pulse: pulse, showsEmptyStars: true)
+                                .probeContent()
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .glassPlate()
+                                .contrastProbe("info-strip-decision", .glass, shape: .capsule, uses: [.text(.white), .mark(.star), .mark(.reject)])
+                            HStack(spacing: 12) { state(photo, withDecision: false) }
+                                .probeContent()
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .glassPlate()
+                                .contrastProbe("info-strip", .glass, shape: .capsule, uses: uses)
+                                .accessibilityElement(children: .combine)
+                                .accessibilityLabel(spoken(photo))
+                        }
                         Spacer(minLength: 0)
                         if let truth {
                             TruthText(badge: truth)
