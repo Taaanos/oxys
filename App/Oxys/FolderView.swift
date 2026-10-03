@@ -7,6 +7,7 @@ import SwiftUI
 /// An opened folder lands in Grid; Return, Space or a double-click opens the active photo in Loupe.
 struct FolderView: View {
     let model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let folder = model.folder
@@ -59,6 +60,10 @@ struct FolderView: View {
         .overlay { if model.showCheatSheet { CheatSheetView(model: model) } }
         .overlay { if model.showEditorChooser { EditorChooserView(model: model) } }
         .overlay(alignment: .bottomLeading) { if model.extract.isShowing { ExtractPlate(job: model.extract) } }
+        // The panels materialize (D-03); with Reduce Motion they cut, both by their transition and by no animation.
+        .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: model.showCheatSheet)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: model.showEditorChooser)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: model.extract.isShowing)
         .toolbar(id: "oxys.main") { ToolbarItems(model: model) }
         .toolbarVisibility(model.chromeHidden ? .hidden : .visible, for: .windowToolbar)
         .background(WindowToolbarCollapser(hidden: model.chromeHidden))

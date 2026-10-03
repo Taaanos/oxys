@@ -118,7 +118,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | **Phase 2c** | **Design (Liquid Glass)** (see G-14) | | |
 | D-01 | Contrast probe for labels on the photo | M-18, V-05, P-01 | done (measured in dark appearance only; the Reduce Transparency, Increase Contrast and light runs are open) |
 | D-02 | Glass for the badges on the photo | D-01 | in progress (built; contrast passes in the dark appearance; the perf gate and the accessibility-setting runs are open) |
-| D-03 | Glass for the floating panels | D-02 | todo |
+| D-03 | Glass for the floating panels | D-02 | built, checks open |
 | D-04 | The write banner as a floating glass notice | D-03 | todo |
 | D-05 | The toolbar on macOS 27 | M-13 | todo |
 | D-06 | The filter bar under the toolbar | D-05, M-20 | todo |
@@ -2399,6 +2399,14 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 **Open questions**
 1. Keep the dim backdrop? Apple's popovers do not dim. *Proposed:* yes. These panels take all the keys, so the screen must show that the photo is not active.
 2. Should the extract panel follow the system appearance, as chrome does? *Proposed:* no. It sits on the canvas, with the other labels.
+
+**Decisions and checks**
+- Q1 **Decided:** keep the dim backdrop (black at 35%), as proposed.
+- Q2 **Decided:** the extract panel stays dark, as proposed. It uses `glassPlate(in: .rect(cornerRadius: 10), transition:)`; `glassPlate` has a new `transition` parameter that defaults to `.identity`, so the badges still cut.
+- `CheatSheetView` and `EditorChooserView`: `.glassEffect(.regular, in: .rect(cornerRadius: 12))` inside a `GlassEffectContainer`; `.shadow(radius: 24)` removed. The key routing is not touched.
+- Transition: `.materialize`, or `.identity` with Reduce Motion on. `FolderView` animates the three show flags with `.smooth(duration: 0.25)`, or with no animation under Reduce Motion, because a glass transition runs only inside an animation.
+- Checked: `make build` has no warnings; `make test` passes, except `aFolderThatVanishesMidSessionKeepsEveryDecisionInMemory` (the known timing flake from D-02; it passes alone).
+- Not checked yet (quick run only): the opening and closing on screen, `make contrast` for the three panels in light and dark, Reduce Motion, Reduce Transparency and VoiceOver.
 
 ### D-04 · The write banner as a floating glass notice
 

@@ -14,11 +14,11 @@ extension View {
 /// bright frame. Every label that floats on the photo goes through this one modifier, so the tint, the foreground
 /// and the color scheme have one home. The label appears and disappears with a cut: its toggle is on the cull loop.
 extension View {
-    func glassPlate(in shape: some Shape = .capsule) -> some View {
+    func glassPlate(in shape: some Shape = .capsule, transition: GlassEffectTransition = .identity) -> some View {
         foregroundStyle(.white)
             .environment(\.colorScheme, .dark)
             .glassEffect(.regular.tint(Plate.glassTint), in: shape)
-            .glassEffectTransition(.identity)
+            .glassEffectTransition(transition)
     }
 }
 

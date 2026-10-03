@@ -99,8 +99,10 @@ final class ExtractJob {
 /// Progress, then the summary, as a plate at the bottom left. Not modal and never takes focus: `⌘.` cancels or closes it.
 struct ExtractPlate: View {
     let job: ExtractJob
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        GlassEffectContainer {
         Group {
             switch job.state {
             case .idle:
@@ -126,7 +128,8 @@ struct ExtractPlate: View {
         }
         .padding(12)
         .frame(width: 340, alignment: .leading)
-        .infoPlate(cornerRadius: 10)
+        .glassPlate(in: .rect(cornerRadius: 10), transition: reduceMotion ? .identity : .materialize)
+        }
         .padding(.leading, 12)
         .padding(.bottom, 44)
         .accessibilityElement(children: .contain)

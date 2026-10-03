@@ -6,9 +6,11 @@ import SwiftUI
 /// Like the cheat sheet it is not a window; `AppModel.editorChooserKey` gets the keys.
 struct EditorChooserView: View {
     let model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let editors = model.editors.editors
+        GlassEffectContainer {
         ZStack {
             Color.black.opacity(0.35)
                 .contentShape(Rectangle())
@@ -38,10 +40,11 @@ struct EditorChooserView: View {
             }
             .padding(16)
             .frame(width: 340)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-            .shadow(radius: 24)
+            .glassEffect(.regular, in: .rect(cornerRadius: 12))
+            .glassEffectTransition(reduceMotion ? .identity : .materialize)
             .accessibilityElement(children: .contain)
             .accessibilityAddTraits(.isModal)
+        }
         }
     }
 }

@@ -8,10 +8,12 @@ import SwiftUI
 /// (`AppModel.cheatSheetKey`) and swallows the rest.
 struct CheatSheetView: View {
     let model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let center = model.commands
         let sections = CheatSheet.sections(table: center.table, keymap: center.keymap, mode: center.mode)
+        GlassEffectContainer {
         ZStack {
             Color.black.opacity(0.35)
                 .contentShape(Rectangle())
@@ -50,11 +52,12 @@ struct CheatSheetView: View {
                 }
             }
             .frame(maxWidth: 560, maxHeight: 640)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-            .shadow(radius: 24)
+            .glassEffect(.regular, in: .rect(cornerRadius: 12))
+            .glassEffectTransition(reduceMotion ? .identity : .materialize)
             .padding(24)
             .accessibilityElement(children: .contain)
             .accessibilityAddTraits(.isModal)
+        }
         }
     }
 
