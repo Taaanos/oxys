@@ -423,7 +423,7 @@ final class AppModel {
             }
         }
         // Developer hook, like OXYS_REPORT_LAUNCH: open a folder at launch for scripted checks.
-        if let path = ProcessInfo.processInfo.environment["OXYS_OPEN"] {
+        if let path = DevHooks.environment["OXYS_OPEN"] {
             if PerfBench.scenario != nil { PerfBench.start(model: self, folder: URL(fileURLWithPath: path)) } else { open(URL(fileURLWithPath: path)) }
         }
         startSessionResume()
@@ -663,7 +663,7 @@ final class AppModel {
     /// Per-folder state in Application Support. Nil while a script drives the app (`OXYS_OPEN`, `OXYS_REPORT_LAUNCH`),
     /// so benches and checks neither read nor change the photographer's sessions; `OXYS_SESSION_DIR` turns it back on.
     private let sessions: SessionStore? = {
-        let env = ProcessInfo.processInfo.environment
+        let env = DevHooks.environment
         if let dir = env["OXYS_SESSION_DIR"] { return SessionStore(directory: URL(fileURLWithPath: dir, isDirectory: true)) }
         return env["OXYS_OPEN"] == nil && env["OXYS_REPORT_LAUNCH"] == nil ? SessionStore.standard : nil
     }()
@@ -711,7 +711,7 @@ final class AppModel {
         let defaults = UserDefaults.standard
         let quitCleanly = !defaults.bool(forKey: Self.runningKey)
         defaults.set(true, forKey: Self.runningKey)
-        if ProcessInfo.processInfo.environment["OXYS_OPEN"] == nil, Self.reopensLastFolder, quitCleanly, let last = sessions.lastFolder { open(last) }
+        if DevHooks.environment["OXYS_OPEN"] == nil, Self.reopensLastFolder, quitCleanly, let last = sessions.lastFolder { open(last) }
     }
 
     func clearRecents() {

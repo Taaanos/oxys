@@ -5,6 +5,8 @@ struct OxysApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var model = AppModel()
 
+    init() { DevHooks.start() }
+
     var body: some Scene {
         // A single Window, not a WindowGroup: the PRD asks for exactly one window.
         Window("Oxys", id: "main") {

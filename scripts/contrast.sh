@@ -8,7 +8,7 @@
 # combination gets its own section in the report.
 set -eu
 cd "$(dirname "$0")/.."
-APP=${1:-build/Build/Products/Release/Oxys.app}
+APP=${1:-build/Build/Products/Bench/Oxys.app}
 frames=TestData/design
 [ -f $frames/split.tif ] || scripts/make-contrast-frames.py $frames >/dev/null
 out=build/contrast/$(date +%Y%m%d-%H%M%S)

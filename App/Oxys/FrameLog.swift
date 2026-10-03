@@ -5,7 +5,7 @@ import Foundation
 /// afterwards: the two columns must match on every line.
 enum FrameLog {
     private static let handle: FileHandle? = {
-        guard let path = ProcessInfo.processInfo.environment["OXYS_FRAME_LOG"] else { return nil }
+        guard let path = DevHooks.environment["OXYS_FRAME_LOG"] else { return nil }
         FileManager.default.createFile(atPath: path, contents: nil)
         return FileHandle(forWritingAtPath: path)
     }()

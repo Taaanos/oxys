@@ -20,6 +20,7 @@ Keyboard-first RAW culler for macOS. Swift 6, arm64 only, macOS 27+, no sandbox.
 
 ```sh
 make build         # Release build into ./build
+make build-bench   # S-6: the Bench configuration, Release plus the OXYS_DEV_HOOKS compile condition; the OXYS_* variables work only here. perf-bench, perf-gate, contrast and launch-time build and use it; it is never shipped
 make test          # swift test in every Packages/* directory
 make check-arch    # lipo -archs on the built app; must print only "arm64"
 make launch-time   # 5 cold launches; prints launch-to-first-draw
@@ -42,6 +43,7 @@ Package manifests use `swift-tools-version: 6.4` (`.macOS(.v27)` needs it). Bund
 
 ## Gotchas
 
+- Read the `OXYS_*` environment variables only through `DevHooks.environment` (App/Oxys/DevHooks.swift). In Release it is empty. Packages must not read them.
 - Edit `App/Oxys.xcodeproj/project.pbxproj` only while Xcode is closed, and validate with `plutil -lint` and a build. New Swift files under `App/Oxys/` need no project edit (file-system-synchronized group).
 - The app is signed ad hoc ("Sign to Run Locally"); it needs no Apple developer account.
 - Never run `git init` inside `App/` or `Packages/`; Xcode's template once created a nested repo there.

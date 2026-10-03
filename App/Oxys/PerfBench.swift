@@ -23,7 +23,7 @@ import Metadata
 /// `OXYS_BENCH_DELAY_MS=<n>` makes every frame load wait n ms first, as slow media would (see `FrameLoader`).
 @MainActor
 enum PerfBench {
-    private static let environment = ProcessInfo.processInfo.environment
+    private static let environment = DevHooks.environment
     static var scenario: String? { environment["OXYS_BENCH"] }
 
     static func start(model: AppModel, folder url: URL) {

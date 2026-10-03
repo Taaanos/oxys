@@ -101,19 +101,25 @@ public enum Perf {
 
     public static func end(_ token: Token) {
         signposter.endInterval(token.interval.signpostName, token.state)
-        if logFile.isOn {
+        if logFile.withLock({ $0 }) != nil {
             record(token.interval.rawValue, Double(DispatchTime.now().uptimeNanoseconds - token.start) / 1_000_000)
         }
     }
 
-    /// Appends `name<TAB>value` to the file named by `OXYS_PERF_LOG` (M-26), so a run can be measured without
-    /// Instruments. Intervals are written in milliseconds as they end; the bench adds its own metrics, whose
-    /// names carry their unit (`rss-mb`). Does nothing when the variable is not set.
+    /// Appends `name<TAB>value` to the log file (M-26), so a run can be measured without Instruments.
+    /// Intervals are written in milliseconds as they end; the bench adds its own metrics, whose names carry
+    /// their unit (`rss-mb`). Does nothing until `enableLog(path:)` has been called.
     public static func record(_ name: String, _ value: Double) {
-        logFile.append("\(name)\t\(value)\n")
+        logFile.withLock { $0 }?.append("\(name)\t\(value)\n")
     }
 
-    private static let logFile = LogFile(path: ProcessInfo.processInfo.environment["OXYS_PERF_LOG"])
+    /// Starts the log file (S-6). Only the app's developer-hook build calls this, from `OXYS_PERF_LOG`; the
+    /// package reads no environment variable itself, so a release build has no way to turn the log on.
+    public static func enableLog(path: String) {
+        logFile.withLock { $0 = LogFile(path: path) }
+    }
+
+    private static let logFile = Mutex<LogFile?>(nil)
 
     /// Runs `body` inside an interval.
     public static func measure<T>(_ interval: PerfInterval, _ body: () throws -> T) rethrows -> T {
@@ -125,16 +131,10 @@ public enum Perf {
 
 private final class LogFile: Sendable {
     private let handle: Mutex<FileHandle?>
-    let isOn: Bool
 
-    init(path: String?) {
-        var opened: FileHandle?
-        if let path {
-            FileManager.default.createFile(atPath: path, contents: nil)
-            opened = FileHandle(forWritingAtPath: path)
-        }
-        handle = Mutex(opened)
-        isOn = opened != nil
+    init(path: String) {
+        FileManager.default.createFile(atPath: path, contents: nil)
+        handle = Mutex(FileHandle(forWritingAtPath: path))
     }
 
     func append(_ line: String) {

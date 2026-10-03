@@ -16,7 +16,7 @@ cd "$(dirname "$0")/.."
 
 folder=${1:-${FOLDER:-TestData/bench/24mp-1000}}
 runs=${PERF_GATE_RUNS:-3}
-app=${PERF_GATE_APP:-build/Build/Products/Release/Oxys.app}
+app=${PERF_GATE_APP:-build/Build/Products/Bench/Oxys.app}
 targets=scripts/perf-targets.tsv
 cold_scenarios=(open nav-cold)
 stamp=$(date +%Y%m%d-%H%M%S)

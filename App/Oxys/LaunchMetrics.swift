@@ -4,7 +4,7 @@ import Darwin
 /// Cold-launch measurement for F-01 (formal check is M-26).
 /// Does nothing unless OXYS_REPORT_LAUNCH is set in the environment.
 enum LaunchMetrics {
-    private static let environment = ProcessInfo.processInfo.environment
+    private static let environment = DevHooks.environment
 
     static func reportFirstWindow() {
         guard environment["OXYS_REPORT_LAUNCH"] != nil,

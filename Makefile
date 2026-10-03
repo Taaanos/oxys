@@ -2,10 +2,12 @@ PROJECT   := App/Oxys.xcodeproj
 SCHEME    := Oxys
 BUILD_DIR := build
 APP       := $(BUILD_DIR)/Build/Products/Release/Oxys.app
+# S-6: the same app with the OXYS_* developer hooks compiled in. Only benches and probes use it; it is never shipped.
+BENCH_APP := $(BUILD_DIR)/Build/Products/Bench/Oxys.app
 BUILD_SETTINGS ?=
 PACKAGES  := $(sort $(dir $(wildcard Packages/*/Package.swift)))
 
-.PHONY: build test check-arch launch-time corpus manifest bench-folders perf-bench perf-gate perf-selftest perf-report sidecar-stress extract-bench sidecar-gate contrast contrast-quick contrast-selftest ui-walk ui-walk-compare clean
+.PHONY: build build-bench test check-arch launch-time corpus manifest bench-folders perf-bench perf-gate perf-selftest perf-report sidecar-stress extract-bench sidecar-gate contrast contrast-quick contrast-selftest ui-walk ui-walk-compare clean
 
 build:
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release \
@@ -16,11 +18,16 @@ test:
 		echo "== $$p"; (cd $$p && swift test); \
 	done
 
+# Same as `build`, with the OXYS_DEV_HOOKS compile condition (configuration "Bench").
+build-bench:
+	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Bench \
+		-destination 'platform=macOS,arch=arm64' -derivedDataPath $(BUILD_DIR) $(BUILD_SETTINGS) build
+
 check-arch: build
 	lipo -archs $(APP)/Contents/MacOS/Oxys
 
-launch-time: build
-	scripts/launch-time.sh $(APP)
+launch-time: build-bench
+	scripts/launch-time.sh $(BENCH_APP)
 
 # F-02: test corpus and performance harness
 corpus:
@@ -38,12 +45,12 @@ bench-folders: manifest
 # Latency table for a run: scripts/perf-record.sh <app> [seconds] records and prints it;
 # `make perf-report TRACE=build/traces/x.trace` prints it for an existing trace.
 # M-26: one in-app scenario, e.g. `make perf-bench SCENARIO=nav-cold FOLDER=TestData/bench/24mp-1000`.
-perf-bench: build
+perf-bench: build-bench
 	scripts/perf-bench.sh $(SCENARIO) $(FOLDER)
 
 # P-01: every scenario in scripts/perf-targets.tsv, 3 runs each, held to the PRD limits; exits 1 on a fail.
 # `make perf-gate FOLDER=TestData/bench/real-drone-840`. PERF_GATE_WARM=1 skips the `sudo purge` prompts.
-perf-gate: build
+perf-gate: build-bench
 	scripts/perf-gate.sh $(FOLDER)
 
 perf-selftest:
@@ -68,11 +75,11 @@ sidecar-gate:
 
 # D-01: every label on the photo over the test frames, in Loupe and Compare; writes docs/design/contrast.md, exits 1 on a fail.
 # The terminal needs the Screen Recording permission once. Run again with Reduce Transparency and Increase Contrast on.
-contrast: build
+contrast: build-bench
 	scripts/contrast.sh
 
 # The same probe on the white and yellow frames only (16 captures, no edge positions); the report goes to build/contrast/<time>/docs.
-contrast-quick: build
+contrast-quick: build-bench
 	QUICK=1 scripts/contrast.sh
 
 contrast-selftest:

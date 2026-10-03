@@ -66,7 +66,7 @@ nonisolated enum FrameLoader {
 
     /// Developer hook for slow media (G-11, P-01): `OXYS_BENCH_DELAY_MS=<n>` makes every frame load wait n ms before
     /// it reads, as an SD card or a network share would. The wait is cut into steps, so a cancelled load stops at once.
-    private static let readDelay: Int = Int(ProcessInfo.processInfo.environment["OXYS_BENCH_DELAY_MS"] ?? "") ?? 0
+    private static let readDelay: Int = Int(DevHooks.environment["OXYS_BENCH_DELAY_MS"] ?? "") ?? 0
 
     private static func simulateSlowRead() throws {
         var left = readDelay

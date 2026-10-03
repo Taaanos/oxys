@@ -9,7 +9,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 scenario=${1:?scenario}; folder=${2:?folder}
-APP=${3:-build/Build/Products/Release/Oxys.app}
+APP=${3:-build/Build/Products/Bench/Oxys.app}
 log=${BENCH_LOG:-build/traces/bench-$scenario-$(date +%H%M%S).tsv}
 case $log in /*) ;; *) log=$PWD/$log ;; esac
 mkdir -p "$(dirname "$log")"

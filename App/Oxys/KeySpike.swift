@@ -5,7 +5,7 @@ import SwiftUI
 /// F-05 throwaway window: shows which command each key fired, how it was matched, and whether the menu bar
 /// also fired. Shown instead of the empty state when `OXYS_KEY_SPIKE=1`. Delete once M-05 lands the real router.
 enum KeySpikeSetup {
-    static var enabled: Bool { ProcessInfo.processInfo.environment["OXYS_KEY_SPIKE"] == "1" }
+    static var enabled: Bool { DevHooks.environment["OXYS_KEY_SPIKE"] == "1" }
 
     static let keymap: Keymap = {
         var b: [KeyBinding] = [

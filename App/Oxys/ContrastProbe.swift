@@ -17,7 +17,7 @@ import SwiftUI
 @MainActor @Observable
 final class ContrastProbe {
     static let shared = ContrastProbe()
-    nonisolated static let directory: URL? = ProcessInfo.processInfo.environment["OXYS_CONTRAST_DIR"].map { URL(fileURLWithPath: $0) }
+    nonisolated static let directory: URL? = DevHooks.environment["OXYS_CONTRAST_DIR"].map { URL(fileURLWithPath: $0) }
     nonisolated static var enabled: Bool { directory != nil }
 
     /// True while the plate capture is taken: the labels hide their text and symbols, and keep their background.
@@ -293,7 +293,7 @@ extension ContrastProbe {
 
         // Quick mode (`make contrast-quick`): the white frame is the worst case for text and the yellow one for the star.
         // No split frame, so no edge positions: 16 captures instead of 116.
-        let quick = ProcessInfo.processInfo.environment["OXYS_CONTRAST_QUICK"] != nil
+        let quick = DevHooks.environment["OXYS_CONTRAST_QUICK"] != nil
         let photos = quick ? folder.visible.filter { ["white", "yellow"].contains($0.url.deletingPathExtension().lastPathComponent) } : folder.visible
         // Loupe: each frame at 1:1, so it covers the whole canvas.
         for photo in photos {
