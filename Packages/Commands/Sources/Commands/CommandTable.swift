@@ -231,6 +231,8 @@ public struct CommandTable: Sendable {
                 keys: [Shortcut(.position(.t), [.option, .command])]),
         Command("view.chromeTab", "Hide Toolbar with Tab", menu: .init(.view, group: 2), modes: [.grid, .loupe],
                 keys: [Shortcut(.position(.tab))]),
+        Command("view.fullscreen", "Enter Full Screen", menu: .init(.view, group: 2),
+                keys: [Shortcut(.position(.f), [.command, .shift])]),
 
         // Cull (M-06). Each has a ⇧ twin that also moves to the next photo. Keypad digits mirror the digit row.
         Command("cull.rate.0", "Clear Rating", menu: .init(.photo, group: 1), modes: cull, requires: .photos, shiftAdvances: true,

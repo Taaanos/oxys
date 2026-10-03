@@ -286,6 +286,9 @@ final class AppModel {
         commands.register("view.chromeTab", title: { [unowned self] in chromeHidden ? "Show Toolbar with Tab" : "Hide Toolbar with Tab" }) { [unowned self] _ in
             setChromeHidden(!chromeHidden)
         }
+        commands.register("view.fullscreen", title: {
+            NSApp.keyWindow?.styleMask.contains(.fullScreen) == true ? "Exit Full Screen" : "Enter Full Screen"
+        }) { _ in NSApp.keyWindow?.toggleFullScreen(nil) }
         // Compare (V-08). Entering makes the pair first, so a refusal (fewer than two photos) leaves the mode alone.
         commands.register("compare.enter") { [unowned self] _ in
             if compare.begin(from: commands.mode) { commands.mode = .compare }
