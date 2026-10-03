@@ -122,4 +122,53 @@ import Testing
         #expect(f.apply(to: sample).map(\.name) == ["IMG_1.ARW", "Other.ARW"])
         #expect(f.summary == "1 to 3 stars")
     }
+
+    private var withBlanks: [Photo] {
+        sample + [photo("Blank.ARW", at: 5), photo("RedOnly.ARW", label: .red, at: 6), photo("StarsOnly.ARW", rating: 2, at: 7)]
+    }
+
+    @Test func noStarsShowsOnlyUnratedAndNeverRejects() {
+        var f = PhotoFilter()
+        f.clickStar(0)
+        #expect(f.stars == [0] && f.summary == "no stars")
+        #expect(f.apply(to: withBlanks).map(\.name) == ["Blank.ARW", "RedOnly.ARW"])
+        f.clickStar(0)
+        #expect(f.stars.isEmpty)
+    }
+
+    @Test func noStarsCombinesWithOtherStars() {
+        var f = PhotoFilter()
+        f.clickStar(0)
+        f.clickStar(5, toggle: true)
+        #expect(f.summary == "no stars and 5 stars")
+        #expect(f.apply(to: withBlanks).map(\.name) == ["IMG_10.ARW", "Blank.ARW", "RedOnly.ARW"])
+    }
+
+    @Test func noLabelShowsOnlyUnlabeled() {
+        var f = PhotoFilter()
+        f.noLabel = true
+        #expect(f.hasCriteria && f.summary == "no label")
+        #expect(f.apply(to: withBlanks).map(\.name) == ["IMG_2.ARW", "Blank.ARW", "StarsOnly.ARW"])
+    }
+
+    @Test func noLabelCombinesWithColors() {
+        var f = PhotoFilter()
+        f.labels = [.blue]; f.noLabel = true
+        #expect(f.summary == "blue or no label")
+        #expect(f.apply(to: withBlanks).map(\.name) == ["IMG_2.ARW", "IMG_10.ARW", "Blank.ARW", "StarsOnly.ARW"])
+    }
+
+    @Test func noStarsAndNoLabelTogether() {
+        var f = PhotoFilter()
+        f.clickStar(0); f.noLabel = true
+        #expect(f.apply(to: withBlanks).map(\.name) == ["Blank.ARW"])
+    }
+
+    @Test func aSessionSavedBeforeNoLabelStillLoads() throws {
+        let old = #"{"isOn":true,"stars":[3],"labels":["red"],"rejects":"showAll","search":"","sortKey":"captureTime","ascending":true}"#
+        let f = try JSONDecoder().decode(PhotoFilter.self, from: Data(old.utf8))
+        #expect(f.stars == [3] && f.labels == [.red] && !f.noLabel)
+        let again = try JSONDecoder().decode(PhotoFilter.self, from: JSONEncoder().encode(f))
+        #expect(again == f)
+    }
 }

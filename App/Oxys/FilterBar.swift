@@ -68,6 +68,17 @@ struct FilterBar: View {
 
     private func stars(_ filter: PhotoFilter) -> some View {
         HStack(spacing: 2) {
+            let noStars = filter.stars.contains(0)
+            Button {
+                let flags = NSEvent.modifierFlags
+                model.setFilter { $0.clickStar(0, extend: flags.contains(.shift), toggle: flags.contains(.command)) }
+            } label: {
+                Image(systemName: "star.slash").foregroundStyle(noStars ? Color.yellow : .secondary)
+            }
+            .buttonStyle(.borderless)
+            .help("No stars. ⌘-click to add it to other ratings (⌥⌘U)")
+            .accessibilityLabel("No stars")
+            .accessibilityAddTraits(noStars ? .isSelected : [])
             ForEach(1...5, id: \.self) { n in
                 let lit = filter.stars.contains(n)
                 Button {
@@ -103,6 +114,18 @@ struct FilterBar: View {
                 .accessibilityLabel("\(label.name) label")
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
+            // Gray is "no label", as in the select-by popover.
+            Button {
+                model.setFilter { $0.noLabel.toggle() }
+            } label: {
+                Circle().strokeBorder(Color.gray, lineWidth: 2)
+                    .background(Circle().fill(filter.noLabel ? Color.gray : .clear))
+                    .frame(width: 14, height: 14)
+            }
+            .buttonStyle(.borderless)
+            .help("No label (⌥⌘-)")
+            .accessibilityLabel("No label")
+            .accessibilityAddTraits(filter.noLabel ? .isSelected : [])
         }
     }
 

@@ -448,7 +448,7 @@ final class AppModel {
             findRequest += 1
         }
         commands.register("filter.clear", isAvailable: { [unowned self] in folder.filter.hasCriteria }) { [unowned self] _ in
-            folder.updateFilter { $0.setMinimumStars(0); $0.labels = []; $0.rejects = .showAll; $0.search = "" }
+            folder.updateFilter { $0.setMinimumStars(0); $0.labels = []; $0.noLabel = false; $0.rejects = .showAll; $0.search = "" }
             announceFilter("Filter cleared")
         }
         for n in 0...5 {
@@ -456,8 +456,14 @@ final class AppModel {
                 setFilter { $0.setMinimumStars(n) }
             }
         }
-        commands.register("filter.label.any", isOn: { [unowned self] in folder.filter.labels.isEmpty }) { [unowned self] _ in
-            setFilter { $0.labels = [] }
+        commands.register("filter.stars.unrated", isOn: { [unowned self] in folder.filter.stars.contains(0) }) { [unowned self] _ in
+            setFilter { $0.clickStar(0, toggle: true) }
+        }
+        commands.register("filter.label.any", isOn: { [unowned self] in folder.filter.labels.isEmpty && !folder.filter.noLabel }) { [unowned self] _ in
+            setFilter { $0.labels = []; $0.noLabel = false }
+        }
+        commands.register("filter.label.none", isOn: { [unowned self] in folder.filter.noLabel }) { [unowned self] _ in
+            setFilter { $0.noLabel.toggle() }
         }
         for label in ColorLabel.allCases {
             commands.register(CommandID(rawValue: "filter.label.\(label.rawValue)"),
