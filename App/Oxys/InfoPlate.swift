@@ -44,6 +44,8 @@ extension Plate {
     /// Colored marks on a plate carry a word beside them, so the color is only a hint. A light amber and a light red
     /// keep 3:1 on the worst-case plate, enough for a mark; the words stay white.
     static let warning = Color(red: 1, green: 0.68, blue: 0.20)
+    /// Warning as text, not a mark: text needs 4.5:1, so it is lighter than `warning`.
+    static let warningText = Color(red: 1, green: 0.86, blue: 0.50)
     static let reject = Color(red: 1, green: 0.62, blue: 0.60)
 }
 

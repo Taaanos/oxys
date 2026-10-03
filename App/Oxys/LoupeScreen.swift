@@ -165,7 +165,7 @@ struct InfoStrip: View {
 
     private var uses: [ContrastProbe.Use] {
         // Compare's EXIF line draws a differing value as text in the warning tint; Loupe uses that tint only for icons.
-        [.text(.white), .text(.secondary), .mark(.star), .mark(.reject), exifFields.isEmpty ? .mark(.warning) : .text(.warning)]
+        [.text(.white), .text(.secondary), .mark(.star), .mark(.reject), exifFields.isEmpty ? .mark(.warning) : .text(.warningText)]
     }
 
     private func spoken(_ photo: Photo) -> String {
@@ -458,7 +458,7 @@ private struct CompareExifLine: View {
         HStack(spacing: 10) {
             ForEach(fields) { field in
                 if field.differs {
-                    Text(field.value.hasPrefix(field.label) ? field.value : "\(field.label) \(field.value)").bold().underline().foregroundStyle(Plate.warning)
+                    Text(field.value.hasPrefix(field.label) ? field.value : "\(field.label) \(field.value)").bold().underline().foregroundStyle(Plate.warningText)
                 } else {
                     Text(field.value).foregroundStyle(Plate.secondary)
                 }

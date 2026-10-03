@@ -55,13 +55,14 @@ final class ContrastProbe {
 
     /// A color drawn on a plate. Text must keep 4.5:1 against the plate, a mark (an icon, a star) 3:1.
     enum Ink: String, CaseIterable, Encodable {
-        case white, secondary, star, warning, reject, accent, cyan
+        case white, secondary, star, warning, warningText, reject, accent, cyan
         var color: Color {
             switch self {
             case .white: .white
             case .secondary: Plate.secondary
             case .star: .yellow
             case .warning: Plate.warning
+            case .warningText: Plate.warningText
             case .reject: Plate.reject
             case .accent: .accentColor
             case .cyan: .cyan

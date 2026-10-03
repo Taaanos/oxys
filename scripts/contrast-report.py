@@ -19,7 +19,7 @@ import collections, datetime, glob, json, math, os, struct, subprocess, sys
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 DOCS = os.path.join(ROOT, "docs", "design")
 SRGB_PROFILE = "/System/Library/ColorSync/Profiles/sRGB Profile.icc"
-INKS = ["white", "secondary", "star", "warning", "reject", "accent", "cyan"]
+INKS = ["white", "secondary", "star", "warning", "warningText", "reject", "accent", "cyan"]
 NEEDS = {"text": 4.5, "mark": 3.0}
 FRAMES = ["white", "black", "gray18", "yellow", "red", "checker", "split"]
 INSET_PT = 2
@@ -257,7 +257,7 @@ def render(docs):
            "the label is composited over it and compared by the WCAG formula.", "",
            "**Rules.** Text keeps 4.5:1 and a mark (an icon, a star) keeps 3:1, on every frame. A value with `m` is a mark; the others "
            "are text. A fail is bold with ✗. Each value is the worst over both layouts, both Compare panes and every edge position. "
-           "Inks: `secondary` is white at 85%, `star` the system yellow, `warning` `Plate.warning`, `reject` `Plate.reject`, "
+           "Inks: `secondary` is white at 85%, `star` the system yellow, `warning` `Plate.warning`, `warningText` `Plate.warningText`, `reject` `Plate.reject`, "
            "`accent` the accent color, `cyan` the histogram's shadow percent, all as resolved in the dark appearance.", ""]
     if not files:
         out.append("No measurements yet. Run `make contrast`.")
