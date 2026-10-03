@@ -35,6 +35,8 @@ struct FolderView: View {
                         if mode == .compare { CompareScreen(model: model) }
                         if mode == .grid { GridScreen(controller: model.grid) }
                     }
+                    // With the chrome hidden the photo reclaims the titlebar strip; an open filter bar keeps it.
+                    .ignoresSafeArea(.container, edges: model.chromeHidden && !model.showFilterBar ? .top : [])
                 }
             }
         }
@@ -59,6 +61,7 @@ struct FolderView: View {
         .overlay(alignment: .bottomLeading) { if model.extract.isShowing { ExtractPlate(job: model.extract) } }
         .toolbar(id: "oxys.main") { ToolbarItems(model: model) }
         .toolbarVisibility(model.chromeHidden ? .hidden : .visible, for: .windowToolbar)
+        .background(WindowToolbarCollapser(hidden: model.chromeHidden))
         .navigationTitle(folder.folder?.lastPathComponent ?? "Oxys")
         .navigationSubtitle(Self.subtitle(folder))
         .dropDestination(for: URL.self) { (urls: [URL], _: CGPoint) -> Bool in model.handleDrop(urls) }
@@ -176,5 +179,20 @@ private struct WriteBanner: View {
     private func announce() {
         NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
                              userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+    }
+}
+
+/// Collapses the window's toolbar strip itself. `.toolbarVisibility(.hidden)` hides the items, but in full screen AppKit
+/// keeps the strip's height reserved, so the photo would sit under an empty band instead of reclaiming it.
+private struct WindowToolbarCollapser: NSViewRepresentable {
+    let hidden: Bool
+
+    func makeNSView(context: Context) -> NSView { NSView() }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        DispatchQueue.main.async { [weak view] in
+            guard let toolbar = view?.window?.toolbar else { return }
+            toolbar.isVisible = !hidden
+        }
     }
 }
