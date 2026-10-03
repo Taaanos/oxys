@@ -31,6 +31,13 @@ public enum TIFFPreviewLocator {
         var valueOffset: Int   // file offset of the 4-byte value/offset field
     }
 
+    /// Real files nest IFD0 → SubIFD → (rarely) one more level; each level costs a stack frame.
+    private static let maxDepth = 8
+    /// Total IFDs read per file. Real files have well under 20; a crafted one can make every byte offset an IFD.
+    private static let maxIFDs = 256
+    /// SubIFD offsets followed per entry. Real files list 1 to 3.
+    private static let maxSubIFDsPerEntry = 8
+
     private struct Walker {
         var reader: ByteReader
         var previews: [EmbeddedJPEG] = []
@@ -38,6 +45,7 @@ public enum TIFFPreviewLocator {
         var info = ContainerInfo()
         var visited: Set<Int> = []
         var subIFDCount = 0
+        var ifdCount = 0
 
         func entries(at ifd: Int) -> [Entry]? {
             guard let n = reader.u16(ifd), n < 4096 else { return nil }
@@ -94,15 +102,16 @@ public enum TIFFPreviewLocator {
         mutating func walkChain(from first: Int, name: (Int) -> String) {
             var ifd = first
             var index = 0
-            while ifd > 0, visited.insert(ifd).inserted, let es = entries(at: ifd) {
-                walk(ifd: ifd, entries: es, name: name(index))
+            while ifd > 0, ifdCount < TIFFPreviewLocator.maxIFDs, visited.insert(ifd).inserted, let es = entries(at: ifd) {
+                ifdCount += 1
+                walk(ifd: ifd, entries: es, name: name(index), depth: 0)
                 guard let n = reader.u16(ifd), let next = reader.u32(ifd + 2 + Int(n) * 12) else { break }
                 ifd = Int(next)
                 index += 1
             }
         }
 
-        mutating func walk(ifd: Int, entries es: [Entry], name: String) {
+        mutating func walk(ifd: Int, entries es: [Entry], name: String, depth: Int) {
             let reading = self
             let first: (UInt16) -> Int? = { tag in es.first { $0.tag == tag }.flatMap { reading.values($0).first } }
             let isMainIFD = name == "IFD0"
@@ -116,14 +125,19 @@ public enum TIFFPreviewLocator {
             for e in es {
                 switch e.tag {
                 case Tag.subIFDs:
-                    for offset in values(e) {
-                        guard visited.insert(offset).inserted, let sub = entries(at: offset) else { continue }
+                    guard depth < TIFFPreviewLocator.maxDepth else { break }
+                    for offset in values(e).prefix(TIFFPreviewLocator.maxSubIFDsPerEntry) {
+                        guard ifdCount < TIFFPreviewLocator.maxIFDs,
+                              visited.insert(offset).inserted, let sub = entries(at: offset) else { continue }
+                        ifdCount += 1
                         let subName = subIFDCount == 0 ? "SubIFD" : "SubIFD\(subIFDCount)"
                         subIFDCount += 1
-                        walk(ifd: offset, entries: sub, name: subName)
+                        walk(ifd: offset, entries: sub, name: subName, depth: depth + 1)
                     }
                 case Tag.exifIFD:
-                    if let offset = values(e).first, visited.insert(offset).inserted, let exif = entries(at: offset) {
+                    if let offset = values(e).first, ifdCount < TIFFPreviewLocator.maxIFDs,
+                       visited.insert(offset).inserted, let exif = entries(at: offset) {
+                        ifdCount += 1
                         walkExif(exif)
                     }
                 default:

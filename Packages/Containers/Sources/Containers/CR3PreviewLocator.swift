@@ -15,6 +15,9 @@ public enum CR3PreviewLocator {
     private static let canonMetadataUUID = Data([0x85, 0xC0, 0xB6, 0x87, 0x82, 0x0F, 0x11, 0xE0, 0x81, 0x11, 0xF4, 0xCE, 0x46, 0x2B, 0x6A, 0x48])
     private static let canonPreviewUUID = Data([0xEA, 0xF4, 0x2B, 0x5E, 0x1C, 0x98, 0x4B, 0x88, 0xB9, 0xFB, 0xB7, 0xDC, 0x40, 0x6E, 0x4D, 0x16])
 
+    /// Real files nest `moov` → `trak` → `mdia` → `minf` → `stbl`, or `uuid` → `moov`; each level costs a stack frame.
+    private static let maxDepth = 8
+
     private struct Box {
         var type: String
         var payload: Int
@@ -80,10 +83,11 @@ public enum CR3PreviewLocator {
         func firstSample(ofTrack trak: Box) -> (offset: Int, size: Int)? {
             var size: Int?
             var offset: Int?
-            func descend(_ range: Range<Int>) {
+            func descend(_ range: Range<Int>, depth: Int) {
+                guard depth < maxDepth else { return }
                 for b in boxes(reader, in: range) {
                     switch b.type {
-                    case "mdia", "minf", "stbl": descend(b.payload..<b.end)
+                    case "mdia", "minf", "stbl": descend(b.payload..<b.end, depth: depth + 1)
                     case "stsz":
                         // version/flags, sample_size, sample_count, [entry_size...]
                         if let fixed = reader.u32(b.payload + 4).map(Int.init) {
@@ -95,16 +99,17 @@ public enum CR3PreviewLocator {
                     }
                 }
             }
-            descend(trak.payload..<trak.end)
+            descend(trak.payload..<trak.end, depth: 0)
             guard let size, let offset else { return nil }
             return (offset, size)
         }
 
-        func visit(_ range: Range<Int>) {
+        func visit(_ range: Range<Int>, depth: Int) {
+            guard depth < maxDepth else { return }
             for box in boxes(reader, in: range) {
                 switch box.type {
                 case "moov":
-                    visit(box.payload..<box.end)
+                    visit(box.payload..<box.end, depth: depth + 1)
                 case "trak":
                     trackNumber += 1
                     if let (offset, size) = firstSample(ofTrack: box), reader.u8(offset) == 0xFF, reader.u8(offset + 1) == 0xD8 {
@@ -114,11 +119,11 @@ public enum CR3PreviewLocator {
                     guard let id = reader.bytes(box.payload, 16) else { break }
                     let body = box.payload + 16
                     if id == canonMetadataUUID {
-                        visit(body..<box.end)
+                        visit(body..<box.end, depth: depth + 1)
                     } else if id == canonPreviewUUID {
                         // 8 bytes (version and count) precede the child boxes.
                         let skip = boxes(reader, in: body..<box.end).first.map { isBoxType($0.type) } == true ? 0 : 8
-                        visit((body + skip)..<box.end)
+                        visit((body + skip)..<box.end, depth: depth + 1)
                     }
                 case "CMT1":
                     if let tiff = reader.bytes(box.payload, box.end - box.payload),
@@ -134,7 +139,7 @@ public enum CR3PreviewLocator {
                 }
             }
         }
-        visit(0..<reader.count)
+        visit(0..<reader.count, depth: 0)
         guard !previews.isEmpty else { return nil }
         // CR3 JPEGs carry no orientation of their own; the container's applies to all.
         previews = previews.map { var p = $0; p.containerOrientation = info.orientation; return p }

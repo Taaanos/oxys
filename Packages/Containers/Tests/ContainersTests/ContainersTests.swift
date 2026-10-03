@@ -302,3 +302,64 @@ private struct TIFFBuilder {
     #expect(JPEGSegments.iccSegment(Data(count: 70_000)) == nil)
     #expect(JPEGSegments.iccSegment(Data()) == nil)
 }
+
+// MARK: - Hostile nesting and work limits (S-2, S-5)
+
+/// Runs `work` on a thread with the 512 KB stack that the grid thumbnail tasks get.
+private func onSmallStack(_ work: @escaping @Sendable () -> Void) {
+    let done = DispatchSemaphore(value: 0)
+    let thread = Thread { work(); done.signal() }
+    thread.stackSize = 512 * 1024
+    thread.start()
+    done.wait()
+}
+
+@Test func cr3DeeplyNestedBoxesDoNotOverflowTheStack() {
+    func be32(_ v: Int) -> Data { Data([UInt8((v >> 24) & 0xFF), UInt8((v >> 16) & 0xFF), UInt8((v >> 8) & 0xFF), UInt8(v & 0xFF)]) }
+    let ftyp = be32(24) + Data("ftyp".utf8) + Data("crx ".utf8) + Data(repeating: 0, count: 12)
+    let levels = 20_000
+    for type in ["moov", "trak"] {
+        // Each box holds only the next one: sizes 8 × levels, 8 × (levels − 1), … 8.
+        let file: Data = {
+            var f = ftyp
+            for i in 0..<levels { f += be32(8 * (levels - i)) + Data((i == 0 ? "moov" : type).utf8) }
+            return f
+        }()
+        onSmallStack { #expect(CR3PreviewLocator.locate(in: file) == nil) }
+    }
+    // Same through the track's sample-table boxes.
+    let file: Data = {
+        var f = ftyp + be32(8 * (levels + 2)) + Data("moov".utf8) + be32(8 * (levels + 1)) + Data("trak".utf8)
+        for i in 0..<levels { f += be32(8 * (levels - i)) + Data("mdia".utf8) }
+        return f
+    }()
+    onSmallStack { #expect(CR3PreviewLocator.locate(in: file) == nil) }
+}
+
+@Test func tiffDeeplyChainedSubIFDsDoNotOverflowTheStack() {
+    func le32(_ v: Int) -> Data { Data([UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF), UInt8((v >> 16) & 0xFF), UInt8((v >> 24) & 0xFF)]) }
+    let levels = 20_000
+    let data: Data = {
+        var d = Data("II".utf8) + Data([42, 0, 8, 0, 0, 0])
+        for k in 0..<levels {
+            // One entry: SubIFDs (0x014A), LONG, count 1, pointing at the next 18-byte IFD.
+            d += Data([1, 0, 0x4A, 0x01, 4, 0, 1, 0, 0, 0]) + le32(8 + 18 * (k + 1)) + le32(0)
+        }
+        return d
+    }()
+    onSmallStack { #expect(TIFFPreviewLocator.locate(in: data)?.previews.isEmpty == true) }
+}
+
+@Test func tiffStopsAfterTheIFDBudget() throws {
+    func chain(length: Int) -> Data {
+        var t = TIFFBuilder()
+        let thumb = makeJPEG(width: 160, height: 120)
+        let empties = (0..<length - 1).map { _ in t.appendIFD([]) }
+        let blob = t.appendBlob(thumb)
+        let last = t.appendIFD([.init(tag: 0x0201, value: UInt32(blob)), .init(tag: 0x0202, value: UInt32(thumb.count))])
+        for (i, ifd) in empties.enumerated() { t.patch32(at: ifd + 2, UInt32(i + 1 < empties.count ? empties[i + 1] : last)) }
+        return t.data
+    }
+    #expect(TIFFPreviewLocator.locate(in: chain(length: 20))?.previews.count == 1)
+    #expect(TIFFPreviewLocator.locate(in: chain(length: 1_000))?.previews.isEmpty == true)
+}
