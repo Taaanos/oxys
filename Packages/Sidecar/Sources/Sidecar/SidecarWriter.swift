@@ -53,10 +53,15 @@ public enum SidecarWriter {
             if lstat(url.path, &linkInfo) == 0, (linkInfo.st_mode & S_IFMT) == S_IFLNK {
                 return (.refused(url, reason: "Sidecar is a link"), nil)
             }
+            // Check the type and size before reading: a FIFO must not block the queue, a huge file must not fill memory (B-5).
             let existing: Data?
-            do { existing = try Data(contentsOf: url) } catch CocoaError.fileReadNoSuchFile { existing = nil }
+            switch try SidecarReader.readBounded(url) {
+            case .missing: existing = nil
+            case .data(let data): existing = data
+            case .tooLarge: return (.refused(url, reason: "File is too large to be a sidecar"), nil)
+            case .notRegular: return (.refused(url, reason: "Sidecar is not a regular file"), nil)
+            }
             if let existing {
-                guard existing.count <= SidecarReader.maxBytes else { return (.refused(url, reason: "File is too large to be a sidecar"), nil) }
                 do { _ = try XMPReader.parse(existing) } catch let error as XMPParseError { return (.refused(url, reason: error.message), nil) }
             }
             let patched: Data

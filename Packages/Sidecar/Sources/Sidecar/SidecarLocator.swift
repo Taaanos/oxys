@@ -33,9 +33,13 @@ public struct SidecarIndex: Sendable {
 
     public init(folder: URL) {
         let entries = (try? FileManager.default.contentsOfDirectory(
-            at: folder, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
+            at: folder, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey], options: [.skipsHiddenFiles])) ?? []
         var index: [String: URL] = [:]
         for url in entries where url.pathExtension.lowercased() == "xmp" {
+            // A FIFO, a device or a folder with a sidecar name is not a sidecar (B-5). A link stays: the reader follows
+            // it with its own check, and the writer refuses it.
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            guard values?.isRegularFile == true || values?.isSymbolicLink == true else { continue }
             index[url.lastPathComponent.lowercased()] = url
         }
         xmpFiles = index

@@ -215,6 +215,51 @@ private let allFixtures = [
         #expect(try Data(contentsOf: real) == fixture("hand-written/attributes-4star-blue.xmp"))
     }
 
+    // B-5: a FIFO with a sidecar name must not block the writer, and a huge file must not be read.
+    @Test func aFIFOWithASidecarNameIsRefusedWithoutBlocking() throws {
+        let dir = try folder(); defer { try? FileManager.default.removeItem(at: dir) }
+        let fifo = dir.appendingPathComponent("a.xmp")
+        try #require(mkfifo(fifo.path, 0o644) == 0)
+        let outcome = SidecarWriter.write(SidecarEdit(rating: 1, label: .keep), to: SidecarTarget(primary: fifo))
+        #expect(outcome == .refused(fifo, reason: "Sidecar is not a regular file"))
+        let index = SidecarIndex(folder: dir)
+        #expect(index.files(for: dir.appendingPathComponent("a.ARW"), preferring: .stem) == nil)
+    }
+
+    @Test func aFIFOBehindALinkIsReadAsNotRegular() throws {
+        let dir = try folder(); defer { try? FileManager.default.removeItem(at: dir) }
+        let fifo = dir.appendingPathComponent("pipe"), link = dir.appendingPathComponent("a.xmp")
+        try #require(mkfifo(fifo.path, 0o644) == 0)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: fifo)
+        let photo = dir.appendingPathComponent("a.ARW")
+        let result = SidecarReader.read(photo: photo, embeddedFallback: false, index: SidecarIndex(folder: dir), naming: .stem)
+        guard case .malformed(_, let reason) = result else { Issue.record("expected malformed, got \(result)"); return }
+        #expect(reason == "Sidecar is not a regular file")
+    }
+
+    @Test func aFileOverTheLimitIsRefusedBeforeItIsRead() throws {
+        let dir = try folder(); defer { try? FileManager.default.removeItem(at: dir) }
+        let big = dir.appendingPathComponent("a.xmp")
+        // A sparse file: it claims 1 GB and holds no blocks, so reading it would fill memory.
+        let fd = open(big.path, O_WRONLY | O_CREAT, 0o644)
+        try #require(fd >= 0)
+        try #require(ftruncate(fd, 1 << 30) == 0)
+        close(fd)
+        #expect(try SidecarReader.readBounded(big) == .tooLarge)
+        let outcome = SidecarWriter.write(SidecarEdit(rating: 1, label: .keep), to: SidecarTarget(primary: big))
+        #expect(outcome == .refused(big, reason: "File is too large to be a sidecar"))
+    }
+
+    @Test func theQueueKeepsWritingAfterAFIFO() throws {
+        let dir = try folder(); defer { try? FileManager.default.removeItem(at: dir) }
+        try #require(mkfifo(dir.appendingPathComponent("bad.xmp").path, 0o644) == 0)
+        let queue = SidecarWriteQueue()
+        queue.submit(SidecarEdit(rating: 1, label: .keep), to: SidecarTarget(primary: dir.appendingPathComponent("bad.xmp")))
+        queue.submit(SidecarEdit(rating: 3, label: .keep), to: SidecarTarget(primary: dir.appendingPathComponent("good.xmp")))
+        queue.flush()
+        #expect(try XMPReader.parse(Data(contentsOf: dir.appendingPathComponent("good.xmp"))).rating == 3)
+    }
+
     @Test func killingTheWriterMidWriteLeavesAWholeSidecar() throws {
         let tool = packageRoot.appendingPathComponent(".build/debug/SidecarStress")
         try #require(FileManager.default.isExecutableFile(atPath: tool.path), "build SidecarStress first (swift build)")

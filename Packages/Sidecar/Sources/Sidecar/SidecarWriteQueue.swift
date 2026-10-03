@@ -133,7 +133,8 @@ public final class SidecarWriteQueue: Sendable {
         let fm = FileManager.default
         let url = SidecarWriter.resolve(job.target)
         let exists = fm.fileExists(atPath: url.path)
-        let current = exists ? try? Data(contentsOf: url) : nil
+        var current: Data?
+        if exists, case .data(let data)? = try? SidecarReader.readBounded(url) { current = data }
         let ours = created.withLock { $0[url] }
         if job.removeIfCreated {
             if !exists {
