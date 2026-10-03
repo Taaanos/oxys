@@ -7,10 +7,12 @@ import SwiftUI
 struct TruthBadgeView: View {
     let badge: TruthBadge?
     var autoAdvance = false
+    /// The info strip is on: it carries the badge text itself, so only the auto-advance mark floats, above the strip.
+    var stripVisible = false
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
-            if let badge {
+            if let badge, !stripVisible {
                 Group {
                     if badge.isWarning {
                         Label(badge.text, systemImage: "exclamationmark.triangle.fill")
@@ -22,7 +24,8 @@ struct TruthBadgeView: View {
                 .font(.callout.weight(.semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .infoPlate(cornerRadius: 8)
+                .environment(\.colorScheme, .dark)
+                .glassEffect(.regular.tint(.black.opacity(0.35)), in: .capsule)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(badge.spoken)
             }
@@ -30,7 +33,7 @@ struct TruthBadgeView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-        .padding(.bottom, 34)
+        .padding(.bottom, stripVisible ? 34 : 0)
         .allowsHitTesting(false)
     }
 }

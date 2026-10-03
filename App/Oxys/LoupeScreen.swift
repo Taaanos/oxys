@@ -18,7 +18,7 @@ struct LoupeScreen: View {
             if let failure = loupe.failure {
                 ErrorTile(name: loupe.shown?.name ?? "", message: failure)
             }
-            if loupe.truthBadge != nil || model.autoAdvance { TruthBadgeView(badge: loupe.truthBadge, autoAdvance: model.autoAdvance) }
+            if loupe.truthBadge != nil || model.autoAdvance { TruthBadgeView(badge: loupe.truthBadge, autoAdvance: model.autoAdvance, stripVisible: loupe.showInfoStrip) }
             if let peaking = loupe.peakingLabel { PeakingBadgeView(label: peaking) }
             if let clipping = loupe.clippingLabel { ClippingReadout(label: clipping) }
             // Anchor for the `⌥H` popover: the corner where the readout sits.
@@ -144,6 +144,7 @@ struct InfoStrip: View {
                     Text(zoom.level.isFit ? "Fit \(zoom.percent)%" : zoom.isActualSize ? "1:1" : "\(zoom.percent)%").foregroundStyle(Plate.secondary)
                 }
                 Spacer()
+                if let truth { TruthText(badge: truth) }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -153,6 +154,19 @@ struct InfoStrip: View {
             .environment(\.colorScheme, .dark)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(([photo.name, photo.isPair ? "RAW and JPEG" : nil, decision?.summary].compactMap { $0 } + photo.sidecar.notes).joined(separator: ", ") + (exifSpoken.map { ", " + $0 } ?? "") + zoomSpoken)
+        }
+    }
+}
+
+/// The truth badge's words inside the info strip: the warning triangle stays, so a warning never rests on color.
+private struct TruthText: View {
+    let badge: TruthBadge
+
+    var body: some View {
+        if badge.isWarning {
+            PlateLabel(text: badge.text, systemImage: "exclamationmark.triangle.fill", tint: Plate.warning).lineLimit(1)
+        } else {
+            Text(badge.text).foregroundStyle(Plate.secondary).lineLimit(1)
         }
     }
 }
