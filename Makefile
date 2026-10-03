@@ -4,7 +4,7 @@ BUILD_DIR := build
 APP       := $(BUILD_DIR)/Build/Products/Release/Oxys.app
 PACKAGES  := $(sort $(dir $(wildcard Packages/*/Package.swift)))
 
-.PHONY: build test check-arch launch-time corpus manifest bench-folders perf-bench perf-gate perf-selftest perf-report sidecar-stress extract-bench sidecar-gate contrast contrast-selftest ui-walk ui-walk-compare clean
+.PHONY: build test check-arch launch-time corpus manifest bench-folders perf-bench perf-gate perf-selftest perf-report sidecar-stress extract-bench sidecar-gate contrast contrast-quick contrast-selftest ui-walk ui-walk-compare clean
 
 build:
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release \
@@ -68,6 +68,10 @@ sidecar-gate:
 # The terminal needs the Screen Recording permission once. Run again with Reduce Transparency and Increase Contrast on.
 contrast: build
 	scripts/contrast.sh
+
+# The same probe on the white and yellow frames only (16 captures, no edge positions); the report goes to build/contrast/<time>/docs.
+contrast-quick: build
+	QUICK=1 scripts/contrast.sh
 
 contrast-selftest:
 	python3 scripts/contrast-report.py --selftest

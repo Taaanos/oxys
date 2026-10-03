@@ -32,6 +32,7 @@ make perf-bench SCENARIO=nav-cold FOLDER=TestData/bench/24mp-1000   # M-26: in-a
 make perf-gate FOLDER=TestData/bench/real-drone-840   # P-01: every scenario in scripts/perf-targets.tsv, 3 runs each, held to the PRD limits; exit 1 on a fail; PERF_GATE_WARM=1 skips the `sudo purge` prompts; OXYS_BENCH_DELAY_MS=<n> slows every frame load
 make perf-selftest # record + report synthetic signposts (pipeline check)
 make contrast      # D-01: every label on the photo over TestData/design test frames; writes docs/design/contrast.md, exit 1 on a fail (needs Screen Recording permission)
+make contrast-quick # the same probe on the white and yellow frames only: 16 captures, about 45 s, report in build/contrast/<time>/docs (docs/design stays as it is)
 make contrast-selftest  # the WCAG math, the shape mask and the 1% cut of scripts/contrast-report.py
 make ui-walk       # drive the built app with key events only, then check the sidecars (needs Accessibility permission)
 scripts/perf-record.sh <Oxys.app> [seconds]   # record signposts, print p50/p95 per interval

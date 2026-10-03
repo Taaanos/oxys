@@ -2,7 +2,7 @@
 # D-01: the contrast probe. Opens the test frames (TestData/design, made by scripts/make-contrast-frames.py) with the
 # `contrast` bench scenario, captures the window each time the app asks, then runs scripts/contrast-report.py, which
 # writes docs/design/contrast.md and exits 1 when a label fails.
-# Usage: scripts/contrast.sh [path/to/Oxys.app]
+# Usage: [QUICK=1] scripts/contrast.sh [path/to/Oxys.app]
 # The terminal needs the Screen Recording permission once (System Settings > Privacy & Security), for `screencapture -l`.
 # Run it again with Reduce Transparency and Increase Contrast on (System Settings > Accessibility > Display): each
 # combination gets its own section in the report.
@@ -37,7 +37,10 @@ restore() {
 trap restore EXIT INT TERM
 
 pkill -x Oxys 2>/dev/null || true
-open -n -W --env OXYS_BENCH=contrast --env OXYS_OPEN="$PWD/$frames" --env OXYS_CONTRAST_DIR="$out" \
+# QUICK=1: only the white and yellow frames, no edge positions, and the report goes to $out/docs, not to docs/design.
+quick=(); docs=()
+if [ -n "${QUICK:-}" ]; then quick=(--env OXYS_CONTRAST_QUICK=1); docs=(--docs "$out/docs"); fi
+open -n -W $quick --env OXYS_BENCH=contrast --env OXYS_OPEN="$PWD/$frames" --env OXYS_CONTRAST_DIR="$out" \
   --env OXYS_PERF_LOG="$out/bench.tsv" "$APP" --args -rawMode onDemand &
 app=$!
 n=0
@@ -66,4 +69,4 @@ wait $app || true
 [ -f $out/done ] || { echo "contrast: the probe did not finish ($out)" >&2; exit 1 }
 [ "$before" = "$(listing)" ] || { echo "contrast: the probe changed files in $frames" >&2; exit 1 }
 echo "contrast: $n captures in $out"
-python3 scripts/contrast-report.py $out
+python3 scripts/contrast-report.py $docs $out

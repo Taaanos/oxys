@@ -290,7 +290,10 @@ extension ContrastProbe {
             }
         }
 
-        let photos = folder.visible
+        // Quick mode (`make contrast-quick`): the white frame is the worst case for text and the yellow one for the star.
+        // No split frame, so no edge positions: 16 captures instead of 116.
+        let quick = ProcessInfo.processInfo.environment["OXYS_CONTRAST_QUICK"] != nil
+        let photos = quick ? folder.visible.filter { ["white", "yellow"].contains($0.url.deletingPathExtension().lastPathComponent) } : folder.visible
         // Loupe: each frame at 1:1, so it covers the whole canvas.
         for photo in photos {
             folder.setCurrent(photo.url)
