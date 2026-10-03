@@ -26,8 +26,10 @@ pkill -x Oxys 2>/dev/null || true
 delay=()
 [ -z "${OXYS_BENCH_DELAY_MS:-}" ] || delay=(--env OXYS_BENCH_DELAY_MS="$OXYS_BENCH_DELAY_MS")
 # The user's RAW setting must not change a measurement: every scenario but the develop ones runs in the default mode.
-mode=(--args -rawMode onDemand)
-case $scenario in develop*) mode=() ;; esac
+# The memory settings are pinned too (P-04): the 2 GB budget and the automatic RAW count, whatever the user chose.
+# BENCH_BUDGET_MB overrides the budget.
+mode=(--args -rawMode onDemand -prefetchBudgetMB "${BENCH_BUDGET_MB:-2048}" -rawCacheCount 0)
+case $scenario in develop*) mode=(--args -prefetchBudgetMB "${BENCH_BUDGET_MB:-2048}" -rawCacheCount 0) ;; esac
 open -n -W --env OXYS_BENCH="$scenario" --env OXYS_OPEN="$work" --env OXYS_PERF_LOG="$log" \
   --env OXYS_FRAME_LOG="$log.frames" "${delay[@]}" "$APP" "${mode[@]}"
 { [ "$scenario" != cull ] && [ "$scenario" != compare ]; } || rm -rf "$(dirname "$work")"

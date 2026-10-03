@@ -49,6 +49,8 @@ public enum PerfInterval: String, CaseIterable, Sendable {
     case exportDevelop = "export-develop"
     /// Encoding a developed image to JPEG or HEIC and adding its metadata (V-21). A job has one per file.
     case exportEncode = "export-encode"
+    /// Giving the allocator's free pages back to the system once the frame pipeline is idle (P-04).
+    case memoryRelief = "memory-relief"
 
     /// Signpost names must be static strings, so the raw value is repeated here.
     var signpostName: StaticString {
@@ -75,6 +77,7 @@ public enum PerfInterval: String, CaseIterable, Sendable {
         case .extractFile: "extract-file"
         case .exportDevelop: "export-develop"
         case .exportEncode: "export-encode"
+        case .memoryRelief: "memory-relief"
         }
     }
 }

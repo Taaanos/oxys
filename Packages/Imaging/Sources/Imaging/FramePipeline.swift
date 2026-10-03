@@ -1,5 +1,6 @@
 import Diagnostics
 import Foundation
+import Darwin.malloc
 
 /// What the pipeline loads: one file at one size and modification date, so an edited file is never served stale.
 public struct FrameKey: Hashable, Sendable {
@@ -40,6 +41,8 @@ public actor FramePipeline<Frame: Sendable> {
     private let load: Loader
     private let quick: QuickLoader?
     private var quickTask: Task<Frame?, any Error>?
+    /// Screen-size loads whose task has not ended: a cancelled one finishes its decode first, so it still holds memory.
+    private var quickRunning = 0
     private var cache: ByteBudgetCache<FrameKey, Frame>
     private struct Inflight {
         let id: UInt64
@@ -58,21 +61,39 @@ public actor FramePipeline<Frame: Sendable> {
     /// The budget the caller asked for. While frames load, each one needs working memory on top of its final
     /// cost (the decoded image, the upload buffer), so the cache gives that much up: the budget bounds the
     /// cache and the loads together, not the cache alone (M-26).
-    private var requestedBudget: Int
+    private let memory: MemoryBudget
     private let transientFactor: Double
     private var lastCost = 0
+    /// P-04: the prefetch waits this long after a request, so a held key loads its target only and the window
+    /// loads once the key is up. Zero starts it at once.
+    private let prefetchHold: Duration
+    private var pendingPrefetch: Task<Void, Never>?
+    private var lastTarget: FrameKey?
+    private var lastWindow: [FrameKey] = []
+    private var pressure = MemoryPressure.normal
+    /// P-04: `malloc_zone_pressure_relief` after the pipeline has been idle this long (nil: never).
+    private let reliefAfter: Duration?
+    private var reliefTask: Task<Void, Never>?
 
     public static var slowLoadThreshold: Double { 0.15 }
 
     /// `transientFactor`: working memory of one load, as a multiple of the finished frame's cost (0 = ignore).
-    public init(budget: Int, maxPrefetchConcurrency: Int = 2, transientFactor: Double = 0, quick: QuickLoader? = nil,
+    public init(budget: Int, memory: MemoryBudget? = nil, maxPrefetchConcurrency: Int = 2, transientFactor: Double = 0,
+                prefetchHold: Duration = .zero, reliefAfter: Duration? = nil, quick: QuickLoader? = nil,
                 load: @escaping Loader) {
         self.quick = quick
         cache = ByteBudgetCache(budget: budget)
-        requestedBudget = budget
+        self.memory = memory ?? MemoryBudget(total: budget)
+        self.memory.setTotal(budget)
+        self.prefetchHold = prefetchHold
+        self.reliefAfter = reliefAfter
         self.transientFactor = transientFactor
         self.maxPrefetchConcurrency = maxPrefetchConcurrency
         self.load = load
+        self.memory.register(.frames) { [weak self] in
+            guard let self else { return }
+            Task { await self.applyBudget() }
+        }
     }
 
     public var isSlow: Bool { averageLoad > Self.slowLoadThreshold }
@@ -83,15 +104,30 @@ public actor FramePipeline<Frame: Sendable> {
     var budgetForCache: Int { cache.budget }
 
     public func setBudget(_ bytes: Int) {
-        requestedBudget = bytes
+        memory.setTotal(bytes)
         applyBudget()
     }
 
-    /// The cache's share of the budget right now: what was asked for, less the working memory of the loads that
-    /// still run (cancelled ones included, until they end), but never under half of it.
+    /// The cache's share of the budget right now: what the shared budget leaves after the developed RAWs, less the
+    /// working memory of the loads that still run (cancelled ones included, until they end), but never under the floor
+    /// (a quarter of the total).
     private func applyBudget() {
-        let reserve = Int(Double(running * lastCost) * transientFactor)
-        cache.budget = max(requestedBudget - reserve, requestedBudget / 2)
+        // A screen-size frame in the making holds a fraction of a full frame's pixels; count it as half a load.
+        let loads = Double(running) + 0.5 * Double(quickRunning)
+        let reserve = Int(loads * Double(lastCost) * transientFactor)
+        cache.budget = max(memory.share(of: .frames) - reserve, memory.floor)
+        memory.setUsed(.frames, cache.totalCost)
+    }
+
+    /// Memory pressure (P-04). On a warning the cache keeps the frame on screen and 2 of its neighbors, on critical
+    /// the frame on screen only, and the prefetch window shrinks the same way until the pressure ends.
+    public func setPressure(_ level: MemoryPressure) {
+        pressure = level
+        guard level != .normal else { return }
+        let keep = Set(([lastTarget].compactMap { $0 }) + lastWindow.prefix(level.neighborsKept))
+        cancelLoads(except: keep)
+        cache.retain(keep)
+        applyBudget()
     }
 
     public func isCached(_ key: FrameKey) -> Bool { cache.contains(key) }
@@ -108,9 +144,19 @@ public actor FramePipeline<Frame: Sendable> {
         guard let quick, !cache.contains(target), inflight[target] == nil else { return nil }
         cancelLoads(except: [target])
         quickTask?.cancel()
-        let task = Task(priority: .high) { try await quick(target) }
+        quickRunning += 1
+        let task = Task(priority: .high) { [pipeline = self] in
+            defer { Task { await pipeline.quickEnded() } }
+            return try await quick(target)
+        }
         quickTask = task
+        applyBudget()
         return try? await task.value
+    }
+
+    private func quickEnded() {
+        quickRunning -= 1
+        applyBudget()
     }
 
     /// The frame for `target`, loading it at once at high priority. `prefetch` lists the neighbors worth having
@@ -118,14 +164,17 @@ public actor FramePipeline<Frame: Sendable> {
     /// Returns nil when this request was itself superseded (cancelled) before it finished.
     public func frame(for target: FrameKey, prefetch: [FrameKey]) async throws -> Frame? {
         cancelLoads(except: Set([target] + prefetch))
+        lastTarget = target
+        lastWindow = prefetch
+        reliefTask?.cancel()
 
         let hit = cache.value(for: target)
         if let hit {
-            startPrefetch(prefetch)
+            schedulePrefetch()
             return hit
         }
         let task = inflight[target]?.task ?? start(target, priority: .userInitiated)
-        startPrefetch(prefetch)
+        schedulePrefetch()
         switch await task.value {
         case .success(let loaded): return loaded.frame
         case .failure(let error):
@@ -142,6 +191,8 @@ public actor FramePipeline<Frame: Sendable> {
         applyBudget()
         prefetchDriver?.cancel()
         prefetchDriver = nil
+        pendingPrefetch?.cancel()
+        pendingPrefetch = nil
     }
 
     /// Drops everything: a new folder was opened.
@@ -152,7 +203,13 @@ public actor FramePipeline<Frame: Sendable> {
         inflight = [:]
         prefetchDriver?.cancel()
         prefetchDriver = nil
+        pendingPrefetch?.cancel()
+        pendingPrefetch = nil
+        reliefTask?.cancel()
+        lastTarget = nil
+        lastWindow = []
         cache.removeAll()
+        applyBudget()
     }
 
     // MARK: private
@@ -184,6 +241,7 @@ public actor FramePipeline<Frame: Sendable> {
     private func finished(_ key: FrameKey, id: UInt64, result: Result<LoadedFrame<Frame>, any Error>,
                           started: ContinuousClock.Instant) {
         running -= 1
+        defer { scheduleRelief() }
         // Only the request still registered may fill the cache; one cancelled and replaced must not.
         guard inflight[key]?.id == id else { applyBudget(); return }
         inflight[key] = nil
@@ -191,10 +249,49 @@ public actor FramePipeline<Frame: Sendable> {
             lastCost = loaded.cost
             applyBudget()
             cache.insert(loaded.frame, cost: loaded.cost, for: key)
+            memory.setUsed(.frames, cache.totalCost)
             let seconds = started.duration(to: .now).seconds
             averageLoad = averageLoad == 0 ? seconds : averageLoad * 0.7 + seconds * 0.3
         }
     }
+
+    /// Starts the prefetch for the last request: at once, or when `prefetchHold` has passed with no newer request.
+    private func schedulePrefetch() {
+        pendingPrefetch?.cancel()
+        pendingPrefetch = nil
+        let window = Array(lastWindow.prefix(pressure.prefetchLimit))
+        guard prefetchHold > .zero else { startPrefetch(window); return }
+        let hold = prefetchHold
+        pendingPrefetch = Task { [pipeline = self] in
+            try? await Task.sleep(for: hold)
+            guard !Task.isCancelled else { return }
+            await pipeline.startHeldPrefetch()
+        }
+    }
+
+    private func startHeldPrefetch() {
+        pendingPrefetch = nil
+        startPrefetch(Array(lastWindow.prefix(pressure.prefetchLimit)))
+    }
+
+    /// After a scrub the allocator keeps pages it freed; give them back once nothing has run for `reliefAfter`.
+    private func scheduleRelief() {
+        guard let delay = reliefAfter, isIdle, pendingPrefetch == nil else { return }
+        reliefTask?.cancel()
+        reliefTask = Task { [pipeline = self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, await pipeline.canRelieve else { return }
+            await pipeline.relieveNow()
+        }
+    }
+
+    private func relieveNow() {
+        let token = Perf.begin(.memoryRelief)
+        malloc_zone_pressure_relief(nil, 0)
+        Perf.end(token)
+    }
+
+    private var canRelieve: Bool { isIdle && pendingPrefetch == nil }
 
     private func startPrefetch(_ keys: [FrameKey]) {
         let pending = keys.filter { !cache.contains($0) && inflight[$0] == nil }
@@ -221,6 +318,23 @@ public actor FramePipeline<Frame: Sendable> {
         guard !Task.isCancelled, !cache.contains(key) else { return }
         let task = inflight[key]?.task ?? start(key, priority: .utility)
         _ = await task.value
+        scheduleRelief()
+    }
+}
+
+/// How short of memory the system says it is (P-04).
+public enum MemoryPressure: Sendable, Equatable {
+    case normal, warning, critical
+
+    /// How many neighbors of the frame on screen stay in the cache.
+    var neighborsKept: Int { self == .warning ? 2 : 0 }
+    /// How many frames of the prefetch window may load.
+    var prefetchLimit: Int {
+        switch self {
+        case .normal: .max
+        case .warning: 2
+        case .critical: 0
+        }
     }
 }
 

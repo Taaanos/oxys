@@ -109,7 +109,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | P-01 | Performance gate tool and a real shoot | M-26 | done (criterion 1 not met: the M-26 table does not reproduce; cold rows run warm, no `purge`) |
 | P-02 | Decode once, into GPU memory | P-01 | done (criterion 2 met against the P-01 baseline, not against the stale 3.4 GB; see the story) |
 | P-03 | Screen-size frame first (cold next image) | P-02 | done (criteria 1 and 3 met; criterion 2: prefetched p95 is 62 ms, not under 50, unchanged by this story; see the story) |
-| P-04 | One memory budget | P-02 | todo |
+| P-04 | One memory budget | P-02 | in progress (built and measured; develop-always and the 61 MP scrub meet the limit, the 24 MP scrub peak does not: see the story) |
 | P-05 | Keys within one display frame while frames load | P-01 | todo |
 | P-06 | Overlay toggles without new allocations | P-01 | todo |
 | P-07 | Capture times in under 3 s | P-01 | todo |
@@ -2197,6 +2197,31 @@ The code changes the M-26 diagnosis in two places, found while planning this pha
 
 **Open questions**
 1. The fixed part of the footprint (app, Metal, ImageIO caches) is outside the budget. *Proposed:* allow 600 MB, measured with an empty folder open; change the number if P-01 measures more.
+
+**Result (4 Oct 2026, Apple M4, Bench build, budget pinned to 2 GB, RAW count automatic; the Mac was busy with `dasd` and Spotlight, load 4 to 6)**
+
+- Q1 **Decided as proposed, with a measured number:** the fixed part after a scrub is 320 to 450 MB (`footprint-excess-after-scrub-mb`), so 600 MB stands.
+- One budget: `MemoryBudget` (Imaging) holds the total. `FramePipeline` and `RawFrameCache` report what they use and each may keep the total less the other's use, never under a floor of a quarter of the total. When the two together pass the total, the holder over its floor is told to give back (`register(_:shrink:)`; a pass cannot re-enter itself, because the newest RAW always stays and the budget can stay over). A develop in progress counts `transientFactor` (3) times the last RAW's cost against the budget until its task ends, cancelled ones included. The pipeline counts a screen-size load as half a full load until its task ends.
+- Held key: the prefetch window starts 120 ms after the last request (`prefetchHold`), so a held key loads its target only. This replaces key-up detection: a key repeat is 33 ms, and the bench's keys do not pass the key router.
+- Memory pressure: a `DispatchSource` memory-pressure source calls `FramePipeline.setPressure` and `RawFrameCache.trim`. Warning keeps the photo on screen and 2 neighbors (frames) and the photo on screen (RAWs), and cuts the prefetch window to 2; critical keeps the photo on screen only and stops the prefetch; normal lifts it. Not run against real system pressure, only in unit tests.
+- `malloc_zone_pressure_relief` runs 500 ms after the pipeline goes idle (`memory-relief` signpost). It takes under 1 ms and a trial with a relief every second during the scrub changed no peak, so that part was removed.
+- The bench pins `prefetchBudgetMB` to 2048 and `rawCacheCount` to automatic (`BENCH_BUDGET_MB` overrides). Before, the user's own settings (6,656 MB, 50 RAWs) ran in every scenario. New rows in `scripts/perf-targets.tsv`: scrub peak 2,648 MB (2,048 + 600) on both folders, footprint less cache after the scrub 600 MB, develop-always peak 2,648 MB.
+
+| Measure | Before | After |
+| --- | --- | --- |
+| `develop-always` peak, `hires-1000` / `real-drone-840` | 3,745 / 3,737 MB | 2,585 to 2,598 / 2,584 to 2,596 MB (4 runs) |
+| `develop-always` `raw-ready` p95 | 1.0 to 1.2 ms | 1.0 to 1.3 ms |
+| `scrub` peak, `hires-1000` | not measured | 2,581 MB (3 runs: 2,553 to 2,583) |
+| `scrub` peak, `24mp-1000` | 2,671 to 2,880 MB | 2,823 / 3,140 / 3,406 MB (3 runs) |
+| `scrub` footprint less cache, 2 s after | not measured | 329 to 443 MB (one run 856) |
+| Next image, prefetched p95 (`24mp-1000`) | 63 ms | 30 ms |
+| Next image, cold p95 | 94 ms | 78 ms (`24mp-1000`) |
+| Held key, `scrub` key-to-frame p50 | 52 ms | 25 ms |
+
+- Criterion 1: met for `develop-always` and the 61 MP scrub. **Not met for the 24 MP scrub.** The plateau is 2,530 to 2,560 MB (cache plus 600), but a run spikes 300 to 900 MB above it. A bigger transient factor (2.5) and a smaller cache did not lower the spikes, so it is not the cache. `vmmap` after a run shows 1.4 GB in "IOAccelerator (graphics)" against 1.0 GB in the cache: Metal frees textures and buffers late. The bench's 100 ms step is close to the 100 ms wait before the full-size frame, so many full-size loads start and are cancelled; their decode cannot be cancelled. P-03 or P-10 can look at it: a cancel check inside the decode, or a longer wait while keys keep coming.
+- Criterion 2: met in 5 of 6 runs (329 to 482 MB); one run measured 623 and one 856 MB.
+- Criterion 3: met (table). `idle-cpu-percent-loupe` is 0.07 with and without this change, over the P-09 limit of 0.02 on this busy Mac; not caused by P-04.
+- Not done: `nav-cold` on `real-drone-840` was not re-run after the last change; the run was stopped.
 
 ### P-05 · Keys within one display frame while frames load
 

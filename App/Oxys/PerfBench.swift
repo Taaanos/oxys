@@ -74,6 +74,11 @@ enum PerfBench {
         case "scrub":
             // 1,000 frames in a row, fast enough to stay ahead of the loads, slow enough to load most of them.
             await held(commands, steps: 1000, every: .milliseconds(100))
+            // P-04: 2 s after the last key the footprint must be down to what the caches hold plus the fixed part.
+            await settle(.seconds(2))
+            let cached = Double(await loupe.pipeline.cachedBytes + loupe.rawCache.totalCost) / 1_048_576
+            Perf.record("cache-after-scrub-mb", cached)
+            Perf.record("footprint-excess-after-scrub-mb", max(0, footprintMB() - cached))
         case "cull":
             let ids = ["cull.rate.1", "cull.rate.2", "cull.rate.3", "cull.rate.4", "cull.rate.5", "cull.reject", "cull.label.red"]
             for i in 0..<300 {
@@ -137,6 +142,9 @@ enum PerfBench {
             commands.perform("zoom.rawAlways"); await settle(.milliseconds(500))
             await held(commands, steps: 300, every: .milliseconds(33))
             await settle(.seconds(3))
+            Perf.record("frames-cache-mb", Double(await loupe.pipeline.cachedBytes) / 1_048_576)
+            Perf.record("raw-cache-mb", Double(loupe.rawCache.totalCost) / 1_048_576)
+            Perf.record("footprint-after-held-mb", footprintMB())
             for _ in 0..<20 {
                 let began = ContinuousClock.now
                 commands.perform("nav.next")

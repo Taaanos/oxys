@@ -318,3 +318,92 @@ private func solidImage(_ width: Int, _ height: Int) -> CGImage {
     #expect(await pipeline.isIdle)
     #expect(await pipeline.isCached(key(2)))
 }
+
+// MARK: - One memory budget (P-04)
+
+@Test func theFrameCacheGivesWayToDevelopedRaws() async throws {
+    let memory = MemoryBudget(total: 1_000)
+    let pipeline = FramePipeline<Int>(budget: 1_000, memory: memory) { key in LoadedFrame(frame: number(key), cost: 100) }
+    memory.setUsed(.raw, 400)
+    for n in 0..<10 { _ = try await pipeline.frame(for: key(n), prefetch: []) }
+    #expect(await pipeline.cachedBytes <= 600)
+    #expect(memory.used <= 1_000)
+    // The frames never go under a quarter of the total, however much the RAWs hold.
+    memory.setUsed(.raw, 900)
+    for n in 10..<20 { _ = try await pipeline.frame(for: key(n), prefetch: []) }
+    #expect(await pipeline.cachedBytes <= 300)   // the floor is 250; frames cost 100 each
+}
+
+@Test func developedRawsKeepWithinTheirShare() async throws {
+    let memory = MemoryBudget(total: 1_000)
+    let cache = RawFrameCache<Int>(maxCount: 100, budget: memory)
+    memory.setUsed(.frames, 700)
+    for n in 0..<10 { _ = try await cache.develop(key(n)) { LoadedFrame(frame: number($0), cost: 100) } }
+    #expect(cache.totalCost <= 300)
+    #expect(cache.count >= 1)
+    #expect(memory.used == 700 + cache.totalCost)
+    cache.trim(keeping: key(9))
+    #expect(cache.count == 1 && cache.contains(key(9)))
+    cache.removeAll()
+    #expect(memory.used == 700)
+}
+
+@Test func aWarningKeepsTheFrameOnScreenAndTwoNeighborsAndCriticalOnlyTheFrame() async throws {
+    let pipeline = FramePipeline<Int>(budget: 10_000) { key in LoadedFrame(frame: number(key), cost: 100) }
+    let window = (1...6).map { key($0) }
+    _ = try await pipeline.frame(for: key(0), prefetch: window)
+    for _ in 0..<200 where await pipeline.cachedBytes < 700 { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(await pipeline.cachedBytes == 700)
+    await pipeline.setPressure(.warning)
+    #expect(await pipeline.cachedBytes == 300)
+    let kept = [await pipeline.isCached(key(0)), await pipeline.isCached(key(1)), await pipeline.isCached(key(2))]
+    #expect(kept == [true, true, true])
+    await pipeline.setPressure(.critical)
+    #expect(await pipeline.cachedBytes == 100)
+    #expect(await pipeline.isCached(key(0)))
+    // Under critical pressure a new request loads its target and nothing else.
+    _ = try await pipeline.frame(for: key(3), prefetch: [key(4), key(5)])
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(!(await pipeline.isCached(key(4))))
+}
+
+@Test func aHeldKeyLoadsTheTargetOnlyAndThePrefetchStartsWhenTheKeyIsUp() async throws {
+    let recorder = Recorder()
+    let pipeline = FramePipeline<Int>(budget: 10_000, prefetchHold: .milliseconds(80)) { key in
+        await recorder.loaded(number(key))
+        return LoadedFrame(frame: number(key), cost: 10)
+    }
+    // A key held down: a new target every 20 ms, each with a window.
+    for n in 0..<5 {
+        _ = try await pipeline.frame(for: key(n), prefetch: [key(n + 1), key(n + 2)])
+        try await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(await recorder.loaded == [0, 1, 2, 3, 4])
+    // The key goes up: the window of the last target loads.
+    try await Task.sleep(for: .milliseconds(300))
+    let window = [await pipeline.isCached(key(5)), await pipeline.isCached(key(6))]
+    #expect(window == [true, true])
+}
+
+@Test func whenTheFramesFillUpTheDevelopedRawsGiveBack() async throws {
+    let memory = MemoryBudget(total: 1_000)
+    let raws = RawFrameCache<Int>(maxCount: 100, budget: memory)
+    let pipeline = FramePipeline<Int>(budget: 1_000, memory: memory) { key in LoadedFrame(frame: number(key), cost: 100) }
+    for n in 0..<8 { _ = try await raws.develop(key(100 + n)) { LoadedFrame(frame: number($0), cost: 100) } }
+    // The RAWs hold 800 of 1,000; the frames come in and take what the floor gives them. The RAWs give back.
+    for n in 0..<10 { _ = try await pipeline.frame(for: key(n), prefetch: []) }
+    for _ in 0..<100 where memory.used > 1_000 { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(memory.used <= 1_000)
+    #expect(raws.count >= 1)
+}
+
+@Test func aHolderThatCannotGoLowerDoesNotLoopTheBudget() async throws {
+    // One RAW over the whole total: the cache keeps its newest entry, so the budget stays over. It must not recurse.
+    let memory = MemoryBudget(total: 100)
+    let raws = RawFrameCache<Int>(maxCount: 5, budget: memory)
+    memory.setUsed(.frames, 60)
+    _ = try await raws.develop(key(1)) { LoadedFrame(frame: number($0), cost: 500) }
+    _ = try await raws.develop(key(2)) { LoadedFrame(frame: number($0), cost: 500) }
+    #expect(raws.count == 1)
+    #expect(memory.used == 560)
+}

@@ -21,7 +21,10 @@ overlays	info.histogram	p95	16.7	Overlay toggles, within one display frame
 overlays	info.cycle	p95	16.7	Overlay toggles, within one display frame
 zoom	zoom	p95	16.7	Zoom to 1:1, within one display frame
 grid	grid-frame-ms	max	25	Grid scrolling, 60 fps with 10,000 files (a frame over 1.5 refreshes is dropped)	grid-10000
-scrub	footprint-peak-mb	peak	2048	Memory, prefetch cache within its 2 GB budget (process footprint)
+scrub	footprint-peak-mb	peak	2648	Memory, prefetch cache within its 2 GB budget plus 600 MB fixed part (P-04)
+scrub	footprint-excess-after-scrub-mb	max	600	After a scrub: footprint less the cache content, within 2 s (P-04)
+scrub	footprint-peak-mb	peak	2648	Memory, 61 MP frames, same limit (P-04)	hires-1000
+develop-always	footprint-peak-mb	peak	2648	Memory with RAWs developing (P-04)
 idle	idle-cpu-percent-loupe	max	0.02	Idle, 0% CPU in Loupe (P-09: AppKit's own wake-ups leave about 0.014%)
 idle	idle-cpu-percent-grid	max	0.02	Idle, 0% CPU in Grid (P-09)
 load-memory	load-working-ratio	max	1.5	Working memory of one 24 MP frame load, as a multiple of the frame (P-02)

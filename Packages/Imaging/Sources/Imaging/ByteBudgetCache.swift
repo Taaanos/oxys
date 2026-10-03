@@ -48,6 +48,11 @@ public struct ByteBudgetCache<Key: Hashable, Value> {
         totalCost = 0
     }
 
+    /// Keeps only the entries in `keys`.
+    public mutating func retain(_ keys: Set<Key>) {
+        for key in Array(entries.keys) where !keys.contains(key) { remove(key) }
+    }
+
     private mutating func evict(toFit limit: Int) {
         while totalCost > limit, let oldest = entries.min(by: { $0.value.tick < $1.value.tick })?.key {
             remove(oldest)

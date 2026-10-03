@@ -280,7 +280,11 @@ final class LoupeController {
     var rawMode: RawMode { RawPolicy.effective(setting: rawSetting, sessionAlways: sessionAlways) }
     private var autoRawAtActual: Bool { UserDefaults.standard.object(forKey: "rawAutoActual") as? Bool ?? true }
     /// The developed RAWs: the count from Settings (5 by default), within the frame budget, which wins (V-02).
-    @ObservationIgnored let rawCache = RawFrameCache<LoupeFrame>(maxCount: LoupeController.rawCacheCount, maxBytes: LoupeController.memoryBudget)
+    /// P-04: the preview frames and the developed RAWs share one byte budget.
+    @ObservationIgnored let memory = MemoryBudget(total: LoupeController.memoryBudget)
+    @ObservationIgnored lazy var rawCache = RawFrameCache<LoupeFrame>(
+        maxCount: LoupeController.rawCacheCount, maxBytes: LoupeController.memoryBudget, budget: memory,
+        transientFactor: 3)
 
     /// Counts the cull keys that took effect. The rating glyphs bounce when it changes, so the cue sits where the
     /// rating is already drawn and nothing covers the photo.
@@ -377,13 +381,20 @@ final class LoupeController {
     @ObservationIgnored private let plan = PrefetchPlan()
     @ObservationIgnored private var lastIndex: Int?
     @ObservationIgnored private var budgetObserver: Any?
+    @ObservationIgnored private var pressureSource: DispatchSourceMemoryPressure?
+    /// P-04: a held key repeats every 33 ms or so, and the prefetch window waits until no key has come for this long.
+    static let prefetchHold = Duration.milliseconds(120)
+    /// P-04: idle this long after a scrub, the allocator gives its free pages back.
+    static let reliefAfter = Duration.milliseconds(500)
 
     init() {
         let thumbnails = thumbnails, request = screenRequest
         // One load holds the decoded image and the upload buffer beside the texture: about 1.5 times its cost.
-        pipeline = FramePipeline(budget: Self.memoryBudget, transientFactor: 1.5, quick: { key in
+        pipeline = FramePipeline(budget: Self.memoryBudget, memory: memory, transientFactor: 1.5,
+                                 prefetchHold: Self.prefetchHold, reliefAfter: Self.reliefAfter, quick: { key in
             try await FrameLoader.loadScreenSize(key, request: request, thumbnails: thumbnails)
         }) { key in try await FrameLoader.load(key, thumbnails: thumbnails) }
+        startPressureSource()
         budgetObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -405,10 +416,31 @@ final class LoupeController {
         developState = developState == .raw ? .raw : .preview
     }
 
+    /// P-04: on a warning the caches keep the photo on screen and 2 neighbors, on critical the photo only. The
+    /// developed RAWs keep the photo on screen in both cases. The prefetch window shrinks until the pressure ends.
+    private func startPressureSource() {
+        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical, .normal], queue: .main)
+        source.setEventHandler { [weak self, weak source] in
+            guard let event = source?.data else { return }
+            MainActor.assumeIsolated { self?.memoryPressure(event) }
+        }
+        source.resume()
+        pressureSource = source
+    }
+
+    private func memoryPressure(_ event: DispatchSource.MemoryPressureEvent) {
+        let level: MemoryPressure = event.contains(.critical) ? .critical : event.contains(.warning) ? .warning : .normal
+        let pipeline = pipeline
+        Task { await pipeline.setPressure(level) }
+        guard level != .normal else { return }
+        rawCache.trim(keeping: shown.map(FrameLoader.key(for:)))
+    }
+
     private func applyBudget() {
         let pipeline = pipeline, budget = Self.memoryBudget
+        memory.setTotal(budget)
         rawCache.setLimits(maxCount: Self.rawCacheCount, maxBytes: budget)
-        Task { await pipeline.setBudget(budget) }
+        Task { await pipeline.setBudget(budget) }  // sets the shared total too
     }
 
     /// A new folder: drop the frames of the old one.
