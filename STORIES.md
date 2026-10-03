@@ -1574,6 +1574,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - EXIF: each pane's strip shows focal length, aperture, shutter and ISO, plus any other setting (exposure compensation, white balance, metering, flash, lens, camera) that differs. A differing value is named, bold, underlined and in the warning tint. Time, size and place are never compared. Nothing is marked until both panes have their EXIF. Logic is `ExifInfo.compareFields(against:)` in `Metadata` (6 tests).
 - The pane title no longer says "Active": the ring shows it, and VoiceOver still hears "Active" as the pane's value.
 - Not done in Compare: `⇧R` (always develop), and the automatic RAW develop at 1:1 (V-03). Each pane's RAW state resets when its photo changes.
+- **Changed later (Compare = RAW):** Compare shows the developed RAW and nothing else. Each RAW pane develops by itself as soon as its preview is up (active side first, one decode at a time, `FrameLoader.compareKey`), and a RAW+JPEG pair shows the RAW file, not the camera JPEG. `R` in Compare only says so. A RAW that cannot be developed, or RAW decode off in Settings, keeps the preview and its truth badge says so.
 
 **Checked** (V-09)
 - Unit tests: `Canvas` 67, `Metadata` 51, `Commands` 54 (new: Compare takes the zoom, pan, RAW and overlay keys; `⇧Z` is Compare's alone). Release build clean, arm64.

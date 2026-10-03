@@ -26,6 +26,8 @@ final class ComparePane {
     @ObservationIgnored private var developTask: Task<Void, Never>?
     /// Set by the controller: gives a new canvas its zoom rules, its overlays and its link to the other pane.
     @ObservationIgnored var configure: ((LoupeView) -> Void)?
+    /// Called when a new frame is up, so the controller can start developing the RAW (Compare always shows the RAW).
+    @ObservationIgnored var onShown: (() -> Void)?
     @ObservationIgnored private var wanted: URL?
     @ObservationIgnored private var task: Task<Void, Never>?
     /// The view is built after the pane is asked to load; it shows the frame as soon as it exists.
@@ -38,16 +40,17 @@ final class ComparePane {
             configure?(canvas)
             canvas.setAccessibilityLabel(accessibilityName)
             if let frame { canvas.show(frame.image) } else if failure != nil { canvas.show(nil) }
+            if frame != nil { onShown?() }
         }
     }
 
     init(side: ComparePair.Side) { self.side = side }
 
-    var isRaw: Bool { shown?.showsRaw == true && failure == nil }
+    var isRaw: Bool { shown?.format.isRaw == true && failure == nil }
 
     var truthBadge: TruthBadge? {
         guard failure == nil, let photo = shown, let pixels = shownPixels, let zoom = zoomInfo else { return nil }
-        let source: TruthBadge.Source = !photo.showsRaw ? (photo.isPair ? .cameraJPEG : .file) : developState == .raw ? .raw : developState == .developing ? .developing : .preview
+        let source: TruthBadge.Source = !photo.format.isRaw ? .file : developState == .raw ? .raw : developState == .developing ? .developing : .preview
         return TruthBadge.make(source: source, percent: zoom.percent, isFit: zoom.level.isFit,
                                longEdge: max(pixels.width, pixels.height),
                                sensorLongEdge: RawPolicy.longEdge(ofDimensions: exif?.dimensions))
@@ -70,7 +73,7 @@ final class ComparePane {
         task?.cancel()
         stopDeveloping()
         wanted = photo.url
-        let key = FrameLoader.key(for: photo)
+        let key = FrameLoader.compareKey(for: photo)
         task = Task { [weak self] in
             async let info = readExif(photo.url)
             let result: Result<LoupeFrame?, any Error>
@@ -92,6 +95,7 @@ final class ComparePane {
                 folder.setPreview(PreviewInfo(pixelWidth: loaded.width, pixelHeight: loaded.height), for: photo.url)
                 canvas?.setAccessibilityLabel(accessibilityName)
                 canvas?.show(loaded.image, keyToFrame: token)
+                onShown?()
             case .success(nil):
                 if let token { Perf.end(token) }   // superseded inside the pipeline
             case .failure(let error):
@@ -116,7 +120,7 @@ final class ComparePane {
     func develop(cache: RawFrameCache<LoupeFrame>, done: @escaping @MainActor (String) -> Void) -> Task<Void, Never>? {
         guard let photo = shown, isRaw, developState == .preview, canvas != nil else { return nil }
         developState = .developing
-        let key = FrameLoader.key(for: photo)
+        let key = FrameLoader.compareKey(for: photo)
         let minLongEdge = max(512, shownPixels.map { max($0.width, $0.height) } ?? 0)
         let task = Task { [weak self] in
             let result: Result<LoupeFrame?, any Error>
@@ -210,6 +214,7 @@ final class CompareController {
                 canvas.onViewChange = { [weak self] state in self?.viewChanged(on: side, to: state) }
                 self.loupe.applyOverlays(to: canvas)
             }
+            pane(side).onShown = { [weak self] in self?.developPending() }
         }
     }
 
@@ -244,6 +249,7 @@ final class CompareController {
     func end() {
         pair = nil
         developChain?.cancel()
+        developChain = nil
         select.clear()
         candidate.clear()
     }
@@ -392,26 +398,27 @@ final class CompareController {
         follower.apply(linkFrom(side).follower(of: state))
     }
 
-    /// `R`: develops the RAW on both panes, or, when they are developed or developing, goes back to the previews.
+    /// `R`: Compare always shows the developed RAW, so there is nothing to toggle.
     func toggleRaw() {
         guard loupe.canDevelop else { announce("RAW decode is off in Settings"); return }
-        let raws = [select, candidate].filter(\.isRaw)
-        guard !raws.isEmpty else { announce("Neither photo is a RAW file"); return }
-        if raws.contains(where: { $0.developState == .preview }) {
-            announce(raws.count == 2 ? "Developing both" : "Developing \(raws[0].side.title)")
-            // One decode at a time: the active pane first.
-            let ordered = raws.sorted { $0.side == pair?.active && $1.side != pair?.active }
-            developChain = Task { [weak self] in
-                for pane in ordered {
-                    guard !Task.isCancelled, let self else { return }
-                    await pane.develop(cache: loupe.rawCache) { self.announce($0) }?.value
+        announce("Compare always shows the RAW")
+    }
+
+    /// Develops every RAW pane that still shows its preview, the active one first (the cache decodes one RAW at a
+    /// time). A photo that fails is not tried again until it is shown again.
+    private func developPending() {
+        guard loupe.canDevelop, developChain == nil else { return }
+        developChain = Task { [weak self] in
+            var tried: Set<URL> = []
+            while !Task.isCancelled, let self, let pair {
+                let next = [pair.active, pair.active.other].map(pane).first {
+                    $0.isRaw && $0.developState == .preview && $0.canvas != nil && !tried.contains($0.shown?.url ?? URL(fileURLWithPath: "/"))
                 }
+                guard let next, let url = next.shown?.url else { break }
+                tried.insert(url)
+                await next.develop(cache: loupe.rawCache) { self.announce($0) }?.value
             }
-        } else {
-            developChain?.cancel()
-            for pane in raws { pane.showPreview() }
-            loupe.rawCache.cancelInflight()
-            announce("Previews")
+            self?.developChain = nil
         }
     }
 
@@ -443,8 +450,8 @@ final class CompareController {
         let visible = folder.visible
         let index = visible.firstIndex { $0.url == photo.url }
         let neighbors = (index.map { plan.indices(current: $0, count: visible.count, direction: direction, slow: false) } ?? [])
-            .map { FrameLoader.key(for: visible[$0]) }
-        let otherKey = folder.photos.first { $0.url == other }.map(FrameLoader.key(for:))
+            .map { FrameLoader.compareKey(for: visible[$0]) }
+        let otherKey = folder.photos.first { $0.url == other }.map(FrameLoader.compareKey(for:))
         let loupe = loupe
         pane.show(photo, prefetch: (otherKey.map { [$0] } ?? []) + neighbors, pipeline: loupe.pipeline, folder: folder,
                   exif: { await loupe.exifInfo(for: $0) }, token: token)
