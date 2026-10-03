@@ -283,16 +283,18 @@ final class LoupeController {
     /// The developed RAWs: the count from Settings (5 by default), within the frame budget, which wins (V-02).
     @ObservationIgnored let rawCache = RawFrameCache<LoupeFrame>(maxCount: LoupeController.rawCacheCount, maxBytes: LoupeController.memoryBudget)
 
-    /// The confirmation over the canvas after a cull key; nil when it has timed out.
-    struct Badge: Equatable {
-        let id: Int
-        let decision: Decision
-        /// Set when `⇧` moved on, so the badge says which photo it is about.
-        let photoName: String?
+    /// Counts the cull keys that took effect. The rating glyphs bounce when it changes, so the cue sits where the
+    /// rating is already drawn and nothing covers the photo.
+    private(set) var cullPulse = 0
+    /// `⌥I`: keep the rating in the bottom-left corner while the info strip is off.
+    private(set) var showRatingCorner = UserDefaults.standard.bool(forKey: "ratingCorner") {
+        didSet { UserDefaults.standard.set(showRatingCorner, forKey: "ratingCorner") }
     }
-    private(set) var badge: Badge?
-    @ObservationIgnored private var badgeCount = 0
-    @ObservationIgnored private var badgeTimeout: Task<Void, Never>?
+
+    func toggleRatingCorner() {
+        showRatingCorner.toggle()
+        announce(showRatingCorner ? "Rating always shown" : "Rating hidden")
+    }
 
     /// Loupe's screen builds a new canvas each time it is entered from Grid, and its load task can run before
     /// that (the load then drew on the old canvas or none). Whenever the canvas changes, load the last
@@ -905,7 +907,7 @@ final class LoupeController {
     // MARK: cull
 
     /// Applies a cull key (Loupe acts on the active photo only; Grid passes its selection, G-5), confirms it with
-    /// the badge and a VoiceOver phrase, and with `⇧` moves to the next frame. The in-memory decision is
+    /// a pulse on the rating glyphs and a VoiceOver phrase, and with `⇧` moves to the next frame. The in-memory decision is
     /// the only effect until M-08 saves it.
     func cull(_ action: CullAction, advance: Bool, folder: FolderModel, targets: [URL]? = nil) {
         let token = Perf.begin(.cullFeedback)
@@ -915,10 +917,9 @@ final class LoupeController {
             return
         }
         if urls.count > 1 {
-            let phrase = "\(urls.count) photos, \(decision.summary)"
-            confirm(decision, photoName: "\(urls.count) photos", phrase: phrase, token: token)
+            confirm(phrase: "\(urls.count) photos, \(decision.summary)", token: token)
         } else {
-            confirm(decision, photoName: advance ? photo.name : nil, phrase: advance ? "\(photo.name), \(decision.summary)" : decision.summary, token: token)
+            confirm(phrase: advance ? "\(photo.name), \(decision.summary)" : decision.summary, token: token)
         }
         if advance { navigate(.next, folder: folder) }
     }
@@ -939,21 +940,13 @@ final class LoupeController {
         guard let url, let photo = folder.photos.first(where: { $0.url == url }) else { return }
         let token = Perf.begin(.cullFeedback)
         // The current photo changed under the canvas; the view's load task follows `currentURL`.
-        confirm(photo.decision, photoName: photo.name, phrase: "\(verb). \(photo.name), \(photo.decision.summary)", token: token)
+        confirm(phrase: "\(verb). \(photo.name), \(photo.decision.summary)", token: token)
     }
 
-    private func confirm(_ decision: Decision, photoName: String?, phrase: String, token: Perf.Token) {
-        badgeCount += 1
-        badge = Badge(id: badgeCount, decision: decision, photoName: photoName)
+    private func confirm(phrase: String, token: Perf.Token) {
+        cullPulse += 1
         endAtNextDisplayFrame(token)
         announce(phrase)
-        let id = badgeCount
-        badgeTimeout?.cancel()
-        badgeTimeout = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.2))
-            guard !Task.isCancelled, let self, badge?.id == id else { return }
-            badge = nil
-        }
     }
 
     private func announce(_ phrase: String) {

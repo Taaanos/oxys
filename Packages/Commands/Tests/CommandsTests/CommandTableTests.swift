@@ -320,6 +320,9 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     }
     #expect(press(.i, .loupe, at: 0) == [.perform("info.cycle")])
     #expect(press(.i, .loupe, [.shift], at: 0) == [.perform("info.histogram")])   // M-17
+    #expect(press(.i, .loupe, [.option], at: 0) == [.perform("info.rating")])   // the rating corner, for a bare window
+    #expect(press(.i, .compare, [.option], at: 0) == [.perform("info.rating")])
+    #expect(press(.i, .grid, [.option], at: 0).isEmpty)
     #expect(press(.i, .grid, at: 1).isEmpty)
     // The inspector opens from every mode; the focus command too (M-18).
     for mode in [ViewMode.grid, .loupe] {

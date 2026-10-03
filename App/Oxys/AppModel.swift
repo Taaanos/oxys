@@ -347,6 +347,9 @@ final class AppModel {
         commands.register("info.cycle", title: { [unowned self] in "Cycle Info (now \(loupe.infoLevel.title))" }) { [unowned self] _ in
             loupe.cycleInfo()
         }
+        commands.register("info.rating", isOn: { [unowned self] in loupe.showRatingCorner }) { [unowned self] _ in
+            loupe.toggleRatingCorner()
+        }
         commands.register("info.histogram", isOn: { [unowned self] in loupe.showHistogram }) { [unowned self] _ in
             loupe.toggleHistogram()
         }

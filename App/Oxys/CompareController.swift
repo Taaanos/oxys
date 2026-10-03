@@ -187,16 +187,8 @@ final class CompareController {
     let select = ComparePane(side: .select)
     let candidate = ComparePane(side: .candidate)
 
-    /// The confirmation over the active pane after a cull key; nil when it has timed out.
-    struct Badge: Equatable {
-        let id: Int
-        let side: ComparePair.Side
-        let decision: Decision
-        let photoName: String?
-    }
-    private(set) var badge: Badge?
-    @ObservationIgnored private var badgeCount = 0
-    @ObservationIgnored private var badgeTimeout: Task<Void, Never>?
+    /// Per side, the count of cull keys that took effect; the side's rating glyphs bounce when it changes.
+    private(set) var cullPulse: [ComparePair.Side: Int] = [:]
 
     @ObservationIgnored private let folder: FolderModel
     @ObservationIgnored private let loupe: LoupeController
@@ -251,8 +243,6 @@ final class CompareController {
     /// Compare went behind Grid or Loupe.
     func end() {
         pair = nil
-        badge = nil
-        badgeTimeout?.cancel()
         developChain?.cancel()
         select.clear()
         candidate.clear()
@@ -327,7 +317,7 @@ final class CompareController {
             return
         }
         let photoName = name(of: url)
-        confirm(decision, side: current.active, photoName: advance ? photoName : nil,
+        confirm(side: current.active,
                 phrase: "\(current.active.title), \(photoName), \(decision.summary)", token: token)
         var next = current
         if advance, let destination { next.show(destination, in: folder.visible.map(\.url)); direction = .forward }
@@ -351,7 +341,7 @@ final class CompareController {
         let urls = folder.visible.map(\.url)
         if url == next.url(of: next.active.other) { next.switchSide() } else { next.show(url, in: urls) }
         commit(next, token: nil)
-        confirm(photo.decision, side: next.active, photoName: photo.name,
+        confirm(side: next.active,
                 phrase: "\(verb). \(photo.name), \(photo.decision.summary)", token: Perf.begin(.cullFeedback))
     }
 
@@ -471,18 +461,10 @@ final class CompareController {
         announce("\(pair.active.title), \(name(of: url))" + (decision.map { $0.isUndecided ? "" : ", \($0.summary)" } ?? ""))
     }
 
-    private func confirm(_ decision: Decision, side: ComparePair.Side, photoName: String?, phrase: String, token: Perf.Token) {
-        badgeCount += 1
-        badge = Badge(id: badgeCount, side: side, decision: decision, photoName: photoName)
+    private func confirm(side: ComparePair.Side, phrase: String, token: Perf.Token) {
+        cullPulse[side, default: 0] += 1
         endAtNextDisplayFrame(token)
         announce(phrase)
-        let id = badgeCount
-        badgeTimeout?.cancel()
-        badgeTimeout = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.2))
-            guard !Task.isCancelled, let self, badge?.id == id else { return }
-            badge = nil
-        }
     }
 
     private func announce(_ phrase: String) {

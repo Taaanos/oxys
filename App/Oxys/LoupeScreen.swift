@@ -18,7 +18,6 @@ struct LoupeScreen: View {
             if let failure = loupe.failure {
                 ErrorTile(name: loupe.shown?.name ?? "", message: failure)
             }
-            if let badge = loupe.badge { CullBadge(badge: badge) }
             if loupe.truthBadge != nil || model.autoAdvance { TruthBadgeView(badge: loupe.truthBadge, autoAdvance: model.autoAdvance) }
             if let peaking = loupe.peakingLabel { PeakingBadgeView(label: peaking) }
             if let clipping = loupe.clippingLabel { ClippingReadout(label: clipping) }
@@ -41,7 +40,10 @@ struct LoupeScreen: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
             if loupe.showInfoStrip {
-                InfoStrip(photo: loupe.shown, decision: loupe.shown.flatMap { folder.decision(for: $0.url) }, zoom: loupe.zoomInfo, truth: loupe.truthBadge)
+                InfoStrip(photo: loupe.shown, decision: loupe.shown.flatMap { folder.decision(for: $0.url) }, zoom: loupe.zoomInfo, truth: loupe.truthBadge,
+                          pulse: loupe.cullPulse)
+            } else if loupe.showRatingCorner, let photo = loupe.shown {
+                RatingCorner(decision: folder.decision(for: photo.url) ?? Decision(), pulse: loupe.cullPulse)
             }
         }
         .background(Color(white: LoupeView.canvasGray))
@@ -109,6 +111,8 @@ struct InfoStrip: View {
     /// Compare (V-08, V-09): shutter, aperture, ISO and focal length, short enough for half a window, and any other
     /// setting that differs from the other pane's photo. A differing value is marked.
     var exifFields: [CompareField] = []
+    /// Changes when a cull key took effect; the rating glyphs bounce.
+    var pulse = 0
 
     private var exifSpoken: String? {
         exifFields.isEmpty ? nil : exifFields.map { $0.differs ? "\($0.label) \($0.value), differs" : $0.value }.joined(separator: ", ")
@@ -128,7 +132,7 @@ struct InfoStrip: View {
                     Text("RAW+JPEG").font(.caption.weight(.semibold)).foregroundStyle(Plate.secondary)
                         .help("\(photo.name) and \(companion.url.lastPathComponent) are one frame; the decision goes to both")
                 }
-                if let decision, !decision.isUndecided { DecisionGlyphs(decision: decision) }
+                if let decision, !decision.isUndecided { DecisionGlyphs(decision: decision, pulse: pulse) }
                 if let note = photo.sidecar.notes.first {
                     PlateLabel(text: note, systemImage: photo.sidecar.problem == nil ? "info.circle" : "exclamationmark.triangle.fill",
                                tint: photo.sidecar.problem == nil ? Plate.secondary : Plate.warning)
@@ -153,19 +157,37 @@ struct InfoStrip: View {
     }
 }
 
-/// Stars, reject mark and label as text: a letter inside a distinct shape, never color alone.
+/// Stars, reject mark and label as shapes with a letter or a count, never color alone. When `pulse` changes (a cull
+/// key took effect) the stars and the reject mark bounce and the label chip swells: a cue at the edge of the frame,
+/// where a change is noticed without reading. Reduce Motion turns the motion off.
 struct DecisionGlyphs: View {
     let decision: Decision
+    var pulse = 0
+    /// Draw empty stars for an unrated photo, so the corner readout keeps its place.
+    var showsEmptyStars = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        let trigger = reduceMotion ? 0 : pulse
         HStack(spacing: 8) {
             if decision.isReject {
                 PlateLabel(text: "Rejected", systemImage: "xmark.circle.fill", tint: Plate.reject)
-            } else if decision.stars > 0 {
-                Text(String(repeating: "★", count: decision.stars) + String(repeating: "☆", count: 5 - decision.stars))
-                    .foregroundStyle(.yellow)
+                    .symbolEffect(.bounce, options: .nonRepeating, value: trigger)
+            } else if decision.stars > 0 || showsEmptyStars {
+                HStack(spacing: 1) {
+                    ForEach(1...5, id: \.self) { star in
+                        Image(systemName: star <= decision.stars ? "star.fill" : "star")
+                            .foregroundStyle(star <= decision.stars ? Color.yellow : Plate.secondary)
+                    }
+                }
+                .symbolEffect(.bounce, options: .nonRepeating, value: trigger)
             }
-            if let label = decision.label { LabelChip(label: label) }
+            if let label = decision.label {
+                LabelChip(label: label)
+                    .phaseAnimator([1.0, 1.3, 1.0], trigger: trigger) { chip, scale in chip.scaleEffect(scale) } animation: { scale in
+                        scale == 1.3 ? .easeOut(duration: 0.1) : .spring(duration: 0.25, bounce: 0.4)
+                    }
+            }
         }
         .font(.callout)
         .accessibilityElement(children: .ignore)
@@ -198,25 +220,20 @@ private extension ColorLabel {
     }
 }
 
-/// The confirmation after a cull key. It is a cut, not an animation, and VoiceOver hears the same phrase
-/// through the controller's announcement, so the badge itself is hidden from it.
-struct CullBadge: View {
-    let badge: LoupeController.Badge
+/// `⌥I`: the photo's rating at the bottom-left, for when the info strip is off. It is the strip's rating mark
+/// alone, so culling with a bare window still shows what a key did; VoiceOver hears the controller's announcement.
+struct RatingCorner: View {
+    let decision: Decision
+    let pulse: Int
 
     var body: some View {
-        VStack(spacing: 6) {
-            DecisionGlyphs(decision: badge.decision)
-                .font(.title2)
-                .opacity(badge.decision.isUndecided ? 0 : 1)
-            if badge.decision.isUndecided { Text("No rating").font(.title2) }
-            if let name = badge.photoName { Text(name).font(.caption.monospaced()).foregroundStyle(Plate.secondary) }
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-        .infoPlate(cornerRadius: 10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
+        DecisionGlyphs(decision: decision, pulse: pulse, showsEmptyStars: true)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .infoPlate()
+            .padding(12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            .allowsHitTesting(false)
     }
 }
 

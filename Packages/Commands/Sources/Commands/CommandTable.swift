@@ -199,11 +199,13 @@ public struct CommandTable: Sendable {
                 keys: [Shortcut(.position(.h), [.option])]),
 
         // Info on the image (M-18). `I` cycles off, filename and stars, plus EXIF, plus histogram; `⇧I` toggles the
-        // histogram on its own. `⌥⌘I` opens the inspector (every mode); "Move Focus to Inspector" puts the keyboard
+        // histogram on its own; `⌥I` keeps the rating in the bottom-left corner while the strip is off. `⌥⌘I` opens the inspector (every mode); "Move Focus to Inspector" puts the keyboard
         // there, since `⇥` belongs to the toolbar. In Loupe `↑` and `↓` walk the EXIF values (M-16), `⌘C` copies the
         // focused one (all when none is), and Show in Maps opens the GPS spot.
         Command("info.cycle", "Cycle Info", menu: .init(.view, group: 4), modes: loupeAndCompare, requires: .photos,
                 keys: [Shortcut(.position(.i))]),
+        Command("info.rating", "Always Show Rating", menu: .init(.view, group: 4), modes: loupeAndCompare, requires: .photos,
+                kind: .toggle, keys: [Shortcut(.position(.i), [.option])]),
         Command("info.histogram", "Show Histogram", menu: .init(.view, group: 4), modes: loupe, requires: .photos,
                 kind: .toggle, keys: [Shortcut(.position(.i), [.shift])]),
         Command("info.inspector", "Show Inspector", menu: .init(.view, group: 4), requires: .photos,

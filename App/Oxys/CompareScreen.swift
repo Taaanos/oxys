@@ -46,7 +46,6 @@ private struct ComparePaneView: View {
             if let failure = pane.failure {
                 ErrorTile(name: pane.shown?.name ?? "", message: failure)
             }
-            if let badge = compare.badge, badge.side == pane.side { CullBadge(badge: .init(id: badge.id, decision: badge.decision, photoName: badge.photoName)) }
             if pane.truthBadge != nil || model.autoAdvance { TruthBadgeView(badge: pane.truthBadge, autoAdvance: model.autoAdvance) }
             if let photo = pane.shown, pane.failure == nil {
                 if let peaking = loupe.peakingLabel(for: photo, developed: pane.developState == .raw) { PeakingBadgeView(label: peaking) }
@@ -58,7 +57,10 @@ private struct ComparePaneView: View {
             if loupe.showInfoStrip {
                 InfoStrip(photo: pane.shown, decision: pane.shown.flatMap { folder.decision(for: $0.url) }, zoom: pane.zoomInfo,
                           truth: pane.truthBadge,
-                          exifFields: loupe.showExif ? pane.exif?.compareFields(against: compare.pane(pane.side.other).exif) ?? [] : [])
+                          exifFields: loupe.showExif ? pane.exif?.compareFields(against: compare.pane(pane.side.other).exif) ?? [] : [],
+                          pulse: compare.cullPulse[pane.side] ?? 0)
+            } else if loupe.showRatingCorner, let photo = pane.shown {
+                RatingCorner(decision: folder.decision(for: photo.url) ?? Decision(), pulse: compare.cullPulse[pane.side] ?? 0)
             }
         }
         .background(Color(white: LoupeView.canvasGray))
