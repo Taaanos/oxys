@@ -46,21 +46,29 @@ private struct ComparePaneView: View {
             if let failure = pane.failure {
                 ErrorTile(name: pane.shown?.name ?? "", message: failure)
             }
-            if pane.truthBadge != nil || model.autoAdvance { TruthBadgeView(badge: pane.truthBadge, autoAdvance: model.autoAdvance, stripVisible: loupe.showInfoStrip) }
-            if let photo = pane.shown, pane.failure == nil {
-                if let peaking = loupe.peakingLabel(for: photo, developed: pane.developState == .raw) { PeakingBadgeView(label: peaking) }
-                if let clipping = loupe.clippingLabel(for: photo, developed: pane.developState == .raw, stats: pane.clippingStats) {
-                    ClippingReadout(label: clipping)
-                }
-            }
             PaneTitle(side: pane.side, active: active)
-            if loupe.showInfoStrip {
-                InfoStrip(photo: pane.shown, decision: pane.shown.flatMap { folder.decision(for: $0.url) }, zoom: pane.zoomInfo,
-                          truth: pane.truthBadge,
-                          exifFields: loupe.showExif ? pane.exif?.compareFields(against: compare.pane(pane.side.other).exif) ?? [] : [],
-                          pulse: compare.cullPulse[pane.side] ?? 0)
-            } else if loupe.showRatingCorner, let photo = pane.shown {
-                RatingCorner(decision: folder.decision(for: photo.url) ?? Decision(), pulse: compare.cullPulse[pane.side] ?? 0)
+            // The labels sit above the strip in one column, so they follow its height.
+            VStack(spacing: 0) {
+                PhotoLabels {
+                    if let photo = pane.shown, pane.failure == nil {
+                        if let clipping = loupe.clippingLabel(for: photo, developed: pane.developState == .raw, stats: pane.clippingStats) {
+                            ClippingReadout(label: clipping)
+                        }
+                        if let peaking = loupe.peakingLabel(for: photo, developed: pane.developState == .raw) { PeakingBadgeView(label: peaking) }
+                    }
+                    if !loupe.showInfoStrip, loupe.showRatingCorner, let photo = pane.shown {
+                        RatingCorner(decision: folder.decision(for: photo.url) ?? Decision(), pulse: compare.cullPulse[pane.side] ?? 0)
+                    }
+                } right: {
+                    if let badge = pane.truthBadge, !loupe.showInfoStrip { TruthBadgeView(badge: badge) }
+                    if model.autoAdvance { AutoAdvanceBadge() }
+                }
+                if loupe.showInfoStrip {
+                    InfoStrip(photo: pane.shown, decision: pane.shown.flatMap { folder.decision(for: $0.url) }, zoom: pane.zoomInfo,
+                              truth: pane.truthBadge,
+                              exifFields: loupe.showExif ? pane.exif?.compareFields(against: compare.pane(pane.side.other).exif) ?? [] : [],
+                              pulse: compare.cullPulse[pane.side] ?? 0)
+                }
             }
         }
         .background(Color(white: LoupeView.canvasGray))
@@ -84,14 +92,14 @@ private struct PaneTitle: View {
         Label {
             Text(side.title).foregroundStyle(.white)
         } icon: {
-            Image(systemName: active ? "largecircle.fill.circle" : "circle").foregroundStyle(active ? Color.accentColor : Plate.secondary)
+            Image(systemName: active ? "largecircle.fill.circle" : "circle").foregroundStyle(active ? Color.white : Plate.secondary)
         }
         .probeContent()
         .font(.callout.weight(.semibold))
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .infoPlate(cornerRadius: 8)
-        .contrastProbe("pane-title", .plate, shape: .rounded(8), uses: [.text(.white), .mark(.accent), .mark(.secondary)])
+        .glassPlate()
+        .contrastProbe("pane-title", .glass, shape: .capsule, uses: [.text(.white), .mark(.secondary)])
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .allowsHitTesting(false)

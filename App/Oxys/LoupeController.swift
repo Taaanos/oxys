@@ -194,7 +194,6 @@ final class LoupeController {
         struct Row: Equatable { let title: String, value: String, symbol: String }
         let rows: [Row]
         let source: String
-        let stackedOverPeaking: Bool
         var spoken: String {
             "Clipping, " + rows.map { "\($0.title) \($0.value)" }.joined(separator: ", ") + ", on the \(source.lowercased())"
         }
@@ -212,7 +211,7 @@ final class LoupeController {
         var rows: [ClippingLabel.Row] = []
         if highlightsOn { rows.append(.init(title: "Highlights", value: stats.highlightText, symbol: "sun.max.fill")) }
         if shadowsOn { rows.append(.init(title: "Shadows", value: stats.shadowText, symbol: "moon.fill")) }
-        return ClippingLabel(rows: rows, source: source, stackedOverPeaking: peakingOn)
+        return ClippingLabel(rows: rows, source: source)
     }
 
     /// `H`: highlight clipping on or off. A held `H` calls this again on release.

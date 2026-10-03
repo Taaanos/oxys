@@ -26,9 +26,18 @@ final class ContrastProbe {
 
     // MARK: what a label reports
 
-    enum Material: String, Encodable {
-        case plate = "plate, black 70%"
-        case glass = "glass, regular, black 35%"
+    enum Material: Encodable {
+        case plate, glass
+        var label: String {
+            switch self {
+            case .plate: "plate, black \(Int((Plate.opacity * 100).rounded()))%"
+            case .glass: "glass, regular, black \(Int((Plate.glassOpacity * 100).rounded()))%"
+            }
+        }
+        func encode(to encoder: any Encoder) throws {
+            var c = encoder.singleValueContainer()
+            try c.encode(label)
+        }
     }
 
     enum Shape: Encodable {
@@ -252,7 +261,7 @@ extension ContrastProbe {
             try? await Task.sleep(for: .milliseconds(300))
             let labels = present().sorted { ($0.scope, $0.name) < ($1.scope, $1.name) }.map {
                 LabelOut(scope: $0.scope, name: $0.name, photo: photos[$0.scope] ?? "", rect: windowRect($0.global),
-                         material: $0.material.rawValue, shape: $0.shape, uses: $0.uses)
+                         material: $0.material.label, shape: $0.shape, uses: $0.uses)
             }
             let plateOK = await shoot(stem + "-plate.png")
             probe.blank = false

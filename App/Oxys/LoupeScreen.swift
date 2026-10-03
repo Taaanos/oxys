@@ -18,18 +18,6 @@ struct LoupeScreen: View {
             if let failure = loupe.failure {
                 ErrorTile(name: loupe.shown?.name ?? "", message: failure)
             }
-            if loupe.truthBadge != nil || model.autoAdvance { TruthBadgeView(badge: loupe.truthBadge, autoAdvance: model.autoAdvance, stripVisible: loupe.showInfoStrip) }
-            if let peaking = loupe.peakingLabel { PeakingBadgeView(label: peaking) }
-            if let clipping = loupe.clippingLabel { ClippingReadout(label: clipping) }
-            // Anchor for the `⌥H` popover: the corner where the readout sits.
-            Color.clear.frame(width: 1, height: 1)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                .padding(.bottom, 34)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-                .popover(isPresented: Bindable(loupe).showClippingPopover, arrowEdge: .trailing) {
-                    ClippingThresholdsPopover { loupe.showClippingPopover = false }
-                }
             if loupe.showExif, let exif = loupe.exif, loupe.failure == nil {
                 ExifPanel(info: exif, focused: Bindable(loupe).focusedExifField)
             }
@@ -39,11 +27,31 @@ struct LoupeScreen: View {
                     .padding(12)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
-            if loupe.showInfoStrip {
-                InfoStrip(photo: loupe.shown, decision: loupe.shown.flatMap { folder.decision(for: $0.url) }, zoom: loupe.zoomInfo, truth: loupe.truthBadge,
-                          pulse: loupe.cullPulse)
-            } else if loupe.showRatingCorner, let photo = loupe.shown {
-                RatingCorner(decision: folder.decision(for: photo.url) ?? Decision(), pulse: loupe.cullPulse)
+            // The labels sit above the strip in one column, so they follow its height.
+            VStack(spacing: 0) {
+                PhotoLabels {
+                    if let clipping = loupe.clippingLabel { ClippingReadout(label: clipping) }
+                    if let peaking = loupe.peakingLabel { PeakingBadgeView(label: peaking) }
+                    if !loupe.showInfoStrip, loupe.showRatingCorner, let photo = loupe.shown {
+                        RatingCorner(decision: folder.decision(for: photo.url) ?? Decision(), pulse: loupe.cullPulse)
+                    }
+                } right: {
+                    if let badge = loupe.truthBadge, !loupe.showInfoStrip { TruthBadgeView(badge: badge) }
+                    if model.autoAdvance { AutoAdvanceBadge() }
+                }
+                // Anchor for the `⌥H` popover: the corner where the readout sits.
+                .background(alignment: .bottomLeading) {
+                    Color.clear.frame(width: 1, height: 1)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                        .popover(isPresented: Bindable(loupe).showClippingPopover, arrowEdge: .trailing) {
+                            ClippingThresholdsPopover { loupe.showClippingPopover = false }
+                        }
+                }
+                if loupe.showInfoStrip {
+                    InfoStrip(photo: loupe.shown, decision: loupe.shown.flatMap { folder.decision(for: $0.url) }, zoom: loupe.zoomInfo, truth: loupe.truthBadge,
+                              pulse: loupe.cullPulse)
+                }
             }
         }
         .background(Color(white: LoupeView.canvasGray))
@@ -332,7 +340,8 @@ private extension ColorLabel {
 }
 
 /// `⌥I`: the photo's rating at the bottom-left, for when the info strip is off. It is the strip's rating mark
-/// alone on a Liquid Glass capsule, tinted dark so the stars keep their contrast over a bright photo, so culling with a bare window still shows what a key did; VoiceOver hears the controller's announcement.
+/// alone on a glass capsule (`glassPlate`), so culling with a bare window still shows what a key did; VoiceOver hears
+/// the controller's announcement.
 struct RatingCorner: View {
     let decision: Decision
     let pulse: Int
@@ -342,12 +351,8 @@ struct RatingCorner: View {
             .probeContent()
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .environment(\.colorScheme, .dark)
-            .glassEffect(.regular.tint(.black.opacity(0.35)), in: .capsule)
+            .glassPlate()
             .contrastProbe("rating-corner", .glass, shape: .capsule, uses: [.text(.secondary), .mark(.star), .mark(.reject)])
-            .padding(12)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-            .allowsHitTesting(false)
     }
 }
 

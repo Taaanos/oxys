@@ -53,7 +53,7 @@ struct FolderView: View {
         }
         .overlay(alignment: .bottomTrailing) {
             if model.autoAdvance, folder.content == .photos, model.commands.mode == .grid {
-                AutoAdvanceBadge().padding(.horizontal, 12).padding(.bottom, 4).allowsHitTesting(false)
+                GlassEffectContainer { AutoAdvanceBadge() }.padding(.horizontal, 12).padding(.bottom, 4).allowsHitTesting(false)
             }
         }
         .overlay { if model.showCheatSheet { CheatSheetView(model: model) } }

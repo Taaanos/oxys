@@ -116,7 +116,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | P-11 | Performance gate | P-02 to P-10 | todo |
 | **Phase 2c** | **Design (Liquid Glass)** (see G-14) | | |
 | D-01 | Contrast probe for labels on the photo | M-18, V-05, P-01 | done (measured in dark appearance only; the Reduce Transparency, Increase Contrast and light runs are open) |
-| D-02 | Glass for the badges on the photo | D-01 | todo |
+| D-02 | Glass for the badges on the photo | D-01 | in progress (built; contrast passes in the dark appearance; the perf gate and the accessibility-setting runs are open) |
 | D-03 | Glass for the floating panels | D-02 | todo |
 | D-04 | The write banner as a floating glass notice | D-03 | todo |
 | D-05 | The toolbar on macOS 27 | M-13 | todo |
@@ -2299,18 +2299,32 @@ The code changes the M-26 diagnosis in two places, found while planning this pha
 - `infoPlate()` stays for the info strip, the EXIF panel, the histogram, the extract panel and the grid badge strip, until their stories.
 
 **Acceptance criteria**
-- [ ] Every label that moved passes D-01 on every test frame, with the accessibility settings on and off.
-- [ ] The tint has one value in the code (`glassPlate`), and every glass label uses it.
-- [ ] In Loupe, Compare and Grid, the auto-advance mark and the truth badge have the same material.
+- [ ] Every label that moved passes D-01 on every test frame, with the accessibility settings on and off. (Dark appearance, both settings off: all 105 rows pass. The other combinations are open.)
+- [x] The tint has one value in the code (`glassPlate`), and every glass label uses it.
+- [x] In Loupe, Compare and Grid, the auto-advance mark and the truth badge have the same material. (Grid by code; the probe does not measure Grid.)
 - [ ] `F`, `S` and `⇧I` show and hide their labels in the next frame, with no materialize animation. `peaking-still`, `clipping-still` and `overlays` are not slower than before.
 - [ ] With every label on: no new hitches in `scrub`, `zoom` and `nav-held`.
-- [ ] The VoiceOver labels do not change.
+- [x] The VoiceOver labels do not change. (Same strings, by code review.)
+
+Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTransition(.identity)`, not yet seen on screen), the `perf-gate` comparison and the Instruments hitch recording. A first warm gate run on `real-drone-840` was stopped before the "after" half finished, so there is no comparison yet.
 
 **Open questions**
 1. Tint strength? *Proposed:* keep black at 35% if D-01 passes. If not, use the smallest value that passes on the white frame, the same for every label.
 2. `.regular` or `.clear` glass? Apple suggests `.clear` over media, with a dimming layer under it. *Proposed:* `.regular`, because it gives more contrast with no extra layer. Measure `.clear` once with D-01 and record the values.
 3. Peaking and clipping stack at the bottom left with fixed offsets (`padding(.bottom, 34)` and `74`), and the rating corner uses the same corner when the strip is off. *Proposed:* one `VStack` in the container, with no fixed offsets. That also keeps the stack correct when the strip height changes.
 4. The Compare pane title is the only label at the top. Glass or plate? *Proposed:* glass, so that all labels are one family.
+
+**Decisions and checks**
+- Q1 **Decided:** black at 50%, not 35%. At 35% the moved labels fail on the white frame (worst plate L 0.205: secondary text 3.4:1, star 2.9:1, warning triangle 1.8:1, reject mark 1.4:1). At 50% the worst plate is L 0.119 (secondary 5.0:1, star 4.3:1 in Loupe, reject 3.1:1). The reject mark is the limit: about 48% is the least that passes. One value for every glass label: `Plate.glassOpacity`.
+- Q2 **Decided:** `.regular`. `.clear` with the same 50% tint measured on the white frame: worst plate L 0.305, secondary text 2.5:1, star 2.0:1, reject 1.4:1, so every label fails.
+- Two colors changed so that the marks keep 3:1 on glass: `Plate.reject` from `(1, 0.42, 0.40)` to `(1, 0.62, 0.60)`, and `Plate.warning` from system orange to `(1, 0.68, 0.20)`. They are shared with the info strip, the histogram and Compare's EXIF line, so the two D-01 fails that were not glass are gone too (the histogram's clipped percent 3.8 to 4.6:1; the Compare EXIF value 3.8 to 4.6:1). D-04 and D-11 need no color change for them.
+- Q3 **Decided:** `PhotoLabels` (new file) is a column with the info strip: two `GlassEffectContainer`s above the strip, left (clipping, peaking, rating corner) and right (truth badge, auto-advance). No fixed offsets. The `⌥H` popover anchor is the bottom-left of that area. `ClippingLabel.stackedOverPeaking` is removed.
+- Q4 **Decided:** glass capsule for the Compare pane title. Its active dot was the accent color, a mark at 1.0:1 on glass (2.1:1 on the old plate); it is now white, and the filled or empty circle already says which pane is active.
+- `glassPlate(in:)` sets white foreground, dark color scheme, `.regular.tint(Plate.glassTint)` and `.glassEffectTransition(.identity)`. The clipping readout uses a rounded rectangle (12 pt); the others use a capsule. `TruthBadgeView` no longer knows the strip: the caller shows it only when the strip is off.
+- `ContrastProbe.Material` now writes its label from `Plate.opacity` and `Plate.glassOpacity`, so the report names the real tint.
+- Result: `docs/design/contrast.md`, all 105 rows pass (dark appearance, Reduce Transparency and Increase Contrast off). Screenshots before and after on the test frames: `docs/design/d-02/`.
+- A Library test (`aFolderThatVanishesMidSessionKeepsEveryDecisionInMemory`) failed once in a full `make test` and passed alone, three times, and on the previous commit. Not related to this change; it looks like a timing flake under load.
+
 
 ### D-03 · Glass for the floating panels
 
