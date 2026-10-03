@@ -102,6 +102,8 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-19 | Optional lens correction for RAW | V-02, M-22 | todo (spike done: `docs/spikes/lens-correction.md`) |
 | V-20 | Film strip in Loupe | M-12, M-13, M-04 | todo |
 | V-21 | Export developed JPEG and HEIC | V-13, V-02 | built, needs a live check (the ⇧⌘E Format menu, folder guard and plate not clicked through; checked on six brands and 20 drone files with the bench tool) |
+| V-22 | Remove location and serial numbers on export | V-13, V-21 | todo (design open; from audit S-7) |
+| V-23 | Clear the thumbnail cache | M-22, P-02 | todo (from audit S-8) |
 | V-18 | v1.0 gate | all v1.0, P-11 | todo |
 | **Phase 2b** | **Performance** (build before V-18) | | |
 | P-01 | Performance gate tool and a real shoot | M-26 | done (criterion 1 not met: the M-26 table does not reproduce; cold rows run warm, no `purge`) |
@@ -1968,6 +1970,64 @@ None. Support is read from `isLensCorrectionSupported` when each file is develop
 - **Not checked:** the panel, the menu by keyboard, VoiceOver and the plate text in the live app; the HEIC in other readers (Photos, Lightroom); a CR3, Nikon or Pentax file; 61 MP files; a cold cache; the JPEG and HEIC quality defaults against file size and look.
 - Unit tests: `ExportMetadata` (properties, XMP clean-up, quote and tail repair, JPEG 8-bit and HEIC 10-bit P3 round trips with Exif, GPS and the XMP rating), `JPEGSegments.iccSegment`, `SafeWrite` (suffix, no overwrite, no temp file left, dates, permissions and xattr), `DevelopedExporter` (JPEG original is "not RAW", a broken RAW is "could not be developed", cancel), the command title. A developed file needs a real RAW, so it is checked by the bench tool and not by a unit test.
 - Docs: guide `filtering.md` and `shortcuts.md`, PRD hand-off lines, `CLAUDE.md`.
+
+### V-22 · Remove location and serial numbers on export
+
+**Depends on:** V-13, V-21
+
+> As a photographer who shares exported pictures on the web, I want to remove the GPS position and the camera and lens serial numbers when I export, so that I never publish where I was or what gear I own without choosing to.
+
+From security audit S-7 (`docs/security-audit.md`, git-ignored). Every export format keeps the GPS position today (`ExifTransplant` keeps the GPS IFD and tags `0xA430`, `0xA431`; `ExportMetadata` keeps GPS and IPTC in a developed HEIC). The captions for Developed JPEG and HEIC say so, but the Embedded JPEG caption does not. You asked to think this through before building, so this story is design first.
+
+**Scope (to settle first)**
+- An option in the ⇧⌘E panel, off or on by default (Q1), remembered per user (Q2).
+- What it removes (Q3): at least the GPS IFD, owner name `0xA430`, body serial `0xA431` and lens serial `0xA435`; maybe more.
+- It must work the same in all three formats, including the Exif that `ExifTransplant` moves from the RAW and the XMP and IPTC that `ExportMetadata` keeps.
+- Correct the Embedded JPEG caption so it says that location is kept (do this even if the option is late).
+
+**Acceptance criteria**
+- [ ] With the option on, no export format holds a GPS value or a serial number, checked on files that have them (a DJI DNG for GPS; a Sony or Canon file for serials), by reading the output with the bench tool and with an independent reader.
+- [ ] With the option off, the files are as before (the V-13 and V-21 checks still pass).
+- [ ] The panel caption for every format says what is kept.
+- [ ] Unit tests for each removed tag in Exif, XMP and IPTC; keyboard and VoiceOver for the new control.
+
+**Open questions**
+1. On or off by default? *Proposed:* off, so the default stays "a faithful copy", with the caption saying what is kept. A privacy-first default is the other choice; it would surprise someone who relies on GPS in their editor.
+2. Where is the choice kept? *Proposed:* one remembered setting for all formats, in the same defaults as `exportFormat`.
+3. Which fields? *Proposed:* GPS (all tags), owner name, body serial, lens serial. Open: the maker note can also hold a serial number; the camera's own unique ID, the XMP `aux:SerialNumber`, and the IPTC contact fields. Does the option drop the whole maker note (which also loses the camera's own settings)?
+4. Does it also apply to the sidecar? *Proposed:* no. The sidecar is written next to the original and is not an export.
+5. A separate "Remove location only" choice? *Proposed:* no, one switch, to keep the panel simple.
+
+**Decisions and checks**
+
+*(none yet)*
+
+### V-23 · Clear the thumbnail cache
+
+**Depends on:** M-22, P-02
+
+> As a photographer who culls private or client work, I want a button that clears the thumbnails Oxys keeps, so that removing a card or a job can also remove its pictures from my Mac.
+
+From security audit S-8. `DiskThumbnailCache` keeps up to 2 GB of small JPEGs in `~/Library/Caches/dev.oxys.Oxys/thumbnails` after the photos are gone, and Settings has no control for it. The thumbnails carry no metadata.
+
+**Scope**
+- A "Clear Thumbnail Cache" button in Settings → Memory, next to the cache limits, with the current size shown.
+- Optional: an age limit (Q2).
+
+**Acceptance criteria**
+- [ ] The button removes every thumbnail file and the size reads 0; the grid still works and fills the cache again.
+- [ ] Clearing while a folder is open does not crash or leave a blank thumbnail.
+- [ ] Nothing outside the cache folder is touched (test with a decoy file beside it).
+- [ ] Keyboard and VoiceOver; unit test for the clear.
+
+**Open questions**
+1. Does the button also clear the per-folder session state in Application Support? *Proposed:* no, that is state the photographer wants. A separate "Forget recent folders" is a different story if it is asked for.
+2. An age limit (for example 30 days) with no button press? *Proposed:* not now; the 2 GB cap already removes the oldest.
+3. Ask before clearing? *Proposed:* no; the cache rebuilds, so it is not data loss.
+
+**Decisions and checks**
+
+*(none yet)*
 
 ### V-18 · v1.0 gate
 

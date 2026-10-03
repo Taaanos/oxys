@@ -15,7 +15,7 @@ The [user guide](docs/guide/README.md) explains each feature and key: [get start
 
 ## Install
 
-Download `Oxys.zip` from [Releases](https://github.com/Taaanos/oxys/releases). The build has no Apple Developer ID, so macOS blocks it the first time. After you move it to `/Applications`, run:
+Download `Oxys.zip` from [Releases](https://github.com/Taaanos/oxys/releases). The build has no Apple Developer ID, so Apple does not check it. Check the signature first ([how](docs/guide/install.md#check-the-download)). Then move the app to `/Applications` and run this, because macOS blocks it the first time:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/Oxys.app

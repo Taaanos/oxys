@@ -16,6 +16,7 @@ Oxys does not import photos. It does not make a catalog. It never changes your o
 8. [Settings](settings.md)
 9. [Keyboard shortcuts](shortcuts.md): all keys on one page.
 10. [Problems and questions](troubleshooting.md)
+11. [Security and privacy](security.md)
 
 Press `?` in the app to see the keys for the current view. Every command is also in the menu bar. Use the Help menu search to find a command by name.
 
