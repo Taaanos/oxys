@@ -387,7 +387,9 @@ final class CompareController {
             link = pair.active == .select ? fromActive : fromActive.reversed
             follower.apply(linkFrom(pair.active).follower(of: leader))
         }
-        announce(linked ? "Zoom and pan linked" : "Zoom and pan unlinked")
+        let phrase = linked ? "Zoom and pan linked" : "Zoom and pan unlinked"
+        announce(phrase)
+        HUD.shared.show(phrase)
     }
 
     private func linkFrom(_ side: ComparePair.Side) -> ViewLink { side == .select ? link : link.reversed }

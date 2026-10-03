@@ -59,6 +59,7 @@ struct FolderView: View {
                 GlassEffectContainer { AutoAdvanceBadge() }.padding(.horizontal, 12).padding(.bottom, 4).allowsHitTesting(false)
             }
         }
+        .overlay { HUDView(hud: .shared) }
         .overlay { if model.showCheatSheet { CheatSheetView(model: model) } }
         .overlay { if model.showEditorChooser { EditorChooserView(model: model) } }
         .overlay(alignment: .bottomLeading) { if model.extract.isShowing { ExtractPlate(job: model.extract) } }

@@ -368,7 +368,7 @@ final class AppModel {
             loupe.moveExifFocus(-1)
         }
         commands.register("info.copy", isAvailable: { [unowned self] in inspectorValue != nil || (loupe.showExif && loupe.exif != nil) }) { [unowned self] _ in
-            if let inspectorValue { copyToPasteboard(inspectorValue) } else { loupe.copyExif() }
+            if let inspectorValue { copyToPasteboard(inspectorValue); HUD.shared.show("Copied") } else { loupe.copyExif() }
         }
         commands.register("info.maps", isAvailable: { [unowned self] in loupe.exif?.gps != nil }) { [unowned self] _ in
             loupe.showInMaps()
@@ -439,7 +439,7 @@ final class AppModel {
         }
         commands.register("filter.enabled", isOn: { [unowned self] in folder.filter.isOn }) { [unowned self] _ in
             folder.toggleFilter()
-            announceFilter(folder.filter.isOn ? "Filter on" : "Filter off")
+            announceFilter(folder.filter.isOn ? "Filter on" : "Filter off", hud: true)
             releaseKeyboardFromFilterBar()
         }
         commands.register("filter.find") { [unowned self] _ in
@@ -448,7 +448,7 @@ final class AppModel {
         }
         commands.register("filter.clear", isAvailable: { [unowned self] in folder.filter.hasCriteria }) { [unowned self] _ in
             folder.updateFilter { $0.setMinimumStars(0); $0.labels = []; $0.noLabel = false; $0.rejects = .showAll; $0.search = "" }
-            announceFilter("Filter cleared")
+            announceFilter("Filter cleared", hud: true)
         }
         for n in 0...5 {
             commands.register(CommandID(rawValue: "filter.stars.\(n)"), isOn: { [unowned self] in folder.filter.stars == (n > 0 ? Set(n...5) : []) }) { [unowned self] _ in
@@ -485,20 +485,20 @@ final class AppModel {
             }
         }
         commands.register("filter.sort.time", isOn: { [unowned self] in folder.filter.sortKey == .captureTime }) { [unowned self] _ in
-            setFilter { $0.sortKey = .captureTime }
+            setFilter(hud: true) { $0.sortKey = .captureTime }
         }
         commands.register("filter.sort.name", isOn: { [unowned self] in folder.filter.sortKey == .filename }) { [unowned self] _ in
-            setFilter { $0.sortKey = .filename }
+            setFilter(hud: true) { $0.sortKey = .filename }
         }
         commands.register("filter.sort.reverse", isOn: { [unowned self] in !folder.filter.ascending }) { [unowned self] _ in
-            setFilter { $0.ascending.toggle() }
+            setFilter(hud: true) { $0.ascending.toggle() }
         }
     }
 
     /// Changes the filter and says what is showing now. Turns filtering on, so a key never seems to do nothing.
-    func setFilter(_ change: (inout PhotoFilter) -> Void) {
+    func setFilter(hud: Bool = false, _ change: (inout PhotoFilter) -> Void) {
         folder.updateFilter { change(&$0); $0.isOn = true }
-        announceFilter(nil)
+        announceFilter(nil, hud: hud)
         releaseKeyboardFromFilterBar()
     }
 
@@ -511,10 +511,12 @@ final class AppModel {
         }
     }
 
-    private func announceFilter(_ lead: String?) {
+    private func announceFilter(_ lead: String?, hud: Bool = false) {
         let shown = folder.visible.count, total = folder.photos.count
         let state = folder.filter.isNarrowing ? "\(shown.formatted()) of \(total.formatted()) shown, \(folder.filter.summary)" : "\(total.formatted()) shown"
-        announce([lead, state].compactMap { $0 }.joined(separator: ". "))
+        let phrase = [lead, state].compactMap { $0 }.joined(separator: ". ")
+        announce(phrase)
+        if hud { HUD.shared.show(phrase) }
     }
 
     // MARK: selection (M-19)

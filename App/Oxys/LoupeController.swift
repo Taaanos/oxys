@@ -302,6 +302,7 @@ final class LoupeController {
         didSet {
             canvas?.onZoomChange = { [weak self] info in
                 self?.zoomInfo = info
+                self?.sayZoom(info)
                 if self?.showingScreenSize == true, info?.level.isFit == false { self?.wantsFullSizeNow = true }
                 self?.developAtActualSizeIfNeeded()
             }
@@ -854,6 +855,7 @@ final class LoupeController {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         announce("Copied")
+        HUD.shared.show("Copied")
     }
 
     func showInMaps() {
@@ -885,12 +887,30 @@ final class LoupeController {
     /// Zoom commands act on the frame on screen; the `zoom` interval ends when the scaled frame is presented.
     func setZoom(_ level: ZoomLevel) {
         guard isActive, let canvas, canvas.window != nil else { return }
+        expectZoomPhrase()
         canvas.setZoom(level, token: Perf.begin(.zoom))
     }
 
     func stepZoom(_ direction: ZoomDirection) {
         guard isActive, let canvas, canvas.window != nil else { return }
+        expectZoomPhrase()
         canvas.stepZoom(direction, token: Perf.begin(.zoom))
+    }
+
+    /// A zoom command with the info strip off changes the picture but says nothing (D-12). The command marks a short
+    /// window; the zoom change that arrives inside it is spoken and shown. A pinch or a scroll never opens the window.
+    @ObservationIgnored private var zoomPhraseUntil = ContinuousClock.Instant.now
+    private func expectZoomPhrase() {
+        guard !showInfoStrip else { return }
+        zoomPhraseUntil = .now + .milliseconds(400)
+    }
+
+    private func sayZoom(_ info: ZoomInfo?) {
+        guard let info, ContinuousClock.Instant.now < zoomPhraseUntil else { return }
+        zoomPhraseUntil = .now
+        let phrase = info.level.isFit ? "Zoom fit" : "Zoom \(info.percent) percent"
+        announce(phrase)
+        HUD.shared.show(info.level.isFit ? "Fit" : "\(info.percent)%")
     }
 
     func pan(_ direction: PanDirection, page: Bool) {
@@ -900,6 +920,7 @@ final class LoupeController {
 
     func toggleZoom() {
         guard isActive, let canvas, canvas.window != nil else { return }
+        expectZoomPhrase()
         canvas.toggleZoom(token: Perf.begin(.zoom))
     }
 

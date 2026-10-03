@@ -127,7 +127,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | D-09 | The app icon in every appearance | none | built, partly checked (build and sheets done; your eye on 16 px and on the Dock, Finder and Spotlight is open; see the story) |
 | D-10 | Symbols in the menus | M-05, M-23 | done |
 | D-11 | Spike: the info strip as a floating glass bar | D-01, D-02 | done (glass kept; `⇧I` toggle 9 ms slower, full `make contrast`, the morph and the 20-frame comparison not done) |
-| D-12 | Spike: a glass HUD for commands with no visible result | D-02 | todo |
+| D-12 | Spike: a glass HUD for commands with no visible result | D-02 | built; gate open (nothing run or seen on screen yet: contrast, Reduce Motion, idle CPU, one-session decision) |
 
 ### Dependency map (foundations and MVP)
 
@@ -2689,6 +2689,11 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 1. Do we want it at all? The PRD says "Feedback without interruption", and a HUD that shows too often is an interruption. *Proposed:* try it for one session, then decide.
 2. Which commands? *Proposed:* `⌘C` copy, filter on, off and clear, a sort change, zoom steps when the strip is off, and Compare's linked zoom (`⇧Z`).
 3. A setting to turn it off? *Proposed:* not at first. Add one only if the spike keeps the HUD.
+
+**Build notes (not yet verified on screen)**
+- `HUD.swift`: one shared `HUD` state and `HUDView`, an overlay on `FolderView`. A glass capsule at the top center, 1.2 s, appears with a cut, fades out in 0.3 s (cut with Reduce Motion), hit testing off, hidden from VoiceOver (it already hears the phrase). One timer task, cancelled by a new phrase, so nothing runs after it ends.
+- Q2 list as built: `⌘C` copy ("Copied", Loupe EXIF and inspector), filter on, off and clear, the three sort commands, zoom steps when the info strip is off (`LoupeController.sayZoom`; the phrase is also announced, because zoom had none), Compare's linked zoom. The HUD shows the filter phrase `announceFilter` already speaks.
+- Open: the five gate items. The contrast probe has a `hud` label (`make contrast-quick` not run).
 
 ---
 
