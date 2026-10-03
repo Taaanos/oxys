@@ -1,24 +1,33 @@
 #!/bin/sh
 # Publishes a release: builds main, packs it, tags it and uploads it to GitHub Releases.
-# Usage: scripts/release.sh <version> [--dry-run] [--yes]     e.g. scripts/release.sh 1.0.1
+# Usage: scripts/release.sh <version> [--notes <file>] [--dry-run] [--yes]     e.g. scripts/release.sh 1.0.1
 #   <version>  X.Y.Z; the tag is v<version>. Becomes the app's version (About, Finder).
 #   --dry-run  checks, builds, packs and prints the notes; creates no tag and uploads nothing.
+#   --notes    a Markdown file that replaces the commit list under "Changes". The install steps still follow it.
 #   --yes      skips the question before the tag and upload.
-# The notes are the commit subjects since the previous tag, plus the install steps.
+# Without --notes, the changes are the commit subjects since the previous tag.
 set -eu
 
-version="" dry=0 yes=0
-for arg in "$@"; do
+version="" dry=0 yes=0 custom=""
+while [ $# -gt 0 ]; do
+	arg=$1; shift
 	case "$arg" in
+		--notes) [ $# -gt 0 ] || { echo "--notes needs a file" >&2; exit 2; }; custom=$1; shift ;;
 		--dry-run) dry=1 ;;
 		--yes) yes=1 ;;
 		-*) echo "unknown option: $arg" >&2; exit 2 ;;
 		*) version="$arg" ;;
 	esac
 done
-[ -n "$version" ] || { sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+[ -n "$version" ] || { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "version must look like 1.2.3, got: $version" >&2; exit 2; }
 tag="v$version"
+
+custom_abs=""
+if [ -n "$custom" ]; then
+	[ -s "$custom" ] || { echo "--notes file is missing or empty: $custom" >&2; exit 2; }
+	custom_abs=$(cd "$(dirname "$custom")" && pwd)/$(basename "$custom")
+fi
 
 cd "$(git rev-parse --show-toplevel)"
 fail() { echo "$1" >&2; exit 1; }
@@ -37,7 +46,7 @@ mkdir -p dist
 {
 	echo "## Changes"
 	echo
-	git log --no-merges --format='- %s (%h)' "$range"
+	if [ -n "$custom_abs" ]; then cat "$custom_abs"; else git log --no-merges --format='- %s (%h)' "$range"; fi
 	echo
 	echo "## Install"
 	echo
