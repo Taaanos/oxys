@@ -26,10 +26,13 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
         menu.action = #selector(formatChanged)
         caption.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         caption.textColor = .secondaryLabelColor
-        caption.preferredMaxLayoutWidth = 380
+        caption.preferredMaxLayoutWidth = Self.captionWidth
         caption.setAccessibilityElement(false)   // VoiceOver reads it as the menu's help instead
         formatChanged()
     }
+
+    /// The caption wraps at this width, so its height is the same whichever format is chosen.
+    static let captionWidth: CGFloat = 440
 
     static func title(_ format: ExportFormat) -> String {
         switch format {
@@ -43,11 +46,11 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
     static func detail(_ format: ExportFormat) -> String {
         switch format {
         case .embeddedJPEG:
-            "The camera's own JPEG from inside the RAW, not changed. The fastest choice. Keeps EXIF, your rating, file dates and tags."
+            "The camera's own JPEG from inside the RAW, unchanged. The fastest choice. Keeps EXIF, rating, file dates and tags."
         case .developedJPEG:
-            "The RAW developed at full size by macOS. sRGB, 8-bit: opens the same everywhere. Keeps EXIF, GPS, your rating, file dates and tags."
+            "Full size, developed by macOS. sRGB, 8-bit: opens the same everywhere. Keeps EXIF, GPS, rating, file dates and tags."
         case .developedHEIC:
-            "The RAW developed at full size by macOS. Display P3, 10-bit: more colors, smoother gradients. Keeps EXIF, GPS, your rating, file dates and tags, but no maker note."
+            "Full size, developed by macOS. Display P3, 10-bit: more colors, smoother gradients. Keeps EXIF, GPS, rating, file dates and tags; no maker note."
         }
     }
 
@@ -70,17 +73,38 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
         panel.delegate = self
 
         // A label column and a field column, as in the Save panel: "Format:" right-aligned, the menu and its caption
-        // left-aligned under each other. The insets match the toolbar of the panel above (about 20 pt).
+        // left-aligned under each other. The grid is pinned 20 pt from the left, the edge of the panel's own controls.
+        // The panel centers an accessory view that is only as wide as its content, so the view is full width.
         let label = NSTextField(labelWithString: "Format:")
         label.setAccessibilityElement(false)
+        menu.translatesAutoresizingMaskIntoConstraints = false
+        menu.widthAnchor.constraint(equalToConstant: 170).isActive = true   // does not change with the item
         let grid = NSGridView(views: [[label, menu], [NSGridCell.emptyContentView, caption]])
         grid.columnSpacing = 8
-        grid.rowSpacing = 6
+        grid.rowSpacing = 4
         grid.column(at: 0).xPlacement = .trailing
         grid.column(at: 1).xPlacement = .leading
         grid.row(at: 0).yPlacement = .center
-        let container = NSStackView(views: [grid])
-        container.edgeInsets = NSEdgeInsets(top: 12, left: 20, bottom: 12, right: 20)
+        grid.translatesAutoresizingMaskIntoConstraints = false
+
+        // Height for the tallest caption, so the panel does not resize when the choice changes.
+        let chosen = menu.indexOfSelectedItem
+        var height: CGFloat = 0
+        for (i, format) in formats.enumerated() {
+            menu.selectItem(at: i)
+            caption.stringValue = Self.detail(format)
+            height = max(height, grid.fittingSize.height)
+        }
+        menu.selectItem(at: chosen)
+        formatChanged()
+
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 640, height: height + 16))
+        container.autoresizingMask = [.width]
+        container.addSubview(grid)
+        NSLayoutConstraint.activate([
+            grid.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            grid.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+        ])
         panel.accessoryView = container
 
         guard panel.runModal() == .OK, let destination = panel.url else { return nil }
