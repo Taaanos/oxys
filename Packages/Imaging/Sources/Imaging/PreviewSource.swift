@@ -49,7 +49,7 @@ extension CGImagePropertyOrientation {
     var swapsAxes: Bool { rawValue >= 5 }
 }
 
-/// One file's embedded images. Opening maps the file (reads it, on a removable or remote volume: B-3) and reads headers only; pixels are decoded on request
+/// One file's embedded images. Opening maps the file and reads headers only; pixels are decoded on request
 /// and nothing is cached here (M-04 owns caching). Value type, safe to use from any thread.
 public struct PreviewSource: Sendable {
     public enum Kind: Sendable, Equatable {
@@ -99,7 +99,7 @@ public struct PreviewSource: Sendable {
         let token = Perf.begin(.previewRead)
         defer { Perf.end(token) }
         let data: Data
-        do { data = try FileBytes.load(url) } catch {
+        do { data = try Data(contentsOf: url, options: .alwaysMapped) } catch {
             throw .unreadable(error.localizedDescription)
         }
         let located = PreviewLocator.locate(in: data)

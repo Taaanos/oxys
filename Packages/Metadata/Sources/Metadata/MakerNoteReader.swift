@@ -21,7 +21,7 @@ public enum MakerNoteReader {
     }
 
     public static func read(from url: URL) -> MakerNoteInfo? {
-        guard let data = try? FileBytes.load(url) else { return nil }
+        guard let data = try? Data(contentsOf: url, options: .alwaysMapped) else { return nil }
         return read(from: data)
     }
 

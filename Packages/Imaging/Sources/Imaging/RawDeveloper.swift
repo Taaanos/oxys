@@ -1,4 +1,3 @@
-import Containers
 import CoreImage
 import Foundation
 
@@ -31,7 +30,7 @@ public enum RawDeveloper {
     static func filter(for url: URL, minLongEdge: Int, neutral: Bool) throws(RawDevelopError) -> CIRAWFilter {
         var candidates: [CIRAWFilter?] = [CIRAWFilter(imageURL: url)]
         if ["tif", "tiff"].contains(url.pathExtension.lowercased()),
-           let data = try? FileBytes.load(url) {
+           let data = try? Data(contentsOf: url, options: .alwaysMapped) {
             candidates += tiffHints.map { CIRAWFilter(imageData: data, identifierHint: $0) }
         }
         for case let filter? in candidates {
