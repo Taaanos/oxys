@@ -57,6 +57,7 @@ sidecar-stress:
 
 # V-13: extracts the embedded JPEGs of every RAW in FOLDER (default: the hires bench folder), times it against
 # `cp -R` of the same bytes. EXTRA=--exact for exact bytes; EXTRA=--verify with PREVIEW_ORACLE set compares with the oracle.
+# V-21: EXTRA=--developed=jpeg or --developed=heic develops each RAW instead and checks the output against its source.
 extract-bench:
 	cd Packages/Library && swift run -c release ExtractBench $(abspath $(or $(FOLDER),TestData/bench/hires-1000)) $(EXTRA)
 

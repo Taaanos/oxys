@@ -124,29 +124,28 @@ final class AppModel {
         }
     }
 
-    /// `⇧⌘E`: asks for a folder, then extracts each selected RAW's largest embedded JPEG there in the background.
-    /// A RAW+JPEG pair extracts from its RAW. JPEG and HEIC originals are skipped and listed in the summary.
-    func extractJPEGs() {
+    /// `⇧⌘E`: asks for a folder and a format, then writes each selected RAW there in the background: its largest
+    /// embedded JPEG, or the RAW developed to a JPEG or a HEIC (V-21). A RAW+JPEG pair uses its RAW. JPEG and HEIC
+    /// originals are skipped and listed in the summary. The folder cannot be one that holds the photos.
+    func exportPhotos() {
         let sources = folder.cullTargets
         guard !sources.isEmpty, !extract.isRunning else { return }
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Extract Here"
-        panel.message = sources.count == 1 ? "Choose a folder for the embedded JPEG" : "Choose a folder for \(sources.count.formatted()) embedded JPEGs"
-        if let last = UserDefaults.standard.string(forKey: "extractFolder") {
-            panel.directoryURL = URL(fileURLWithPath: last, isDirectory: true)
-        }
-        guard panel.runModal() == .OK, let destination = panel.url else { return }
-        UserDefaults.standard.set(destination.path, forKey: "extractFolder")
-        announce(sources.count == 1 ? "Extracting 1 JPEG" : "Extracting \(sources.count.formatted()) JPEGs")
-        // The sidecar's rating and label go into the JPEG's XMP. A DNG's own XMP is used when it has no sidecar.
+        let defaults = UserDefaults.standard
+        let picker = ExportPanel(sources: sources, remembered: defaults.string(forKey: "exportFormat"))
+        guard let (destination, format) = picker.run(lastFolder: defaults.string(forKey: "extractFolder")) else { return }
+        defaults.set(destination.path, forKey: "extractFolder")
+        defaults.set(format.rawValue, forKey: "exportFormat")
+        let noun = ExtractJob.noun(format, plural: sources.count != 1)
+        announce(sources.count == 1 ? "Exporting 1 \(noun)" : "Exporting \(sources.count.formatted()) \(noun)")
+        // A queued rating must be in its sidecar before the sidecar is read.
+        folder.flushSidecarWrites()
+        // The sidecar's rating and label go into the file's XMP. A DNG's own XMP is used when it has no sidecar.
         let wanted = Set(sources)
         let sidecars = Dictionary(folder.photos.compactMap { p in wanted.contains(p.url) ? p.sidecar.file.map { (p.url, $0) } : nil },
                                   uniquingKeysWith: { first, _ in first })
-        extract.start(sources, into: destination, exactBytes: UserDefaults.standard.bool(forKey: "extractExactBytes"), sidecars: sidecars) { [unowned self] summary in
+        let quality = defaults.object(forKey: format == .developedHEIC ? "exportHEICQuality" : "exportJPEGQuality") as? Double
+        extract.start(sources, into: destination, format: format, exactBytes: defaults.bool(forKey: "extractExactBytes"),
+                      quality: quality, sidecars: sidecars) { [unowned self] summary in
             announce(summary)
         }
     }
@@ -270,9 +269,9 @@ final class AppModel {
             editorChooserIndex = editors.defaultEditor.flatMap { d in list.firstIndex { $0.id == d.id } } ?? 0
             showEditorChooser = true
         }
-        // Extract (V-13): `⇧⌘E` picks a folder and starts; `⌘.` cancels a running job, or closes its summary.
+        // Export (V-13, V-21): `⇧⌘E` picks a folder and a format and starts; `⌘.` cancels a running job, or closes its summary.
         commands.register("file.extract", isAvailable: { [unowned self] in !folder.cullTargets.isEmpty && !extract.isRunning }) { [unowned self] _ in
-            extractJPEGs()
+            exportPhotos()
         }
         commands.register("file.extractCancel", isAvailable: { [unowned self] in extract.isShowing }) { [unowned self] _ in
             if extract.isRunning { extract.cancel() } else { extract.dismiss() }

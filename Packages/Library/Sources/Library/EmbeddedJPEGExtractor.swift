@@ -2,7 +2,6 @@ import Containers
 import Diagnostics
 import Foundation
 import Metadata
-import Synchronization
 
 /// Copies each RAW's largest embedded JPEG into a folder (V-13). The picture data is never re-encoded: it is the
 /// bytes of the embedded stream. By default the file also keeps the RAW's metadata: all of its Exif (camera, lens,
@@ -10,47 +9,9 @@ import Synchronization
 /// file attributes, its dates, permissions and extended attributes (Finder tags, comments, where-from, quarantine).
 /// "Exact bytes" leaves the embedded JPEG untouched; the file attributes are copied in both modes.
 public enum EmbeddedJPEGExtractor {
-    public struct Extracted: Sendable, Equatable {
-        public var output: URL
-        /// The name was taken, so a suffix was added.
-        public var renamed: Bool
-        /// The Exif segment was written from the RAW (or built from its few known fields).
-        public var exifAdded: Bool
-        public var xmpAdded: Bool
-        /// The RAW has a maker note and it could not be copied.
-        public var makerNoteSkipped: Bool
-        /// What of the file's own attributes could not be copied; empty when all was.
-        public var attributeWarnings: [String]
-    }
-
-    public enum Failure: Error, Equatable {
-        /// A JPEG, HEIC or TIFF original: nothing to extract.
-        case notRaw
-        case noEmbeddedJPEG
-    }
-
-    public struct Summary: Sendable, Equatable {
-        public struct Item: Sendable, Equatable { public var name: String; public var detail: String }
-        public var total = 0
-        public var written = 0
-        public var exifAdded = 0
-        public var xmpAdded = 0
-        /// Source name and the name it got, when `name.jpg` was taken.
-        public var renamed: [Item] = []
-        public var makerNoteSkipped: [String] = []
-        /// Source name and what was not copied.
-        public var attributeWarnings: [Item] = []
-        public var withoutEmbeddedJPEG: [String] = []
-        public var notRaw: [String] = []
-        public var failed: [Item] = []
-        public var cancelled = false
-        public var destination: URL?
-
-        public init() {}
-        public var hasProblems: Bool {
-            !withoutEmbeddedJPEG.isEmpty || !notRaw.isEmpty || !failed.isEmpty || !makerNoteSkipped.isEmpty || !attributeWarnings.isEmpty
-        }
-    }
+    public typealias Extracted = ExportedFile
+    public typealias Failure = ExportFailure
+    public typealias Summary = ExportSummary
 
     /// Extracts one file into `folder`. Never overwrites: a taken name gets `-1`, `-2`... The file appears whole or not at all.
     /// `sidecar` is the photo's XMP sidecar, whose rating and label go into the JPEG's XMP.
@@ -86,96 +47,20 @@ public enum EmbeddedJPEGExtractor {
             }
         }
 
-        // Written to a hidden temporary file, then renamed with RENAME_EXCL: the final name appears whole, and an
-        // existing file is never replaced, even by something that appeared a moment ago.
-        let temporary = folder.appendingPathComponent(".\(UUID().uuidString).oxys-partial")
-        var warnings: [String] = []
-        do {
-            try bytes.write(to: temporary)
-            warnings = FileAttributes.copy(from: source, to: temporary)
-        } catch {
-            try? FileManager.default.removeItem(at: temporary)
-            throw error
-        }
-        let stem = source.deletingPathExtension().lastPathComponent
-        var attempt = 0
-        while true {
-            let name = attempt == 0 ? "\(stem).jpg" : "\(stem)-\(attempt).jpg"
-            let target = folder.appendingPathComponent(name)
-            if renamex_np(temporary.path, target.path, UInt32(RENAME_EXCL)) == 0 {
-                return Extracted(output: target, renamed: attempt > 0, exifAdded: exifAdded, xmpAdded: xmpAdded,
-                                 makerNoteSkipped: noteSkipped, attributeWarnings: warnings)
-            }
-            let code = errno
-            guard code == EEXIST, attempt < 9_999 else {
-                try? FileManager.default.removeItem(at: temporary)
-                throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
-            }
-            attempt += 1
-        }
+        let placed = try SafeWrite.place(bytes, in: folder, stem: source.deletingPathExtension().lastPathComponent,
+                                         ext: "jpg", attributesFrom: source)
+        return Extracted(output: placed.output, renamed: placed.renamed, exifAdded: exifAdded, xmpAdded: xmpAdded,
+                         makerNoteSkipped: noteSkipped, attributeWarnings: placed.warnings)
     }
 
-    /// Runs the job and returns when it is done. Files are worked on by `parallelism` threads (the work is syscalls and
-    /// small copies, so it scales); files whose names would collide (`IMG_1.ARW`, `IMG_1.NEF`) stay in one thread, in
-    /// order, so the suffixes do not depend on timing. `isCancelled` is checked before each file; a file is written whole,
-    /// so a cancel leaves no partial `.jpg`. `progress` gets the number of files done, from any thread.
+    /// Runs the job and returns when it is done (see ``ExportRunner``). The work is syscalls and small copies, so it
+    /// scales with `parallelism`.
     public static func run(_ sources: [URL], into folder: URL, exactBytes: Bool = false, sidecars: [URL: URL] = [:],
                            parallelism: Int = min(4, ProcessInfo.processInfo.activeProcessorCount),
                            progress: @Sendable (Int) -> Void = { _ in }, isCancelled: @Sendable () -> Bool = { false }) -> Summary {
-        enum Outcome { case done(Extracted), noJPEG, notRaw, failed(String), skipped }
-        let outcomes = Mutex([Outcome?](repeating: nil, count: sources.count))
-        let finished = Mutex(0)
-
-        var groups: [String: [Int]] = [:]
-        for (i, url) in sources.enumerated() { groups[url.deletingPathExtension().lastPathComponent.lowercased(), default: []].append(i) }
-        let work = Array(groups.values).sorted { $0[0] < $1[0] }
-
-        let next = Mutex(0)
-        let workers = max(1, min(parallelism, work.count))
-        DispatchQueue.concurrentPerform(iterations: workers) { _ in
-            while true {
-                let g = next.withLock { n -> Int in defer { n += 1 }; return n }
-                guard g < work.count else { return }
-                for i in work[g] {
-                    guard !isCancelled() else { continue }
-                    let outcome: Outcome
-                    do {
-                        outcome = .done(try extract(sources[i], into: folder, exactBytes: exactBytes, sidecar: sidecars[sources[i]]))
-                    } catch Failure.notRaw {
-                        outcome = .notRaw
-                    } catch Failure.noEmbeddedJPEG {
-                        outcome = .noJPEG
-                    } catch {
-                        outcome = .failed(error.localizedDescription)
-                    }
-                    outcomes.withLock { $0[i] = outcome }
-                    progress(finished.withLock { $0 += 1; return $0 })
-                }
-            }
+        ExportRunner.run(sources, into: folder, parallelism: parallelism, progress: progress, isCancelled: isCancelled) {
+            try extract($0, into: folder, exactBytes: exactBytes, sidecar: sidecars[$0])
         }
-
-        var summary = Summary()
-        summary.total = sources.count
-        summary.destination = folder
-        for (i, source) in sources.enumerated() {
-            let name = source.lastPathComponent
-            switch outcomes.withLock({ $0[i] }) {
-            case nil, .skipped: summary.cancelled = true
-            case .done(let result):
-                summary.written += 1
-                if result.exifAdded { summary.exifAdded += 1 }
-                if result.xmpAdded { summary.xmpAdded += 1 }
-                if result.makerNoteSkipped { summary.makerNoteSkipped.append(name) }
-                if !result.attributeWarnings.isEmpty {
-                    summary.attributeWarnings.append(.init(name: name, detail: result.attributeWarnings.joined(separator: ", ")))
-                }
-                if result.renamed { summary.renamed.append(.init(name: name, detail: result.output.lastPathComponent)) }
-            case .noJPEG: summary.withoutEmbeddedJPEG.append(name)
-            case .notRaw: summary.notRaw.append(name)
-            case .failed(let message): summary.failed.append(.init(name: name, detail: message))
-            }
-        }
-        return summary
     }
 
     static func exifDate(_ date: Date) -> String {

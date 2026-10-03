@@ -101,6 +101,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-17 | Distribution | G-2 | todo |
 | V-19 | Optional lens correction for RAW | V-02, M-22 | todo (spike done: `docs/spikes/lens-correction.md`) |
 | V-20 | Film strip in Loupe | M-12, M-13, M-04 | todo |
+| V-21 | Export developed JPEG and HEIC | V-13, V-02 | built, needs a live check (the ⇧⌘E Format menu, folder guard and plate not clicked through; checked on six brands and 20 drone files with the bench tool) |
 | V-18 | v1.0 gate | all v1.0, P-11 | todo |
 | **Phase 2b** | **Performance** (build before V-18) | | |
 | P-01 | Performance gate tool and a real shoot | M-26 | done (criterion 1 not met: the M-26 table does not reproduce; cold rows run warm, no `purge`) |
@@ -1693,6 +1694,8 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 
 ### V-13 · Extract embedded JPEGs
 
+*V-21 adds developed JPEG and HEIC to the same ⇧⌘E panel and shares this story's write, summary and job code.*
+
 **Depends on:** M-02, M-19
 
 > As a photographer, I want ⇧⌘E to save each selected RAW's largest embedded JPEG to a folder, so that I can share previews without converting anything.
@@ -1719,7 +1722,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
   - **Sources:** TIFF-based RAWs (ARW, CR2, NEF, DNG, ORF-like TIFFs, PEF) and CR3 (`CMT1` to `CMT4`). RAF and anything else keep the preview's own Exif; if it has none, a few fields (make, model, orientation, date) are added.
   - **XMP:** the Oxys sidecar's packet (rating, label), else a DNG's own XMP (tag 0x02BC), in an XMP APP1 segment; a preview's own XMP is kept. A packet over 64 KB is skipped.
   - **File attributes** (both modes): extended attributes by `copyfile(COPYFILE_XATTR)`, then permissions, creation date and modification date. Owner and file flags are not copied. A failure is listed in the summary.
-  - Exact bytes (Settings → General): the embedded stream, nothing added.
+  - Exact bytes (the `extractExactBytes` default, no switch since the Settings change): the embedded stream, nothing added.
 - **Compared with a reference reader** (`-a -G1` tag lists of the RAW and the JPEG): a Sony ARW, a Canon CR2 and a DJI DNG lose only structural tags (size, strips, compression, preview offsets), Sony's SR2 private blocks and the DNG-specific tags. The Canon note has no footer warning. DJI's debug blocks sit in DNG private data and are not copied; its XMP is. `JPEGSegments` (in `Containers`, tested) does the segment rewriting; the scan data is untouched.
 - **Not checked:** a CR3 file (the corpus has none; the code follows the box layout `MakerNoteReader` reads), Nikon, Fujifilm and other brands' notes, GPS in a file that has it (the Canon file had only the version), a preview with an Exif without orientation, and every Finder-visible attribute except provenance (tested with a made-up attribute).
 - The date used in the RAF/other fallback comes from ImageIO; TIFF-based files read it in memory (`CaptureTime.dateTimeOriginalString`).
@@ -1920,6 +1923,51 @@ None. Support is read from `isLensCorrectionSupported` when each file is develop
 - Question 7 **accepted** as proposed: it shows `visible` only.
 - **No overlay (user decision).** The strip is layout, not a layer: it sits in the `VStack` in `FolderView` under the mode `ZStack`, so the Loupe view's bounds shrink. The Loupe view must handle the resize (refit, keep the zoom center) without a flash of a stale frame. Grid and Compare do not show the strip, so their space does not change.
 - Risk to check first: the thumbnail loader uses `.userInitiated` priority. With a held arrow key the strip must not compete with the frame load. Give the strip's loader a lower priority from the start. If the perf gate still shows a loss, pause strip loads while keys repeat.
+
+### V-21 · Export developed JPEG and HEIC
+
+**Depends on:** V-13, V-02
+
+> As a photographer, I want ⇧⌘E to also save each selected RAW developed to a JPEG or a HEIC, with its EXIF and file attributes, so that I can share a finished picture and not only the camera's own preview.
+
+**Scope**
+- The ⇧⌘E folder panel gets a Format menu: Embedded JPEG (V-13, the default), Developed JPEG, Developed HEIC. HEIC is offered only if the system can write it.
+- The RAW is developed at full size by the system decoder and encoded to the chosen format. The job, progress, cancel, summary and name rules are those of V-13.
+- The file keeps the RAW's EXIF, GPS and XMP, and its dates, permissions and extended attributes.
+
+**Acceptance criteria**
+- [x] The files have the RAW's camera, lens, exposure, ISO, date and GPS values, orientation 1, and the developed size (`make extract-bench EXTRA=--developed=jpeg` and `=heic`: Sony ARW and DNG, Canon CR2, Fujifilm RAF, DJI DNG, iPhone DNG; then 20 DJI DNG files in each format).
+- [x] The dates, permissions and extended attributes are those of the RAW (same run).
+- [x] The JPEG is 8-bit sRGB, with the profile in the file. The HEIC is 10-bit Display P3.
+- [x] A name that is taken gets a suffix, nothing is overwritten, and cancel leaves no partial file (tests).
+- [ ] The Format menu, the folder guard and the plate are used in the live app, by keyboard and with VoiceOver. **Not done:** the panel was not clicked through.
+
+**Open questions**
+1. Which look? *Proposed:* the decoder's defaults. The viewer's R mode is neutral (no sharpening, no noise reduction, no lens correction) so that 1:1 checks are honest; a file made to be shared should look finished.
+2. Which color space? *Proposed:* JPEG sRGB 8-bit, HEIC Display P3 10-bit.
+3. Which entry point? *Proposed:* the same ⇧⌘E panel with a format choice, not a second command.
+4. A HEIC cannot hold a maker note through ImageIO. Accept the loss and say so?
+5. A sidecar or DNG packet can hold the develop settings of an editor (`crs:`). Copy them?
+6. May the folder be one that holds the photos?
+
+**Decisions and checks**
+- Q1 **Decided by you:** the decoder's defaults. `RawDeveloper.defaultFilter` is `neutralFilter` without `neutralize`; both share one candidate loop (the TIFF hints).
+- Q2 **Decided by you:** JPEG sRGB 8-bit (RGBA8 pixels), HEIC Display P3 10-bit (RGBA16 pixels, which makes the encoder write 10-bit samples). Qualities: JPEG 0.92 and HEIC 0.8, not tuned. They can be set with `defaults write dev.oxys.Oxys exportJPEGQuality -float 0.9` (and `exportHEICQuality`); there is no switch.
+- Q3 **Decided by you:** the same panel. `file.extract` keeps its id and key; its title is now "Export…" and `file.extractCancel` is "Cancel or Close Export". The panel remembers the last format (`exportFormat`).
+- **Render:** `DevelopedRenderer` (in `Imaging`) has its own `CIContext`. It never uses the viewer's GPU context or the one-frame develop slot of `RawFrameCache`, so an export does not cancel a develop in the window. Output of `CIRAWFilter` is already upright, so orientation is 1. A decode smaller than the largest embedded preview counts as "thumbnail only" and is refused, as in V-02; the file is listed under "Could not be developed".
+- **Metadata**, by format:
+  - **JPEG:** ImageIO writes the pixels with the Exif, GPS and IPTC that `ExportMetadata.properties` keeps (descriptive TIFF tags only: no tile size or photometric interpretation; no Exif ColorSpace). Then `JPEGSegments.rewriting` replaces that Exif with the one `ExifTransplant` builds from the RAW, as in V-13, with orientation 1 and the developed size. So the maker note travels (Sony ARW, Canon CR2 and Fujifilm RAF checked). If the container is not read, ImageIO's Exif stays. A maker note that cannot be moved is left out and listed (DJI and iPhone DNG: 20 of 20 DJI files, as in V-13). An sRGB ICC segment is added (`JPEGSegments.iccSegment`), because ImageIO writes none for sRGB and a RAW's own Exif ColorSpace tag can say 65535.
+  - **HEIC:** ImageIO writes Exif, GPS, IPTC and the descriptive TIFF tags through the same properties, and the XMP through `CGImageDestinationAddImageAndMetadata`. Q4 **Decided:** a HEIC has no maker note. ImageIO cannot write one, and a HEIF box edit is out of scope. The summary says so once for the whole job and does not list every file. GPS is written as degrees, minutes and seconds, so a value can move by about 1e-6 degrees (0.1 m).
+  - **XMP:** the Oxys sidecar's packet, else a DNG's own. Q5 **Decided:** the camera-raw develop settings (`crs:`) are removed, because an editor would apply them a second time to a file that is already developed. `tiff:Orientation`, the image size and the Exif pixel size are removed because they describe the RAW. Rating, label, keywords and title stay. ImageIO's parser refuses single-quoted attributes (Sony writes them) and a tag count that runs past `<?xpacket end?>`; `ExportMetadata` fixes both before parsing. A packet that still cannot be read is listed ("XMP not copied") and the file has no XMP.
+  - **File attributes:** `FileAttributes.copy`, as in V-13, through the shared `SafeWrite.place` (hidden temp file, then `RENAME_EXCL`; `-1`, `-2` for a taken name).
+- **V-13 changes:** the write, summary and job code is shared (`ExportCommon.swift`; `EmbeddedJPEGExtractor.Summary` is now `ExportSummary`, an alias). The panel now calls `flushSidecarWrites()` before it reads the sidecars; before, a rating still in the write queue could be missing from the XMP of the extracted file.
+- Q6 **Decided, for all three formats:** the panel refuses a folder that holds any of the chosen photos ("Choose another folder"). The rule is that Oxys writes only sidecars into a photographer's folders. Before this story the guide only asked users not to do it.
+- **Concurrency:** one file at a time. A develop of a 61 MP RAW holds about half a gigabyte of pixels, and the decoder already uses every core. Cancel is checked before each file and after the render (a render that has started cannot be stopped; its result is dropped).
+- **Memory lesson:** without an `autoreleasepool` per file the job kept the pixels of every file until the end: 2.7 GB peak for 20 files. With it: 0.77 GB (JPEG) and 1.3 GB (HEIC).
+- **Speed** (`make extract-bench EXTRA=--developed=...`, 20 DJI DNG files of 48.8 MP, one at a time, warm): JPEG 0.32 s per file, HEIC 0.43 s per file. Peak resident size 0.77 GB (JPEG) and 1.3 GB (HEIC). Size at the default qualities: 15.1 MB per JPEG and 15.4 MB per HEIC, so HEIC is not smaller here; a lower HEIC quality is the way to save space. Signposts: `export-develop` (decode and render) and `export-encode` (encode, metadata, no file write) per file. No limit in the PRD; the numbers are the baseline for P-10.
+- **Not checked:** the panel, the menu by keyboard, VoiceOver and the plate text in the live app; the HEIC in other readers (Photos, Lightroom); a CR3, Nikon or Pentax file; 61 MP files; a cold cache; the JPEG and HEIC quality defaults against file size and look.
+- Unit tests: `ExportMetadata` (properties, XMP clean-up, quote and tail repair, JPEG 8-bit and HEIC 10-bit P3 round trips with Exif, GPS and the XMP rating), `JPEGSegments.iccSegment`, `SafeWrite` (suffix, no overwrite, no temp file left, dates, permissions and xattr), `DevelopedExporter` (JPEG original is "not RAW", a broken RAW is "could not be developed", cancel), the command title. A developed file needs a real RAW, so it is checked by the bench tool and not by a unit test.
+- Docs: guide `filtering.md` and `shortcuts.md`, PRD hand-off lines, `CLAUDE.md`.
 
 ### V-18 · v1.0 gate
 

@@ -26,7 +26,7 @@ make launch-time   # 5 cold launches; prints launch-to-first-draw
 make corpus        # fetch the pixls files in scripts/corpus.tsv into TestData/, then write TestData/manifest.json
 make bench-folders # TestData/bench/{24mp-1000,hires-1000,scan-5000,grid-10000} (APFS clones)
 make sidecar-stress # 1,000 decisions over 60 s through the write queue, then verify every sidecar
-make extract-bench FOLDER=TestData/bench/hires-1000 EXTRA=--exact   # V-13: extract every embedded JPEG, time vs cp -R; EXTRA=--verify with PREVIEW_ORACLE checks bytes
+make extract-bench FOLDER=TestData/bench/hires-1000 EXTRA=--exact   # V-13: extract every embedded JPEG, time vs cp -R; EXTRA=--verify with PREVIEW_ORACLE checks bytes; V-21: EXTRA=--developed=jpeg or =heic develops every RAW, times it, and checks Exif, GPS, size, depth, profile, dates and xattrs against the source
 make sidecar-gate   # M-25: 10,000 real sidecar writes with outside writers and killed writers
 make perf-bench SCENARIO=nav-cold FOLDER=TestData/bench/24mp-1000   # M-26: in-app scenario (open, nav-*, scrub, cull, zoom, develop, develop-cancel, compare, compare-link, overlays, peaking, peaking-still, peaking-view, clipping, clipping-still, grid, idle, load-memory)
 make perf-gate FOLDER=TestData/bench/real-drone-840   # P-01: every scenario in scripts/perf-targets.tsv, 3 runs each, held to the PRD limits; exit 1 on a fail; PERF_GATE_WARM=1 skips the `sudo purge` prompts; OXYS_BENCH_DELAY_MS=<n> slows every frame load

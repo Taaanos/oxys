@@ -9,9 +9,11 @@ public enum JPEGSegments {
         public var range: Range<Int>
         public var isExif: Bool
         public var isXMP: Bool
+        public var isICC = false
     }
 
     static let xmpHeader = Data("http://ns.adobe.com/xap/1.0/\0".utf8)
+    static let iccHeader = Data("ICC_PROFILE\0".utf8)
 
     /// The segments from after the SOI up to the start of scan. Nil if `jpeg` does not start with SOI.
     public static func list(_ jpeg: Data) -> [Segment]? {
@@ -29,19 +31,22 @@ public enum JPEGSegments {
             let body = base + pos + 4
             let exif = marker == 0xE1 && length >= 8 && jpeg[body..<(body + 6)].elementsEqual(Data("Exif\0\0".utf8))
             let xmp = marker == 0xE1 && length >= 2 + xmpHeader.count && jpeg[body..<(body + xmpHeader.count)].elementsEqual(xmpHeader)
-            out.append(Segment(marker: marker, range: pos..<(pos + 2 + length), isExif: exif, isXMP: xmp))
+            let icc = marker == 0xE2 && length >= 2 + iccHeader.count && jpeg[body..<(body + iccHeader.count)].elementsEqual(iccHeader)
+            out.append(Segment(marker: marker, range: pos..<(pos + 2 + length), isExif: exif, isXMP: xmp, isICC: icc))
             pos += 2 + length
         }
         return out
     }
 
-    /// `jpeg` without its Exif segments and with `exif` and `xmp` (whole segments, marker included) after the JFIF APP0,
-    /// if there is one. An `xmp` is added only when the JPEG has none of its own. Nil if `jpeg` is not a JPEG.
-    public static func rewriting(_ jpeg: Data, exif: Data?, xmp: Data?) -> Data? {
+    /// `jpeg` without its Exif segments and with `exif`, `xmp` and `icc` (whole segments, marker included) after the
+    /// JFIF APP0, if there is one. An `xmp` or `icc` is added only when the JPEG has none of its own. Nil if `jpeg` is
+    /// not a JPEG.
+    public static func rewriting(_ jpeg: Data, exif: Data?, xmp: Data?, icc: Data? = nil) -> Data? {
         guard let segments = list(jpeg) else { return nil }
         let base = jpeg.startIndex
         let hasXMP = segments.contains { $0.isXMP }
-        var out = Data(capacity: jpeg.count + (exif?.count ?? 0) + (xmp?.count ?? 0))
+        let hasICC = segments.contains { $0.isICC }
+        var out = Data(capacity: jpeg.count + (exif?.count ?? 0) + (xmp?.count ?? 0) + (icc?.count ?? 0))
         out.append(jpeg[base..<(base + 2)])
         var cursor = 2
         var inserted = false
@@ -50,6 +55,7 @@ public enum JPEGSegments {
             inserted = true
             if let exif { out.append(exif) }
             if let xmp, !hasXMP { out.append(xmp) }
+            if let icc, !hasICC { out.append(icc) }
         }
         for (i, s) in segments.enumerated() {
             if i == 0, s.marker == 0xE0 {
@@ -74,5 +80,13 @@ public enum JPEGSegments {
         let length = 2 + xmpHeader.count + packet.count
         guard !packet.isEmpty, length <= 0xFFFF else { return nil }
         return Data([0xFF, 0xE1, UInt8(length >> 8), UInt8(length & 0xFF)]) + xmpHeader + packet
+    }
+
+    /// An ICC APP2 segment around a whole profile. Nil when the profile does not fit in one segment (65,519 bytes),
+    /// which no display profile does.
+    public static func iccSegment(_ profile: Data) -> Data? {
+        let length = 2 + iccHeader.count + 2 + profile.count
+        guard !profile.isEmpty, length <= 0xFFFF else { return nil }
+        return Data([0xFF, 0xE2, UInt8(length >> 8), UInt8(length & 0xFF)]) + iccHeader + Data([1, 1]) + profile
     }
 }

@@ -18,6 +18,16 @@ public enum RawDeveloper {
     /// defaults (F-06/Q1). The output is already upright. `minLongEdge` is the long edge of the largest embedded
     /// preview: a decode smaller than that is only the thumbnail, so the next container hint is tried.
     public static func neutralFilter(for url: URL, minLongEdge: Int) throws(RawDevelopError) -> CIRAWFilter {
+        try filter(for: url, minLongEdge: minLongEdge, neutral: true)
+    }
+
+    /// A filter at the decoder's defaults (V-21): as-shot white balance, default tone, and the camera's normal
+    /// sharpening, noise reduction and lens correction. This is the look of a file made to be shared.
+    public static func defaultFilter(for url: URL, minLongEdge: Int) throws(RawDevelopError) -> CIRAWFilter {
+        try filter(for: url, minLongEdge: minLongEdge, neutral: false)
+    }
+
+    static func filter(for url: URL, minLongEdge: Int, neutral: Bool) throws(RawDevelopError) -> CIRAWFilter {
         var candidates: [CIRAWFilter?] = [CIRAWFilter(imageURL: url)]
         if ["tif", "tiff"].contains(url.pathExtension.lowercased()),
            let data = try? Data(contentsOf: url, options: .alwaysMapped) {
@@ -26,7 +36,7 @@ public enum RawDeveloper {
         for case let filter? in candidates {
             let native = filter.nativeSize
             guard max(native.width, native.height) >= CGFloat(minLongEdge), native.width > 0 else { continue }
-            neutralize(filter)
+            if neutral { neutralize(filter) }
             return filter
         }
         throw .unsupported

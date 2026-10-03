@@ -4,18 +4,21 @@ import Observation
 import Synchronization
 import SwiftUI
 
-/// The background job behind `⇧⌘E` (V-13): one run at a time, progress while it works, a summary when it ends.
-/// It reads the originals and writes only into the folder the user chose; nothing blocks a key.
+/// The background job behind `⇧⌘E` (V-13, V-21): one run at a time, progress while it works, a summary when it ends.
+/// It extracts the embedded JPEGs or develops the RAWs to JPEG or HEIC. It reads the originals and writes only into
+/// the folder the user chose; nothing blocks a key.
 @MainActor
 @Observable
 final class ExtractJob {
     enum State {
         case idle
         case running(done: Int, total: Int, folder: URL)
-        case finished(EmbeddedJPEGExtractor.Summary)
+        case finished(ExportSummary)
     }
 
     private(set) var state = State.idle
+    /// What the current (or last) job writes.
+    private(set) var format = ExportFormat.embeddedJPEG
     @ObservationIgnored private let cancelFlag = Flag()
 
     /// Set by the main actor, read between files by the worker.
@@ -29,14 +32,16 @@ final class ExtractJob {
     var isShowing: Bool { if case .idle = state { false } else { true } }
 
     /// Starts the job on a background thread. Does nothing while another job runs. `finished` gets the spoken summary.
-    func start(_ sources: [URL], into folder: URL, exactBytes: Bool, sidecars: [URL: URL], finished: @escaping @MainActor @Sendable (String) -> Void) {
+    func start(_ sources: [URL], into folder: URL, format: ExportFormat, exactBytes: Bool, quality: Double?, sidecars: [URL: URL],
+               finished: @escaping @MainActor @Sendable (String) -> Void) {
         guard !isRunning, !sources.isEmpty else { return }
         cancelFlag.set(false)
+        self.format = format
         state = .running(done: 0, total: sources.count, folder: folder)
         let flag = cancelFlag
         Task.detached(priority: .utility) { [weak self] in
             let lastReport = Mutex(ContinuousClock.now)
-            let summary = EmbeddedJPEGExtractor.run(sources, into: folder, exactBytes: exactBytes, sidecars: sidecars, progress: { done in
+            let progress: @Sendable (Int) -> Void = { done in
                 // At most about 20 updates a second; the last one is the summary.
                 let now = ContinuousClock.now
                 let due = lastReport.withLock { last in
@@ -45,10 +50,19 @@ final class ExtractJob {
                     return true
                 }
                 if due { Task { @MainActor in self?.report(done, of: sources.count, folder: folder) } }
-            }, isCancelled: { flag.isSet })
+            }
+            let cancelled: @Sendable () -> Bool = { flag.isSet }
+            let summary: ExportSummary
+            if let developed = format.developedFormat {
+                summary = DevelopedExporter.run(sources, into: folder, as: developed, quality: quality, sidecars: sidecars,
+                                                progress: progress, isCancelled: cancelled)
+            } else {
+                summary = EmbeddedJPEGExtractor.run(sources, into: folder, exactBytes: exactBytes, sidecars: sidecars,
+                                                    progress: progress, isCancelled: cancelled)
+            }
             await MainActor.run {
                 self?.state = .finished(summary)
-                finished(Self.spoken(summary))
+                finished(Self.spoken(summary, format: format))
             }
         }
     }
@@ -66,10 +80,16 @@ final class ExtractJob {
         if case .finished = state { state = .idle }
     }
 
-    static func spoken(_ s: EmbeddedJPEGExtractor.Summary) -> String {
-        var parts = [s.cancelled ? "Extraction cancelled. \(s.written.formatted()) of \(s.total.formatted()) JPEGs saved"
-                     : "Extracted \(s.written.formatted()) \(s.written == 1 ? "JPEG" : "JPEGs")"]
+    static func noun(_ format: ExportFormat, plural: Bool) -> String {
+        let name = format == .developedHEIC ? "HEIC" : "JPEG"
+        return plural ? name + "s" : name
+    }
+
+    static func spoken(_ s: ExportSummary, format: ExportFormat) -> String {
+        var parts = [s.cancelled ? "Export cancelled. \(s.written.formatted()) of \(s.total.formatted()) \(noun(format, plural: true)) saved"
+                     : "Exported \(s.written.formatted()) \(noun(format, plural: s.written != 1))"]
         if !s.withoutEmbeddedJPEG.isEmpty { parts.append("\(s.withoutEmbeddedJPEG.count.formatted()) with no embedded JPEG") }
+        if !s.couldNotDevelop.isEmpty { parts.append("\(s.couldNotDevelop.count.formatted()) could not be developed") }
         if !s.notRaw.isEmpty { parts.append("\(s.notRaw.count.formatted()) skipped, not RAW") }
         if !s.failed.isEmpty { parts.append("\(s.failed.count.formatted()) failed") }
         return parts.joined(separator: ", ")
@@ -87,10 +107,11 @@ struct ExtractPlate: View {
                 EmptyView()
             case .running(let done, let total, let folder):
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Extracting JPEGs to \(folder.lastPathComponent)").font(.callout.weight(.semibold))
+                    Text("\(job.format.isDeveloped ? "Developing" : "Extracting") \(ExtractJob.noun(job.format, plural: true)) to \(folder.lastPathComponent)")
+                        .font(.callout.weight(.semibold))
                     ProgressView(value: Double(done), total: Double(max(total, 1)))
                         .tint(.white)
-                        .accessibilityLabel("Extraction progress")
+                        .accessibilityLabel("Export progress")
                         .accessibilityValue("\(done.formatted()) of \(total.formatted()) files")
                     HStack {
                         Text("\(done.formatted()) of \(total.formatted())").foregroundStyle(Plate.secondary).monospacedDigit()
@@ -113,22 +134,23 @@ struct ExtractPlate: View {
 }
 
 private struct SummaryView: View {
-    let summary: EmbeddedJPEGExtractor.Summary
+    let summary: ExportSummary
     let job: ExtractJob
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(summary.cancelled ? "Extraction cancelled" : "Extraction done").font(.callout.weight(.semibold))
+            Text(summary.cancelled ? "Export cancelled" : "Export done").font(.callout.weight(.semibold))
                 .accessibilityAddTraits(.isHeader)
             Text(headline).font(.callout).foregroundStyle(Plate.secondary)
             if summary.exifAdded > 0 {
-                Text("\(summary.exifAdded.formatted()) got the RAW's EXIF" + (summary.xmpAdded > 0 ? " and XMP (rating and label)" : "") + ". File dates, permissions and extended attributes were copied. The image data is unchanged.")
-                    .font(.caption).foregroundStyle(Plate.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(note).font(.caption).foregroundStyle(Plate.secondary).fixedSize(horizontal: false, vertical: true)
             }
             if summary.hasProblems || !summary.renamed.isEmpty {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 6) {
                         list("No embedded JPEG", summary.withoutEmbeddedJPEG, icon: "exclamationmark.triangle.fill")
+                        list("Could not be developed", summary.couldNotDevelop.map { "\($0.name): \($0.detail)" }, icon: "xmark.octagon.fill")
+                        list("XMP not copied (the packet could not be read)", summary.xmpSkipped, icon: "exclamationmark.triangle.fill")
                         list("Maker note not copied", summary.makerNoteSkipped, icon: "exclamationmark.triangle.fill")
                         list("File attributes not fully copied", summary.attributeWarnings.map { "\($0.name): \($0.detail)" }, icon: "exclamationmark.triangle.fill")
                         list("Not a RAW file, skipped", summary.notRaw, icon: "minus.circle")
@@ -148,6 +170,20 @@ private struct SummaryView: View {
             }
             .font(.callout)
         }
+    }
+
+    /// What the written files carry, in one paragraph.
+    private var note: String {
+        let format = job.format
+        var text = "\(summary.exifAdded.formatted()) got the RAW's EXIF" + (format.isDeveloped ? " and GPS" : "")
+            + (summary.xmpAdded > 0 ? " and XMP (rating and label)" : "")
+            + ". File dates, permissions and extended attributes were copied."
+        switch format {
+        case .embeddedJPEG: text += " The image data is unchanged."
+        case .developedJPEG: text += " Developed at the decoder's defaults, as sRGB."
+        case .developedHEIC: text += " Developed at the decoder's defaults, as 10-bit Display P3. A HEIC holds no maker note."
+        }
+        return text
     }
 
     private var headline: String {

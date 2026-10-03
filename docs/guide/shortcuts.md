@@ -108,8 +108,8 @@ Press `?` in the app to see the keys for the current view.
 | `⌘R` | Reveal in Finder |
 | `⌘E` | Edit in the default editor |
 | `⌥⌘E` | Edit in… (choose an editor) |
-| `⇧⌘E` | Extract embedded JPEGs |
-| `⌘.` | Cancel the extraction, or close its summary |
+| `⇧⌘E` | Export the selection (embedded JPEG, or developed JPEG or HEIC) |
+| `⌘.` | Cancel the export, or close its summary |
 | `⇧⌘S` | Save decisions to another folder |
 | `⌘,` | Settings |
 | `?` | Cheat sheet |

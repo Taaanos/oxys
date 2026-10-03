@@ -12,13 +12,14 @@ let package = Package(
         .package(path: "../Metadata"),
         .package(path: "../Diagnostics"),
         .package(path: "../Sidecar"),
+        .package(path: "../Imaging"),
     ],
     targets: [
-        .target(name: "Library", dependencies: ["Containers", "Metadata", "Diagnostics", "Sidecar"]),
+        .target(name: "Library", dependencies: ["Containers", "Metadata", "Diagnostics", "Sidecar", "Imaging"]),
         // M-01 tool: times a folder scan and the capture-time pass.
         .executableTarget(name: "ScanBench", dependencies: ["Library"]),
         // V-13 tool: times extraction of a folder against a plain copy, and compares the bytes with an oracle.
-        .executableTarget(name: "ExtractBench", dependencies: ["Library", "Containers"]),
-        .testTarget(name: "LibraryTests", dependencies: ["Library", "Containers"]),
+        .executableTarget(name: "ExtractBench", dependencies: ["Library", "Containers", "Imaging"]),
+        .testTarget(name: "LibraryTests", dependencies: ["Library", "Containers", "Imaging"]),
     ]
 )

@@ -50,27 +50,44 @@ You can then drag the files to your editor. The `.xmp` sidecars stay next to the
 
 The Photo menu also has an Edit In submenu. A RAW with a JPEG of the same name opens as the RAW. Oxys saves your choices to the sidecars first, so the editor reads the newest ratings. Add or remove editors in [Settings](settings.md#editors).
 
-## Extract embedded JPEGs
+## Export photos
 
-Each RAW file has a JPEG inside it. Oxys can save these JPEGs as separate files. You can share them without a RAW converter.
+Oxys can save your photos as JPEG or HEIC files. You can share them without a RAW converter. There are three formats:
+
+- **Embedded JPEG:** each RAW file has a JPEG inside it. Oxys saves it as a separate file. The image data does not change.
+- **Developed JPEG:** Oxys develops the RAW to a full-size picture and saves it as an 8-bit sRGB JPEG. Every viewer shows its colors in the same way.
+- **Developed HEIC:** the same picture, saved as a 10-bit Display P3 HEIC. It has more colors and smoother gradients. At the default quality the file is about as big as the JPEG. Oxys shows this choice only if your Mac can write HEIC.
 
 1. Select the photos, or leave nothing selected to use the active photo.
-2. Press `⇧⌘E`. Choose a folder. Make a new one if you need to.
-3. Oxys works in the background. A box at the bottom left shows progress. You can keep working. Press `Cancel` or `⌘.` to stop. The file in progress is finished, the next one is not started, and no partial file stays.
-4. When it ends, the box shows a summary. It lists the photos that have no embedded JPEG, the files that are not RAW (JPEG and HEIC are skipped), the files that failed, and the files that got a new name. Press `Show in Finder` to see the JPEGs. Press `Close` or `⌘.` to close the box.
+2. Press `⇧⌘E`. Choose a folder. Make a new one if you need to. Do not choose a folder that holds the photos: Oxys refuses it, because it writes only sidecars into those folders.
+3. Choose the format in the `Format` menu below the folder list. Oxys remembers your choice.
+4. Press `Export Here`. Oxys works in the background. A box at the bottom left shows progress. You can keep working. Press `Cancel` or `⌘.` to stop. The file in progress is finished, the next one is not started, and no partial file stays.
+5. When it ends, the box shows a summary. It lists the photos that have no embedded JPEG, the RAW files that Oxys could not develop, the files that are not RAW (JPEG and HEIC are skipped), the files that failed, and the files that got a new name. Press `Show in Finder` to see the files. Press `Close` or `⌘.` to close the box.
 
-What you get:
+What you get, for all three formats:
 
-- The file is `name.jpg`. The name is the RAW's name. It is the largest JPEG inside the RAW. Oxys does not decode it or compress it again. The image data does not change.
-- The JPEG keeps the metadata of the RAW:
-  - **EXIF:** camera, lens, exposure, ISO, capture time and time zone, GPS, copyright, artist, serial number, and the maker note (the camera's own data, such as Sony or Canon focus data). The picture size is the size of the JPEG, and the orientation is the one the JPEG needs. Data that only describes the RAW itself is not copied (RAW size, color matrices, Sony SR2 data, DNG private blocks).
-  - **XMP:** your rating and color label from the Oxys sidecar (`name.xmp`). If a DNG holds its own XMP and has no sidecar, that XMP is used. Lightroom and other apps read the stars from the JPEG.
-  - **File attributes:** the creation date, the modification date, the permissions, and all extended attributes (Finder tags, Finder comments, "where from", and others). The copy has the same dates as the RAW.
-- If the embedded JPEG has its own XMP, Oxys keeps it. If the embedded JPEG has its own EXIF, the RAW's EXIF replaces it. Oxys keeps the orientation of the embedded JPEG.
+- The file is `name.jpg` or `name.heic`. The name is the RAW's name.
+- The file keeps the metadata of the RAW:
+  - **EXIF:** camera, lens, exposure, ISO, capture time and time zone, GPS, copyright, artist and serial number. The picture size is the size of the file, and the orientation is correct for the picture. Data that only describes the RAW itself is not copied (RAW size, color matrices, Sony SR2 data, DNG private blocks).
+  - **Maker note** (the camera's own data, such as Sony or Canon focus data): JPEG files keep it. A HEIC file cannot hold it. The summary says this once.
+  - **XMP:** your rating and color label from the Oxys sidecar (`name.xmp`). If a DNG holds its own XMP and has no sidecar, that XMP is used. Lightroom and other apps read the stars from the file. The editing settings of a RAW editor are not copied to a developed file, because the picture is already developed.
+  - **File attributes:** the creation date, the modification date, the permissions, and all extended attributes (Finder tags, Finder comments, "where from", and others). The file has the same dates as the RAW.
+- Oxys never replaces a file. If `name.jpg` is there already, the new file is `name-1.jpg`, then `name-2.jpg`. The summary lists these names.
+- Oxys reads your RAW files and writes only into the folder you chose.
+
+About an embedded JPEG:
+
+- It is the largest JPEG inside the RAW. Oxys does not decode it or compress it again.
+- If it has its own XMP, Oxys keeps it. If it has its own EXIF, the RAW's EXIF replaces it. Oxys keeps the orientation of the embedded JPEG.
 - If a maker note cannot be moved safely into the JPEG, Oxys leaves that one note out and lists the file in the summary. Oxys also lists a file whose attributes it could not copy.
 - To get exactly the embedded bytes, with no EXIF or XMP from the RAW, quit Oxys and run `defaults write dev.oxys.Oxys extractExactBytes -bool YES`. This has no switch in Settings. The file attributes are still copied.
-- Oxys never replaces a file. If `name.jpg` is there already, the new file is `name-1.jpg`, then `name-2.jpg`. The summary lists these names.
-- Oxys reads your RAW files and writes only into the folder you chose. Do not choose the folder that holds your photos if you want to keep it clean.
+
+About a developed file:
+
+- Oxys uses the decoder of macOS with its default settings: the white balance of the camera, the default tone, and the normal sharpening, noise reduction and lens correction. Oxys makes no other changes. This is not the neutral picture that `R` shows in the viewer.
+- The work takes about half a second for a 48 MP photo on an Apple silicon Mac. A big job uses a lot of memory and processor time.
+- GPS in a HEIC can move by about 10 cm, because the format stores it as degrees, minutes and seconds.
+- To change the quality, quit Oxys and run `defaults write dev.oxys.Oxys exportJPEGQuality -float 0.9` (or `exportHEICQuality`). The value is between 0.05 and 1. The defaults are 0.92 for JPEG and 0.8 for HEIC.
 
 ## Reload the folder
 

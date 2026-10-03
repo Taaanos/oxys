@@ -1,18 +1,25 @@
 // V-13 tool. Not shipped.
-//   ExtractBench <folder or files...> [--exact] [--verify]
+//   ExtractBench <folder or files...> [--exact] [--verify] [--developed=jpeg|heic] [--quality=0.9]
 // Extracts every file's largest embedded JPEG into a new temporary folder, then copies that folder with `cp -R`
 // (a real byte copy: the stand-in for Finder) and prints both times. The extraction must be within 20% of the copy.
 // --out=DIR keeps the JPEGs there instead of a temporary folder.
 // --verify compares each output with the reference extractor named in PREVIEW_ORACLE (identical bytes, or the same
 // bytes plus zero padding), in exact mode only.
+// --developed=jpeg|heic (V-21) develops every RAW at the decoder's defaults instead, one at a time, prints the time
+// per file, and checks each output against its source: Exif and GPS values, size, orientation, depth, profile, and
+// the file's dates, permissions and extended attributes. No oracle is needed. Exit 1 on a difference.
 import Containers
 import Foundation
+import ImageIO
+import Imaging
 import Library
 
 var paths = Array(CommandLine.arguments.dropFirst())
 let exact = paths.contains("--exact") || paths.contains("--verify")
 let verify = paths.contains("--verify")
 let keep = paths.first { $0.hasPrefix("--out=") }.map { URL(fileURLWithPath: String($0.dropFirst(6))) }
+let developed = paths.first { $0.hasPrefix("--developed=") }.flatMap { DevelopedFormat(rawValue: String($0.dropFirst(12))) }
+let quality = paths.first { $0.hasPrefix("--quality=") }.flatMap { Double($0.dropFirst(10)) }
 paths.removeAll { $0.hasPrefix("--") }
 guard !paths.isEmpty else {
     FileHandle.standardError.write(Data("usage: ExtractBench <folder or files...> [--exact] [--verify]\n".utf8))
@@ -45,6 +52,71 @@ defer { try? FileManager.default.removeItem(at: work) }
 
 let clock = ContinuousClock()
 func seconds(_ d: Duration) -> Double { Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18 }
+
+if let developed {
+    var summary = ExportSummary()
+    let time = clock.measure { summary = DevelopedExporter.run(sources, into: out, as: developed, quality: quality) }
+    print("files \(sources.count), written \(summary.written), could not develop \(summary.couldNotDevelop.count), not RAW \(summary.notRaw.count), failed \(summary.failed.count), maker note skipped \(summary.makerNoteSkipped.count), XMP skipped \(summary.xmpSkipped.count), renamed \(summary.renamed.count)")
+    print(String(format: "developed %.2f s, %.2f s per file", seconds(time), seconds(time) / Double(max(1, summary.written))))
+    if !summary.makerNoteSkipped.isEmpty { print("MAKER NOTE NOT COPIED: \(summary.makerNoteSkipped.joined(separator: ", "))") }
+    if !summary.xmpSkipped.isEmpty { print("XMP NOT COPIED: \(summary.xmpSkipped.joined(separator: ", "))") }
+    for f in summary.couldNotDevelop + summary.failed { print("NOT WRITTEN \(f.name): \(f.detail)") }
+    for f in summary.attributeWarnings { print("ATTRIBUTES \(f.name): \(f.detail)") }
+    var bad = 0
+    func props(_ url: URL) -> [CFString: Any] {
+        CGImageSourceCreateWithURL(url as CFURL, nil).flatMap { CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [CFString: Any] } ?? [:]
+    }
+    /// Numbers are compared to 1e-5 (GPS is stored as degrees, minutes and seconds, so a rewrite rounds below a metre).
+    func text(_ v: Any?) -> String {
+        guard let v else { return "-" }
+        if let n = v as? Double ?? (v as? NSNumber)?.doubleValue, !(v is String) { return String(format: "%.5g", n) }
+        return "\(v)"
+    }
+    /// GPS degrees are compared to 5e-6 (half a metre): ImageIO rewrites them as degrees, minutes and seconds.
+    func gpsText(_ v: Any?, against other: Any?) -> String {
+        if let a = v as? Double, let b = other as? Double, abs(a - b) < 5e-6 { return "same" }
+        return (v as? Double).map { String(format: "%.7f", $0) } ?? text(v)
+    }
+    for source in sources {
+        let stem = source.deletingPathExtension().lastPathComponent
+        let output = out.appendingPathComponent("\(stem).\(developed.fileExtension)")
+        guard FileManager.default.fileExists(atPath: output.path) else { continue }
+        var problems: [String] = []
+        let a = props(source), b = props(output)
+        let ea = a[kCGImagePropertyExifDictionary] as? [CFString: Any] ?? [:], eb = b[kCGImagePropertyExifDictionary] as? [CFString: Any] ?? [:]
+        for key in [kCGImagePropertyExifDateTimeOriginal, kCGImagePropertyExifFNumber, kCGImagePropertyExifExposureTime,
+                    kCGImagePropertyExifISOSpeedRatings, kCGImagePropertyExifFocalLength, kCGImagePropertyExifLensModel,
+                    kCGImagePropertyExifBodySerialNumber] where ea[key] != nil && text(ea[key]) != text(eb[key]) {
+            problems.append("Exif \(key): \(text(ea[key])) -> \(text(eb[key]))")
+        }
+        let ta = a[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:], tb = b[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
+        for key in [kCGImagePropertyTIFFMake, kCGImagePropertyTIFFModel] where text(ta[key]) != text(tb[key]) {
+            problems.append("TIFF \(key): \(text(ta[key])) -> \(text(tb[key]))")
+        }
+        let ga = a[kCGImagePropertyGPSDictionary] as? [CFString: Any] ?? [:], gb = b[kCGImagePropertyGPSDictionary] as? [CFString: Any] ?? [:]
+        for key in [kCGImagePropertyGPSLatitude, kCGImagePropertyGPSLongitude, kCGImagePropertyGPSLatitudeRef, kCGImagePropertyGPSLongitudeRef]
+        where ga[key] != nil && gpsText(ga[key], against: gb[key]) != gpsText(gb[key], against: ga[key]) {
+            problems.append("GPS \(key): \(gpsText(ga[key], against: gb[key])) -> \(gpsText(gb[key], against: ga[key]))")
+        }
+        if text(b[kCGImagePropertyOrientation]) != "1" { problems.append("orientation \(text(b[kCGImagePropertyOrientation]))") }
+        if text(eb[kCGImagePropertyExifPixelXDimension]) != text(b[kCGImagePropertyPixelWidth]) { problems.append("Exif width \(text(eb[kCGImagePropertyExifPixelXDimension])) vs \(text(b[kCGImagePropertyPixelWidth]))") }
+        let wantDepth = developed == .jpeg ? "8" : "10"
+        if text(b[kCGImagePropertyDepth]) != wantDepth { problems.append("depth \(text(b[kCGImagePropertyDepth]))") }
+        let wantProfile = developed == .jpeg ? "sRGB" : "Display P3"
+        if !text(b[kCGImagePropertyProfileName]).hasPrefix(wantProfile) { problems.append("profile \(text(b[kCGImagePropertyProfileName]))") }
+        let sa = try? FileManager.default.attributesOfItem(atPath: source.path), sb = try? FileManager.default.attributesOfItem(atPath: output.path)
+        for key in [FileAttributeKey.creationDate, .modificationDate, .posixPermissions] where "\(sa?[key] ?? "")" != "\(sb?[key] ?? "")" {
+            problems.append("file \(key.rawValue) differs")
+        }
+        let xa = (try? FileManager.default.listxattr(source)) ?? [], xb = (try? FileManager.default.listxattr(output)) ?? []
+        if Set(xa).subtracting(xb).isEmpty == false { problems.append("xattrs missing: \(Set(xa).subtracting(xb).sorted())") }
+        let size = "\(text(b[kCGImagePropertyPixelWidth]))x\(text(b[kCGImagePropertyPixelHeight]))"
+        print(problems.isEmpty ? "ok   \(output.lastPathComponent) \(size)" : "FAIL \(output.lastPathComponent) \(size)")
+        for p in problems { print("       \(p)"); }
+        if !problems.isEmpty { bad += 1 }
+    }
+    exit(bad > 0 || summary.written == 0 ? 1 : 0)
+}
 
 var summary = EmbeddedJPEGExtractor.Summary()
 let extractTime = clock.measure { summary = EmbeddedJPEGExtractor.run(sources, into: out, exactBytes: exact) }
@@ -94,4 +166,15 @@ if verify {
     }
     print("oracle: \(checked - bad) of \(checked) identical")
     if bad > 0 { exit(1) }
+}
+
+extension FileManager {
+    /// Names of the extended attributes of `url`.
+    func listxattr(_ url: URL) throws -> [String] {
+        let size = Darwin.listxattr(url.path, nil, 0, 0)
+        guard size > 0 else { return [] }
+        var buffer = [CChar](repeating: 0, count: size)
+        guard Darwin.listxattr(url.path, &buffer, size, 0) >= 0 else { return [] }
+        return buffer.split(separator: 0).map { String(decoding: $0.map { UInt8(bitPattern: $0) }, as: UTF8.self) }
+    }
 }

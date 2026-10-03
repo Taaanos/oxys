@@ -45,6 +45,10 @@ public enum PerfInterval: String, CaseIterable, Sendable {
     case clipping = "clipping"
     /// Extracting one embedded JPEG (V-13): locate, read, add EXIF if needed, write. A job has one per file.
     case extractFile = "extract-file"
+    /// Developing one RAW into a full-size CGImage for export (V-21): the decode and the render. A job has one per file.
+    case exportDevelop = "export-develop"
+    /// Encoding a developed image to JPEG or HEIC and adding its metadata (V-21). A job has one per file.
+    case exportEncode = "export-encode"
 
     /// Signpost names must be static strings, so the raw value is repeated here.
     var signpostName: StaticString {
@@ -69,6 +73,8 @@ public enum PerfInterval: String, CaseIterable, Sendable {
         case .peaking: "peaking"
         case .clipping: "clipping"
         case .extractFile: "extract-file"
+        case .exportDevelop: "export-develop"
+        case .exportEncode: "export-encode"
         }
     }
 }

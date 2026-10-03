@@ -280,10 +280,11 @@ public struct CommandTable: Sendable {
         Command("file.editIn", "Edit In…", menu: .init(.photo, group: 4), requires: .photos,
                 keys: [Shortcut(.position(.e), [.command, .option])]),
 
-        // Extract embedded JPEGs (V-13): `⇧⌘E` picks a folder and runs in the background; `⌘.` cancels it or closes its summary.
-        Command("file.extract", "Extract Embedded JPEGs…", menu: .init(.photo, group: 4), requires: .photos,
+        // Export (V-13, V-21): `⇧⌘E` picks a folder and a format (the embedded JPEG, or the RAW developed to JPEG or HEIC)
+        // and runs in the background; `⌘.` cancels it or closes its summary.
+        Command("file.extract", "Export…", menu: .init(.photo, group: 4), requires: .photos,
                 keys: [Shortcut(.position(.e), [.command, .shift])]),
-        Command("file.extractCancel", "Cancel or Close Extraction", menu: .init(.photo, group: 5),
+        Command("file.extractCancel", "Cancel or Close Export", menu: .init(.photo, group: 5),
                 keys: [Shortcut(.position(.period), [.command])]),
 
         // The cheat sheet (M-23): `?` in every mode. The Help menu search finds every item above by its title.

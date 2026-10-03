@@ -447,4 +447,5 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(keys(r, "file.extract") == [Shortcut(.position(.e), [.command, .shift])])
     #expect(keys(r, "file.extractCancel") == [Shortcut(.position(.period), [.command])])
     #expect(CommandTable.standard["file.extract"]?.menu?.menu == .photo)
+    #expect(CommandTable.standard["file.extract"]?.title == "Export…")
 }

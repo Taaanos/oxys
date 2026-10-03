@@ -26,7 +26,7 @@ v1 succeeds if a photographer can cull a shoot entirely from the keyboard and ha
 2. Instant browsing from embedded JPEGs, with optional full RAW decode when sharpness or exposure must be trusted.
 3. Objective checks: one-key 1:1 zoom, focus peaking, highlight and shadow clipping with user-set percentages, histogram, EXIF.
 4. Decisions (stars 1–5, colors) stored in XMP sidecars that Lightroom Classic and RawTherapee read.
-5. Clean hand-off: reveal the selection in Finder, open it in an external editor, or extract its embedded JPEGs.
+5. Clean hand-off: reveal the selection in Finder, open it in an external editor, extract its embedded JPEGs, or export it developed to JPEG or HEIC.
 
 **Non-goals for v1**
 
@@ -216,6 +216,7 @@ Twelve features make up v1: the eleven from your list plus zoom and 1:1. Each ha
 | Edit in external program | Settings lists editors (Lightroom Classic, RawTherapee and ART preconfigured, others addable); `⌘E` opens the selection in the default one, `⌥⌘E` picks another | 100 files open in one call; missing apps disable their menu items |
 | Reveal in Finder | Selection is first-class: filter by stars, label or reject, `⌘A`, then `⌘R` | Finder opens one window with exactly those files selected |
 | Extract embedded JPEGs | `⇧⌘E` copies each selected file's largest embedded JPEG, byte for byte, to a chosen folder as `name.jpg` | Runs in the background with progress and cancel; files with no embedded JPEG are listed, not skipped silently |
+| Export developed JPEG or HEIC | The `⇧⌘E` panel has a Format menu: the RAW is developed at the decoder's defaults and saved as an 8-bit sRGB JPEG or a 10-bit Display P3 HEIC (HEIC only where the system can write it). No adjustments are applied | Keeps the RAW's EXIF, GPS and XMP rating and label, and its file dates, permissions and extended attributes; never writes into a folder that holds the photos |
 
 ## XMP sidecars
 

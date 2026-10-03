@@ -286,3 +286,19 @@ private struct TIFFBuilder {
     #expect(try #require(JPEGSegments.list(again)).filter(\.isXMP).count == 1)
     #expect(JPEGSegments.xmpSegment(Data(count: 70_000)) == nil)
 }
+
+@Test func iccIsAddedOnlyWhenTheJPEGHasNoneAndTheScanIsUntouched() throws {
+    let profile = Data(repeating: 7, count: 3_000)
+    let icc = try #require(JPEGSegments.iccSegment(profile))
+    #expect(icc.count == 4 + 12 + 2 + 3_000)
+    let plain = makeJPEG(width: 160, height: 120, orientation: nil, icc: false)
+    let out = try #require(JPEGSegments.rewriting(plain, exif: nil, xmp: nil, icc: icc))
+    #expect(try #require(JPEGSegments.list(out)).filter(\.isICC).count == 1)
+    #expect(out.suffix(14) == plain.suffix(14))
+    // A JPEG with a profile of its own keeps it; nothing is doubled.
+    let tagged = makeJPEG(width: 160, height: 120, orientation: nil, icc: true)
+    let again = try #require(JPEGSegments.rewriting(tagged, exif: nil, xmp: nil, icc: icc))
+    #expect(try #require(JPEGSegments.list(again)).filter(\.isICC).count == 1)
+    #expect(JPEGSegments.iccSegment(Data(count: 70_000)) == nil)
+    #expect(JPEGSegments.iccSegment(Data()) == nil)
+}
