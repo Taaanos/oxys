@@ -126,7 +126,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | D-08 | Corners concentric with the window | D-02, V-08 | built, partly checked (window and inspector checked by eye; full screen and the glass labels see the story) |
 | D-09 | The app icon in every appearance | none | built, partly checked (build and sheets done; your eye on 16 px and on the Dock, Finder and Spotlight is open; see the story) |
 | D-10 | Symbols in the menus | M-05, M-23 | done |
-| D-11 | Spike: the info strip as a floating glass bar | D-01, D-02 | todo |
+| D-11 | Spike: the info strip as a floating glass bar | D-01, D-02 | in progress (flag built; gate not measured, no decision yet) |
 | D-12 | Spike: a glass HUD for commands with no visible result | D-02 | todo |
 
 ### Dependency map (foundations and MVP)
@@ -2648,6 +2648,10 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 - [ ] `cull` (`cull-feedback` p95) and `overlays` are not worse. No new hitches in `scrub`.
 - [ ] You compare it with the plate, side by side, on 20 real frames, bright and dark.
 - [ ] The story records the decision: keep the plate and remove the flag, or make glass the default and remove the flag.
+
+**Built so far**
+- `defaults write dev.oxys.Oxys OxysInfoStripStyle glass` makes `InfoStrip` a glass bar (`glassPlate`, 12 pt corner radius, 12 pt inset on all three sides). Same height and content; Compare uses the same view, so each pane has its own bar. Default is still the plate. Open question 1: as proposed (full width less the inset). The D-01 probe name `info-strip` is kept, with the `.glass` material.
+- Not done: the `glassEffectID` morph on `I` (open question 2), the D-01 run, `cull` and `overlays` perf gates, the 20-frame side-by-side and the real session. The decision (keep the plate or make glass the default) is not made.
 
 **Open questions**
 1. Width: the full width less the inset, or only as wide as the content? *Proposed:* the full width less the inset, so that the truth badge text keeps its place at the right end.

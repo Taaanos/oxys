@@ -124,6 +124,9 @@ struct InfoStrip: View {
     /// Changes when a cull key took effect; the rating glyphs bounce.
     var pulse = 0
 
+    /// D-11 spike: `defaults write <bundle id> OxysInfoStripStyle glass` draws the strip as a floating glass bar.
+    static var style: InfoStripStyle { UserDefaults.standard.string(forKey: "OxysInfoStripStyle") == "glass" ? .glass : .plate }
+
     private var exifSpoken: String? {
         exifFields.isEmpty ? nil : exifFields.map { $0.differs ? "\($0.label) \($0.value), differs" : $0.value }.joined(separator: ", ")
     }
@@ -160,14 +163,35 @@ struct InfoStrip: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
-            .background(.black.opacity(Plate.opacity))
-            // Compare's EXIF line draws a differing value as text in the warning tint; Loupe uses that tint only for icons.
-            .contrastProbe("info-strip", .plate, shape: .rect,
-                           uses: [.text(.white), .text(.secondary), .mark(.star), .mark(.reject), exifFields.isEmpty ? .mark(.warning) : .text(.warning)])
-            .foregroundStyle(.white)
-            .environment(\.colorScheme, .dark)
+            .modifier(StripBacking(style: Self.style, uses: [.text(.white), .text(.secondary), .mark(.star), .mark(.reject),
+                                                           // Compare's EXIF line draws a differing value as text in the warning tint; Loupe uses that tint only for icons.
+                                                           exifFields.isEmpty ? .mark(.warning) : .text(.warning)]))
             .accessibilityElement(children: .combine)
             .accessibilityLabel(([photo.name, photo.isPair ? "RAW and JPEG" : nil, decision?.summary].compactMap { $0 } + photo.sidecar.notes).joined(separator: ", ") + (exifSpoken.map { ", " + $0 } ?? "") + zoomSpoken)
+        }
+    }
+}
+
+enum InfoStripStyle { case plate, glass }
+
+/// The strip's backing. The plate is a full-width black band; the glass bar floats 12 pt in from the window edges (D-11).
+private struct StripBacking: ViewModifier {
+    let style: InfoStripStyle
+    let uses: [ContrastProbe.Use]
+
+    func body(content: Content) -> some View {
+        switch style {
+        case .plate:
+            content
+                .background(.black.opacity(Plate.opacity))
+                .contrastProbe("info-strip", .plate, shape: .rect, uses: uses)
+                .foregroundStyle(.white)
+                .environment(\.colorScheme, .dark)
+        case .glass:
+            content
+                .glassPlate(in: .rect(cornerRadius: 12))
+                .contrastProbe("info-strip", .glass, shape: .rounded(12), uses: uses)
+                .padding(12)
         }
     }
 }
