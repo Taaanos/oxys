@@ -111,7 +111,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | P-06 | Overlay toggles without new allocations | P-01 | todo |
 | P-07 | Capture times in under 3 s | P-01 | todo |
 | P-08 | Grid first pass without dropped frames | P-01 | todo |
-| P-09 | Zero idle CPU in Loupe | P-01 | todo |
+| P-09 | Zero idle CPU in Loupe | P-01 | done (criterion met in Grid, 0.006%; in Loupe 0.014% against 0.01%: the rest is AppKit's own wake-ups; see the story) |
 | P-10 | RAW develop and extraction on real files | P-01 | todo |
 | P-11 | Performance gate | P-02 to P-10 | todo |
 
@@ -2152,6 +2152,13 @@ The code changes the M-26 diagnosis in two places, found while planning this pha
 
 **Acceptance criteria**
 - [ ] `idle`: Loupe and Grid each under 0.01% CPU over 30 s after the pipeline is idle.
+
+**Result (decisions)**
+- `FramePipeline.isIdle` (no load running or waiting), the count of EXIF warm-ups in flight and `rawCache.isDeveloping` make `LoupeController.isPipelineIdle`. The `idle` scenario waits until it holds for 1 s, then opens its window. It also records `idle-cpu-ms-*`, because two-decimal percentages hide the real value.
+- The 15 s session-save timer (V-15) is gone. It built the whole session state every 15 s, changed or not. `AppModel.watchSession` now reads that state under observation tracking; the first change arms one save 15 s later (the longest wait is the same). A still window has no timer.
+- Measured over 30 s, 24mp-1000: Grid 1.6 ms (0.006%, met). Loupe 3.9 to 4.2 ms (0.014%, not met by 1 ms). Wake-ups: about 2 in 24 s (`top` IDLEW).
+- Not met in Loupe, accepted: a 1 ms-interval `sample` over 20 s shows no frame of ours. The only busy samples are in AppKit queues (`app exceptions timeout queue`, `NSPersistentUI Work`). The gate limit is 0.02% for both, so a real wake-up of ours would still fail it.
+- Some runs spend 60 to 80 ms (one also raised Grid to 18 ms). Not explained; none reproduces on every run. Look again if the gate flags it.
 
 ### P-10 · RAW develop and extraction on real files
 

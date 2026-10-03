@@ -77,6 +77,8 @@ public actor FramePipeline<Frame: Sendable> {
 
     public var isSlow: Bool { averageLoad > Self.slowLoadThreshold }
     public var cachedBytes: Int { cache.totalCost }
+    /// No load is running or waiting, so the pipeline will not wake the CPU until the next request (P-09).
+    public var isIdle: Bool { running == 0 && inflight.isEmpty }
     /// What the cache may hold right now (for tests): the budget less the reservation of running loads.
     var budgetForCache: Int { cache.budget }
 

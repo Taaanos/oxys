@@ -663,14 +663,29 @@ final class AppModel {
         if sessions.save(state) { lastSavedSession = state }
     }
 
+    /// A save at most 15 s after the session state changes (P-09). The state is read once under observation tracking,
+    /// so nothing runs, not even a timer, while the window is still. The first change arms one delayed save; that save
+    /// reads the state again and re-arms the tracking.
+    private func watchSession() {
+        withObservationTracking {
+            _ = commands.mode
+            _ = folder.sessionState(mode: "grid")
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(15))
+                guard let self else { return }
+                saveSession()
+                watchSession()
+            }
+        }
+    }
+
     private func startSessionResume() {
         guard let sessions else { return }
         NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [unowned self] _ in
             MainActor.assumeIsolated { saveSession() }
         }
-        Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [unowned self] _ in
-            MainActor.assumeIsolated { saveSession() }
-        }
+        watchSession()
         Task.detached { sessions.prune() }
         if ProcessInfo.processInfo.environment["OXYS_OPEN"] == nil, Self.reopensLastFolder, let last = sessions.lastFolder { open(last) }
     }

@@ -303,3 +303,18 @@ private func solidImage(_ width: Int, _ height: Int) -> CGImage {
     #expect(await pipeline.running == 0)
     #expect(await pipeline.budgetForCache == 1_000)
 }
+
+@Test func pipelineReportsIdleOnlyWhenNoLoadIsRunning() async throws {
+    let pipeline = FramePipeline<Int>(budget: 1_000) { key in
+        try await Task.sleep(for: .milliseconds(100))
+        return LoadedFrame(frame: number(key), cost: 10)
+    }
+    #expect(await pipeline.isIdle)
+    let load = Task { try await pipeline.frame(for: key(1), prefetch: [key(2)]) }
+    try await Task.sleep(for: .milliseconds(30))
+    #expect(!(await pipeline.isIdle))
+    _ = try await load.value
+    for _ in 0..<200 where !(await pipeline.isIdle) { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(await pipeline.isIdle)
+    #expect(await pipeline.isCached(key(2)))
+}

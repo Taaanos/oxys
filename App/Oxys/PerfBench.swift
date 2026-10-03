@@ -222,15 +222,25 @@ enum PerfBench {
         case "load-memory":
             await loadMemory(model)
         case "idle":
-            // Nothing happens for 30 s; the process's CPU time over that span is the idle cost.
+            // P-09: the window starts once the pipeline reports idle and has stayed so for a second. Nothing happens
+            // for 30 s; the process's CPU time over that span is the idle cost.
+            let waited = ContinuousClock.now
+            var quiet = 0
+            while quiet < 10, waited.duration(to: .now) < .seconds(60) {
+                quiet = await loupe.isPipelineIdle ? quiet + 1 : 0
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            Perf.record("idle-wait-ms", ms(waited.duration(to: .now)))
             let before = cpuSeconds(), began = ContinuousClock.now
             await settle(.seconds(30))
             let wall = seconds(began.duration(to: .now))
+            Perf.record("idle-cpu-ms-loupe", (cpuSeconds() - before) * 1000)
             Perf.record("idle-cpu-percent-loupe", (cpuSeconds() - before) / wall * 100)
             commands.mode = .grid
             await settle(.seconds(3))
             let beforeGrid = cpuSeconds(), gridBegan = ContinuousClock.now
             await settle(.seconds(30))
+            Perf.record("idle-cpu-ms-grid", (cpuSeconds() - beforeGrid) * 1000)
             Perf.record("idle-cpu-percent-grid", (cpuSeconds() - beforeGrid) / seconds(gridBegan.duration(to: .now)) * 100)
         default:
             Perf.record("unknown-scenario", 1)

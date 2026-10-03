@@ -815,8 +815,19 @@ final class LoupeController {
     /// Reads the EXIF of the photos the prefetch is about to load, so stepping to them has the values ready.
     private func warmExif(_ urls: [URL]) {
         let cache = exifCache
+        exifWarming += 1
         Task.detached(priority: .utility) {
             for url in urls { _ = cache.info(for: url) }
+            await MainActor.run { self.exifWarming -= 1 }
+        }
+    }
+    @ObservationIgnored private var exifWarming = 0
+
+    /// P-09: nothing is loading, developing or reading EXIF, so a still window should cost no CPU.
+    var isPipelineIdle: Bool {
+        get async {
+            guard exifWarming == 0, developState != .developing, !rawCache.isDeveloping else { return false }
+            return await pipeline.isIdle
         }
     }
 
