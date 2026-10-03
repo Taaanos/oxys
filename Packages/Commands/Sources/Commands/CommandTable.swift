@@ -45,6 +45,10 @@ public struct CommandTable: Sendable {
                 keys: [Shortcut(.position(.a), [.command])]),
         Command("select.none", "Select None", menu: .init(.edit, group: 1), requires: .photos,
                 keys: [Shortcut(.position(.a), [.command, .shift])]),
+        // Esc in Grid drops the selection (the same as Select None). With nothing selected it is unavailable, so Esc
+        // falls through to whatever else it does.
+        Command("select.cancel", "Cancel Selection", menu: .init(.edit, group: 1), modes: grid, requires: .photos,
+                keys: [Shortcut(.position(.escape))]),
         Command("select.invert", "Invert Selection", menu: .init(.edit, group: 1), requires: .photos,
                 keys: [Shortcut(.position(.i), [.command, .shift])]),
         Command("select.deselectActive", "Deselect Active Photo", menu: .init(.edit, group: 1), requires: .photos,

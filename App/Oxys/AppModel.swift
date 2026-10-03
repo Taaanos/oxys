@@ -519,6 +519,9 @@ final class AppModel {
         commands.register("select.none", isAvailable: { [unowned self] in !folder.selection.isEmpty }) { [unowned self] _ in
             folder.selectNone(); announceSelection()
         }
+        commands.register("select.cancel", isAvailable: { [unowned self] in !folder.selection.isEmpty }) { [unowned self] _ in
+            folder.selectNone(); announceSelection()
+        }
         commands.register("select.invert") { [unowned self] _ in folder.invertSelection(); announceSelection() }
         commands.register("select.deselectActive", isAvailable: { [unowned self] in
             folder.currentURL.map(folder.selection.contains) == true

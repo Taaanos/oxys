@@ -207,8 +207,8 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(press(.e, .compare) == [.perform("view.loupe")])
     #expect(press(.g, .compare) == [.perform("view.grid")])
     #expect(press(.escape, .compare) == [.perform("view.grid")])
-    // Esc and E do nothing in Grid, G does nothing in Grid.
-    #expect(press(.escape, .grid).isEmpty)
+    // Esc in Grid cancels the selection (the command is unavailable when nothing is selected); G does nothing in Grid.
+    #expect(press(.escape, .grid) == [.perform("select.cancel")])
     #expect(press(.g, .grid).isEmpty)
     // E does nothing in Loupe.
     #expect(press(.e, .loupe).isEmpty)
