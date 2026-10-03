@@ -1,3 +1,4 @@
+import Commands
 import Imaging
 import Library
 import Metadata
@@ -12,6 +13,8 @@ struct InspectorView: View {
     /// Modification time of the sidecar file, read off the main thread when the photo or its decision changes.
     @State private var lastWrite: Date?
     @State private var exif: ExifInfo?
+    /// The last histogram Loupe produced. It stays until the next photo's one arrives, so the section keeps its height while culling.
+    @State private var lastHistogram: Histogram?
 
     private var photo: Photo? { model.folder.currentPhoto }
 
@@ -46,7 +49,12 @@ struct InspectorView: View {
         .environment(\.probeScope, "inspector")
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Inspector")
-        .task(id: photo?.url) { exif = nil; if let url = photo?.url { exif = await model.loupe.exifInfo(for: url) } }
+        .task(id: photo?.url) {
+            // Keep the previous photo's rows until the new ones are ready: clearing first makes the column collapse and regrow on every step.
+            guard let url = photo?.url else { exif = nil; return }
+            let info = await model.loupe.exifInfo(for: url)
+            if !Task.isCancelled { exif = info }
+        }
         .task(id: Key(url: photo?.url, decision: photo?.decision, file: photo?.sidecar.file, unsaved: photo?.sidecar.unsaved ?? false)) {
             lastWrite = nil
             guard let file = photo.flatMap({ folder.sidecarTarget(for: $0) }) else { return }
@@ -107,8 +115,12 @@ struct InspectorView: View {
     @ViewBuilder private func histogramSection(_ photo: Photo) -> some View {
         let loupe = model.loupe
         // No placeholder text: the section appears only when this photo's histogram exists (Grid and Compare have none).
-        if loupe.shown?.url == photo.url, let histogram = loupe.histogram {
+        let current = loupe.shown?.url == photo.url ? loupe.histogram : nil
+        let inLoupe = model.commands.mode == .loupe
+        if let histogram = current ?? (inLoupe ? lastHistogram : nil) {
             section("Histogram") { HistogramView(histogram: histogram) }
+                .onChange(of: current?.luminance) { if let current { lastHistogram = current } }
+                .onAppear { if let current { lastHistogram = current } }
         }
     }
 
