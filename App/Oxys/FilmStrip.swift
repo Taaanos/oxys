@@ -321,11 +321,11 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
             decision: photo.decision,
             isCurrent: isCurrent, isSelected: false,
             label: isCurrent ? "\(photo.cellLabel), current photo" : photo.cellLabel, isPair: photo.isPair, showsRing: false,
-            badgePlate: false, badgesInImage: isCurrent, badgeLift: Self.badgeLift(for: loader.image(for: key)))
+            badgePlate: false, badgesInImage: isCurrent, badgeLift: Self.badgeLift)
         cell.configure(content) { [weak self] url, _, _ in self?.folder.setCurrent(url) }
     }
 
-    /// The thumbnail through the glass lens, with the decision drawn under the glass, or the plain thumbnail while it
+    /// The thumbnail through the glass lens, with the decision on the glass (lit and shaded by the rim, not bent), or the plain thumbnail while it
     /// has not loaded. Made on the first draw of the active cell (about a millisecond) and again when its decision
     /// changes; kept until another photo is active.
     private func lens(for key: GridThumbnailLoader.Key, photo: Photo) -> CGImage? {
@@ -334,30 +334,17 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
         if let lensed, lensed.key == lensKey { return lensed.image }
         let edge = Self.edge
         let image = GlassLens.apply(to: plain, edge: edge, background: LoupeView.canvasGray, style: Self.lensStyle) { ctx in
-            Self.drawDecision(photo.decision, isPair: photo.isPair, lift: Self.badgeLift(for: plain), into: ctx, edge: edge)
+            Self.drawDecision(photo.decision, isPair: photo.isPair, lift: Self.badgeLift, into: ctx, edge: edge)
         }
         lensed = image.map { (lensKey, $0) }
         return image ?? plain
     }
 
-    /// The least space under the badges on every cell. The lens rim bends less than 1.5 pt deeper than this, so the capsule
-    /// keeps its shape on the active cell, and sits as near the bottom as it can.
-    private static let rimClearance: CGFloat = 7
-
-    /// How far above the cell's bottom edge the badge strip (22 pt, the capsule centered in it) sits: the capsule rests
-    /// just inside the bottom of the picture, and stays clear of the rim when the picture fills the cell. The same rule
-    /// for every cell, from the thumbnail's own shape, so nothing moves when a cell becomes the active one.
-    private static func badgeLift(for image: CGImage?) -> CGFloat {
-        let cell = FilmStripGeometry.cellSize
-        var pictureHeight = cell
-        if let image, image.width > 0, image.height > 0 {
-            pictureHeight = min(cell, cell * CGFloat(image.height) / CGFloat(image.width))
-        }
-        let pictureBottom = (cell + pictureHeight) / 2
-        let capsuleBottom = min(pictureBottom - 3, cell - rimClearance)
-        let capsuleCenter = capsuleBottom - 10
-        return max(cell - capsuleCenter - GridBadgeView.height / 2, 0)
-    }
+    /// Space between the bottom of the cell and the bottom of the badge strip (22 pt, the 20 pt capsule centered in it), so
+    /// the capsule's bottom edge is 6 pt above the cell's bottom edge. One height for every cell, whatever the shape of its
+    /// picture, and the same on the active cell, so nothing moves when a cell becomes the active one. The lens rim bends
+    /// less than 2 pt that deep.
+    private static let badgeLift: CGFloat = 5
 
     /// Draws the badges (and, for a reject, the veil that dims the picture) into the lens bitmap, in cell points.
     private static func drawDecision(_ decision: Decision, isPair: Bool, lift: CGFloat, into ctx: CGContext, edge: Int) {
