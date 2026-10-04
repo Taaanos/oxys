@@ -23,9 +23,9 @@ final class LoupeController {
 
     /// EXIF of the photo on screen (M-16), formatted; nil while it is being read and for a file without any.
     private(set) var exif: ExifInfo?
-    /// How much sits on the image (M-18): `I` steps through the levels. Remembered across launches.
+    /// How much sits on the image (M-18): `I` steps through the levels. The histogram is not a level; `⇧I` owns it. Remembered across launches.
     enum InfoLevel: Int, CaseIterable, Comparable {
-        case off, name, exif, histogram
+        case off, name, exif
         static func < (a: Self, b: Self) -> Bool { a.rawValue < b.rawValue }
         var next: Self { Self(rawValue: rawValue + 1) ?? .off }
         var title: String {
@@ -33,7 +33,6 @@ final class LoupeController {
             case .off: "Off"
             case .name: "Filename"
             case .exif: "EXIF"
-            case .histogram: "Histogram"
             }
         }
         var spoken: String {
@@ -41,11 +40,10 @@ final class LoupeController {
             case .off: "Info off"
             case .name: "Filename and rating"
             case .exif: "Filename, rating and EXIF"
-            case .histogram: "Filename, rating, EXIF and histogram"
             }
         }
     }
-    private(set) var infoLevel = InfoLevel(rawValue: UserDefaults.standard.object(forKey: "infoLevel") as? Int ?? 1) ?? .name {
+    private(set) var infoLevel = InfoLevel(rawValue: UserDefaults.standard.object(forKey: "infoLevel") as? Int ?? 1) ?? .exif {
         didSet { UserDefaults.standard.set(infoLevel.rawValue, forKey: "infoLevel") }
     }
     var showExif: Bool { infoLevel >= .exif }
@@ -53,16 +51,11 @@ final class LoupeController {
 
     func cycleInfo() {
         infoLevel = infoLevel.next
-        // The last level adds the histogram; stepping on to Off or back to the first level takes it away.
-        showHistogram = infoLevel == .histogram || (showHistogram && infoLevel >= .exif)
         announce(infoLevel.spoken)
     }
 
-    /// `⇧I`, independent of the level. Turning it on while info is off brings up the strip too.
-    func toggleHistogram() {
-        showHistogram.toggle()
-        if showHistogram, infoLevel == .off { infoLevel = .name }
-    }
+    /// `⇧I`, independent of the level: `I` never shows or hides it.
+    func toggleHistogram() { showHistogram.toggle() }
     /// Label of the focused value, set by `↑`/`↓` or a click; `⌘C` copies it.
     var focusedExifField: String?
     /// Histogram of the frame on screen (M-17); nil while a stand-in or no frame is shown.
@@ -512,7 +505,7 @@ final class LoupeController {
         if let canvas {
             let drawable = canvas.drawablePixelSize
             screenRequest.edge = Int(max(drawable.width, drawable.height))
-            screenRequest.histogram = showHistogram && showInfoStrip
+            screenRequest.histogram = showHistogram
         }
         let pipeline = pipeline
         LoupeGPU.shared?.wake()

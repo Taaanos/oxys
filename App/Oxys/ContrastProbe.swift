@@ -218,7 +218,7 @@ extension ContrastProbe {
         var count = 0
 
         func setLayout(_ layout: Layout) {
-            let level: LoupeController.InfoLevel = layout == .strip ? .histogram : .off
+            let level: LoupeController.InfoLevel = layout == .strip ? .exif : .off
             for _ in 0..<4 where loupe.infoLevel != level { loupe.cycleInfo() }
             if layout == .strip, !loupe.showHistogram { loupe.toggleHistogram() }
         }

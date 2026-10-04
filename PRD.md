@@ -41,7 +41,7 @@ v1 succeeds if a photographer can cull a shoot entirely from the keyboard and ha
 A session is five steps, and steps 2 to 4 repeat as many passes as the shoot needs. Keys shown are the proposed defaults.
 
 1. **Open.** `⌘O` or drop a folder on the window. The Grid fills from embedded previews immediately; a RAW with a same-name JPEG shows as one frame (proposed).
-2. **First pass.** Arrow through in Loupe. `X` rejects, `1`–`5` rates; hold `⇧` to apply and advance. When a frame is doubtful, `Z` zooms to 1:1 (developing the RAW if the preview is too small), `F` shows focus peaking, `H` and `S` show clipping, `I` shows EXIF and histogram.
+2. **First pass.** Arrow through in Loupe. `X` rejects, `1`–`5` rates; hold `⇧` to apply and advance. When a frame is doubtful, `Z` zooms to 1:1 (developing the RAW if the preview is too small), `F` shows focus peaking, `H` and `S` show clipping, `I` shows EXIF and `⇧I` the histogram.
 3. **Settle doubts in Compare.** `C` on two similar frames, `Z` to check both at 1:1 together, `R` to develop the full RAW for a trustworthy sharpness check, `⇧X` to reject the loser and move on.
 4. **Narrow.** `⌥⌘3` shows only frames with 3 stars or more, then a second pass raises the bar (`⌥⌘4`, `⌥⌘5`). Nothing is exported yet; every decision is already saved in the sidecar.
 5. **Hand off.** `⌘A` selects everything in the filtered view. `⌘R` reveals those files in Finder, `⌘E` opens them in the external editor, `⇧⌘E` extracts their embedded JPEGs.
@@ -108,7 +108,7 @@ Checking sharpness is the reason this app exists, so zoom and RAW development ar
 | Highlight clipping overlay | `H` | new. FRV: ⇧H |
 | Shadow clipping overlay | `S` | new. FRV: U |
 | Clipping thresholds (custom %) | `⌥H` | new. Popover with a highlight % and a shadow % field, fully keyboard-operable |
-| Cycle info overlay | `I` | LR. Levels: off, filename + stars, + EXIF, + histogram |
+| Cycle info overlay | `I` | LR. Levels: off, filename + stars, + EXIF |
 | Histogram on / off | `⇧I` | new |
 | Show / hide inspector (EXIF, histogram) | `⌥⌘I` | HIG |
 | Lights out (dim, then black surround) | `L` | LR. Target v1.x |

@@ -206,7 +206,7 @@ public struct CommandTable: Sendable {
         Command("overlay.clippingThresholds", "Clipping Thresholds…", menu: .init(.view, group: 5), modes: loupeAndCompare, requires: .photos,
                 keys: [Shortcut(.position(.h), [.option])]),
 
-        // Info on the image (M-18). `I` cycles off, filename and stars, plus EXIF, plus histogram; `⇧I` toggles the
+        // Info on the image (M-18). `I` cycles off, filename and stars, plus EXIF; `⇧I` toggles the
         // histogram on its own; `⌥I` shows the decision and `⌥P` the RAW badge (V-24). `⌥⌘I` opens the inspector (every mode). In Loupe `↑` and `↓` walk the EXIF values (M-16), `⌘C` copies the
         // focused one (all when none is), and Show in Maps opens the GPS spot.
         Command("info.cycle", "Cycle Info", menu: .init(.view, group: 4), modes: loupeAndCompare, requires: .photos,

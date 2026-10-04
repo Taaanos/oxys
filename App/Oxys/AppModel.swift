@@ -40,7 +40,7 @@ final class AppModel {
     /// The info strip and, at its deeper levels, the EXIF panel.
     var infoVisible: Bool { focus.isVisible(.info, saved: loupe.showInfoStrip) }
     var exifVisible: Bool { infoVisible && loupe.showExif }
-    var histogramVisible: Bool { focus.isVisible(.histogram, saved: loupe.showHistogram && loupe.showInfoStrip) }
+    var histogramVisible: Bool { focus.isVisible(.histogram, saved: loupe.showHistogram) }
     /// The `?` sheet (M-23).
     var showCheatSheet = false
     var cheatScroll = ScrollPosition()
@@ -386,8 +386,8 @@ final class AppModel {
             loupe.toggleTruthBadge()
         }
         commands.register("info.histogram", isOn: { [unowned self] in loupe.showHistogram }) { [unowned self] _ in
-            panelKey(.histogram, saved: loupe.showHistogram && loupe.showInfoStrip, toggle: { loupe.toggleHistogram() },
-                     turnOn: { if !loupe.showHistogram { loupe.toggleHistogram() } else if !loupe.showInfoStrip { loupe.cycleInfo() } })
+            panelKey(.histogram, saved: loupe.showHistogram, toggle: { loupe.toggleHistogram() },
+                     turnOn: { if !loupe.showHistogram { loupe.toggleHistogram() } })
         }
         commands.register("info.inspector", isOn: { [unowned self] in showInspector }) { [unowned self] _ in
             panelKey(.inspector, saved: showInspector, toggle: { setInspector(!showInspector) }, turnOn: { setInspector(true) })
