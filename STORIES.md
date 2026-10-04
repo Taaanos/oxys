@@ -95,9 +95,9 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-11 | Auto-advance | M-06 | done |
 | V-12 | External editors | M-19, M-22 | built, needs a live check (ART first; RawTherapee and Lightroom Classic untested) |
 | V-13 | Extract embedded JPEGs | M-02, M-19 | built, needs a live check (the ⇧⌘E panel and plate not clicked through; cold-cache time over the limit) |
-| V-14 | Key remapping and presets | M-22, M-23 | todo |
+| V-14 | Key remapping and presets | M-22, M-23 | moved to v1.x (B-19): built when users ask for it |
 | V-15 | Session resume | M-20 | built (checked in the live app on a read-only disk image; filter and selection restore not clicked through) |
-| V-16 | Interop guidance | M-22, F-04 | todo |
+| V-16 | Interop guidance | M-22, F-04 | done (documentation only, no in-app guidance; ART preference wording and the Lightroom and RawTherapee results stay open with F-04 and M-25) |
 | V-17 | Distribution | G-2 | todo |
 | V-19 | Optional lens correction for RAW | V-02, M-22 | todo (spike done: `docs/spikes/lens-correction.md`) |
 | V-20 | Film strip in Loupe | M-12, M-13, M-04 | todo |
@@ -1756,6 +1756,8 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - [ ] Remapping needs no code change; switching presets changes the menu shortcuts live.
 - [ ] Every conflict is reported before it is saved.
 
+**Status:** moved to v1.x as B-19 (4 Oct 2026). **Decided by you:** Oxys ships with the default keymap. This is built only when users ask for remapping or presets. The scope below stays as the starting point. Keymap files already work by editing `Keymap.json` (M-05).
+
 **Open questions**
 1. The FastRawViewer and Photo Mechanic presets need research: their default keys for each of our commands. *Proposed:* I compile both tables from their documentation for you to review before we build.
 2. Import and export keymap files? *Proposed:* yes; it's the same JSON file.
@@ -1806,7 +1808,14 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Inspector notes for file types an editor reads no sidecars for (JPEG, plus whatever F-04 finds for DNG, TIFF and HEIC; see G-8).
 
 **Acceptance criteria**
-- [ ] Every caveat found in F-04 has a message in the app.
+- [x] Every caveat found in F-04 has a message in the user guide (changed from "in the app": see Decisions).
+
+**Status:** done, as documentation only (4 Oct 2026).
+
+**Decisions**
+- **Decided by you:** no first-run panel, no hint in Settings → Sidecars and no inspector notes. Help text in the interface would crowd the interface. The guidance lives in the user guide: `docs/guide/sidecars.md` ("Use Oxys with other programs": Lightroom Classic, RawTherapee, ART, and the JPEG, HEIC, TIFF and DNG caveat) and `docs/guide/troubleshooting.md` ("My ratings do not show in…"). The scope above is replaced by this.
+- The criterion is met by the guide: every caveat F-04 found has a section. Open in the guide, as in F-04: ART's preference wording is general ("check the metadata settings"), and the Lightroom and RawTherapee rows come from their documentation until M-25.
+- The VoiceOver and keyboard rules do not apply: there is no new UI.
 
 **Open questions**
 1. The PRD decides that embedding XMP into JPEGs is opt-in and off by default, but places it in no phase, and it writes to originals, against the principle that originals are never touched. *Proposed:* defer it to v1.x unless the Lightroom tests show that JPEG ratings matter to you.
@@ -2812,6 +2821,7 @@ These are not broken into stories yet. The right column shows what each one buil
 | B-16 | Faster capture times | v1.x | M-26, M-01 | **Moved to P-07.** 5,000 files take 3.7 s (target 3 s) |
 | B-17 | Gate on the slowest Mac and slow media | v1.x | M-26, G-3, G-11 | **Closed:** no other Mac, SD card or SMB share is available (G-3, G-11). The real 1,000-frame shoot is in P-01 |
 | B-18 | Zero idle CPU in Loupe | v1.x | M-26 | **Moved to P-09.** 0.18% with nothing changing (Grid: 0.01%) |
+| B-19 | Key remapping and presets | v1.x | M-05, M-22, M-23 | **Moved from V-14** (4 Oct 2026). Build when users ask for it; the scope is in V-14 |
 | L-01 | Sharpness score badge | Later | V-06 | Reuses the peaking kernels |
 | L-02 | RAW-level histogram and clipping stats | Later | V-02, V-04 | Needs sensor data before white balance |
 | L-03 | Waveform, RGB parade, vectorscope | Later | M-17 | |
