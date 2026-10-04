@@ -545,7 +545,7 @@ final class GridBadgeView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         if failed {
-            Self.draw("No preview", at: NSPoint(x: 6, y: 4), color: .white, font: .systemFont(ofSize: 11))
+            if let font = Self.font(size: 11) { Self.draw("No preview", at: NSPoint(x: 6, y: 4), color: .white, font: font) }
             return
         }
         Self.drawBadges(decision: decision ?? .none, isPair: isPair, in: bounds)
@@ -564,8 +564,8 @@ final class GridBadgeView: NSView {
         let height: CGFloat = 20, available = strip.width - 4
         func text(_ level: Level, numeric: Bool) -> NSAttributedString {
             let value = numeric && decision.stars > 1 ? "★\(decision.stars)" : String(repeating: "★", count: decision.stars)
-            return NSAttributedString(string: value, attributes: [.font: NSFont.systemFont(ofSize: level.star),
-                                                                 .foregroundColor: NSColor.systemYellow])
+            guard let font = font(size: level.star) else { return NSAttributedString() }
+            return NSAttributedString(string: value, attributes: [.font: font, .foregroundColor: NSColor.systemYellow])
         }
         func width(_ level: Level, numeric: Bool) -> CGFloat {
             var items: [CGFloat] = []
@@ -594,7 +594,7 @@ final class GridBadgeView: NSView {
             let mark = NSRect(x: x, y: markY, width: chip, height: chip)
             NSColor(srgbRed: 0.78, green: 0.06, blue: 0.12, alpha: 1).setFill()
             NSBezierPath(roundedRect: mark, xRadius: 4, yRadius: 4).fill()
-            draw("✕", in: mark, color: .white, font: .systemFont(ofSize: letterSize, weight: .bold))
+            draw("✕", in: mark, color: .white, font: font(size: letterSize, weight: .bold))
             x += chip + level.gap
         } else if decision.stars > 0 {
             let stars = text(level, numeric: numeric)
@@ -606,15 +606,33 @@ final class GridBadgeView: NSView {
             let rect = NSRect(x: x, y: markY, width: chip * 2, height: chip)
             NSColor.white.withAlphaComponent(0.85).setFill()
             NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4).fill()
-            draw("R+J", in: rect, color: .black, font: .monospacedSystemFont(ofSize: letterSize - 1, weight: .bold))
+            draw("R+J", in: rect, color: .black, font: font(size: letterSize - 1, weight: .bold, monospaced: true))
             x += chip * 2 + level.gap
         }
         if let label = decision.label {
             let rect = NSRect(x: x, y: markY, width: chip, height: chip)
             label.nsColor.setFill()
             NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4).fill()
-            draw(String(label.letter), in: rect, color: .black, font: .monospacedSystemFont(ofSize: letterSize, weight: .bold))
+            draw(String(label.letter), in: rect, color: .black, font: font(size: letterSize, weight: .bold, monospaced: true))
         }
+    }
+
+    /// The badge fonts, made once per size. They are made through the failable `NSFont(descriptor:size:)`, because
+    /// `systemFont` and `monospacedSystemFont` are imported as non-optional: once one of them gave nil while a newly
+    /// opened folder loaded its thumbnails. Swift did not check the nil, and CoreText aborted the app when it copied
+    /// the attributes ("attempt to insert nil object", 4 Oct 2026). Nil here: the mark is not drawn, and the next draw
+    /// tries again. Same typefaces and metrics as those two calls.
+    private static var fonts: [String: NSFont] = [:]
+
+    static func font(size: CGFloat, weight: NSFont.Weight = .regular, monospaced: Bool = false) -> NSFont? {
+        let key = "\(size) \(weight.rawValue) \(monospaced)"
+        if let font = fonts[key] { return font }
+        var descriptor: NSFontDescriptor? = NSFontDescriptor.preferredFontDescriptor(forTextStyle: .body)
+        if monospaced { descriptor = descriptor?.withDesign(.monospaced) }
+        guard let descriptor = descriptor?.addingAttributes([.traits: [NSFontDescriptor.TraitKey.weight: weight]]),
+              let font = NSFont(descriptor: descriptor, size: size) else { return nil }
+        fonts[key] = font
+        return font
     }
 
     @discardableResult
@@ -624,7 +642,8 @@ final class GridBadgeView: NSView {
         return string.size().width
     }
 
-    private static func draw(_ text: String, in rect: NSRect, color: NSColor, font: NSFont) {
+    private static func draw(_ text: String, in rect: NSRect, color: NSColor, font: NSFont?) {
+        guard let font else { return }
         let string = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
         let size = string.size()
         string.draw(at: NSPoint(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2))
