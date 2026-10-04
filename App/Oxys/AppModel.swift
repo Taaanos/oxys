@@ -24,6 +24,7 @@ final class AppModel {
     let loupe = LoupeController()
     let grid: GridController
     let compare: CompareController
+    let filmStrip: FilmStripController
     let commands: CommandCenter
     /// `⇥` hides the toolbar (and, later, the panels); the pointer at the top edge brings it back (M-13).
     private(set) var chromeHidden = false
@@ -45,6 +46,10 @@ final class AppModel {
     }
     /// The inspector sidebar (⌥⌘I), remembered across launches. Hidden along with the toolbar by `⇥` (M-13).
     private(set) var showInspector = UserDefaults.standard.bool(forKey: "showInspector")
+    /// The film strip under the picture in Loupe (V-20, `⌥⌘F`), remembered across launches, off at first launch. Hidden along with the toolbar by `⇥`.
+    private(set) var showFilmStrip = UserDefaults.standard.bool(forKey: "showFilmStrip")
+    /// Whether the strip is on screen: Loupe only, and not while the panels are hidden.
+    var filmStripVisible: Bool { showFilmStrip && !chromeHidden && commands.mode == .loupe && folder.content == .photos }
     /// True after "Move Focus to Inspector" until `Esc`: `⇥`, `⇧⇥`, `↑` and `↓` walk the inspector's rows and
     /// `⌘C` copies the focused one. Driven by our own key handling, not SwiftUI focus, which cannot take the
     /// keyboard from the image view.
@@ -208,6 +213,7 @@ final class AppModel {
         commands = CommandCenter(folder: folder)
         grid = GridController(folder: folder, loupe: loupe)
         compare = CompareController(folder: folder, loupe: loupe)
+        filmStrip = FilmStripController(folder: folder)
         loupe.compareCanvases = { [compare] in compare.canvases }
         grid.onOpen = { [unowned self] in commands.mode = .loupe }
         commands.register("file.open") { [unowned self] _ in chooseFolder() }
@@ -277,6 +283,11 @@ final class AppModel {
             if extract.isRunning { extract.cancel() } else { extract.dismiss() }
         }
         commands.register("help.cheatsheet") { [unowned self] _ in showCheatSheet.toggle() }
+        commands.register("view.filmstrip", isOn: { [unowned self] in showFilmStrip }) { [unowned self] _ in
+            showFilmStrip.toggle()
+            UserDefaults.standard.set(showFilmStrip, forKey: "showFilmStrip")
+        }
+        commands.keyActivity = { [unowned self] in if filmStripVisible { filmStrip.keyPressed() } }
         commands.register("view.loupe") { [unowned self] _ in commands.mode = .loupe }
         commands.register("view.grid") { [unowned self] _ in commands.mode = .grid }
         commands.register("view.chrome", title: { [unowned self] in chromeHidden ? "Show Toolbar" : "Hide Toolbar" }) { [unowned self] _ in

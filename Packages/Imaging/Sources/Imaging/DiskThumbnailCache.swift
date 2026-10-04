@@ -30,15 +30,17 @@ public final class DiskThumbnailCache: @unchecked Sendable {
         return caches.appendingPathComponent(bundleID, isDirectory: true).appendingPathComponent("thumbnails", isDirectory: true)
     }
 
-    public func fileURL(path: String, size: Int, modified: Date, longEdge: Int) -> URL {
-        let key = "\(path)|\(size)|\(modified.timeIntervalSince1970)|\(longEdge)"
+    /// `variant` names a different way of making the same edge (V-20: a 160 px strip thumbnail scaled from a real
+    /// preview, not taken from the camera's padded one), so the two never share an entry. Empty for Grid's.
+    public func fileURL(path: String, size: Int, modified: Date, longEdge: Int, variant: String = "") -> URL {
+        let key = "\(path)|\(size)|\(modified.timeIntervalSince1970)|\(longEdge)" + (variant.isEmpty ? "" : "|\(variant)")
         let name = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
         return directory.appendingPathComponent(name + ".jpg")
     }
 
     /// The cached thumbnail, or nil on a miss. A hit counts as a use for eviction.
-    public func thumbnail(path: String, size: Int, modified: Date, longEdge: Int) -> Thumbnail? {
-        let file = fileURL(path: path, size: size, modified: modified, longEdge: longEdge)
+    public func thumbnail(path: String, size: Int, modified: Date, longEdge: Int, variant: String = "") -> Thumbnail? {
+        let file = fileURL(path: path, size: size, modified: modified, longEdge: longEdge, variant: variant)
         guard let source = CGImageSourceCreateWithURL(file as CFURL, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
         else { return nil }
@@ -51,8 +53,8 @@ public final class DiskThumbnailCache: @unchecked Sendable {
     /// Stores `image` (stored unrotated, with the orientation still to apply). Failures are silent: the cache
     /// is an optimization.
     public func store(_ image: CGImage, orientation: CGImagePropertyOrientation, path: String, size: Int,
-                      modified: Date, longEdge: Int) {
-        let file = fileURL(path: path, size: size, modified: modified, longEdge: longEdge)
+                      modified: Date, longEdge: Int, variant: String = "") {
+        let file = fileURL(path: path, size: size, modified: modified, longEdge: longEdge, variant: variant)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil)

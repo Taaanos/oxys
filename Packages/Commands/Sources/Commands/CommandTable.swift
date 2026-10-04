@@ -235,6 +235,9 @@ public struct CommandTable: Sendable {
                 keys: [Shortcut(.position(.t), [.option, .command])]),
         Command("view.chromeTab", "Hide Toolbar with Tab", menu: .init(.view, group: 2), modes: [.grid, .loupe],
                 keys: [Shortcut(.position(.tab))]),
+        // The film strip (V-20): a row of thumbnails under the picture in Loupe, off at first launch, hidden with the panels by `⇥`.
+        Command("view.filmstrip", "Show Film Strip", menu: .init(.view, group: 2), modes: loupe, requires: .photos,
+                kind: .toggle, keys: [Shortcut(.position(.f), [.command, .option])]),
         Command("view.fullscreen", "Enter Full Screen", menu: .init(.view, group: 2),
                 keys: [Shortcut(.position(.f), [.command, .shift])]),
 

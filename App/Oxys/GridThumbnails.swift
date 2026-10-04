@@ -18,20 +18,36 @@ final class GridThumbnailLoader {
         let image: CGImage?
     }
 
-    private var cache = ByteBudgetCache<Key, CGImage>(budget: 256 << 20)
+    private var cache: ByteBudgetCache<Key, CGImage>
     private var inflight: [Key: (id: UInt64, task: Task<Void, Never>)] = [:]
     private var failed: Set<Key> = []
     private var wanted: [Key] = []
     private var nextID: UInt64 = 0
     private let store: DiskThumbnailCache
     private let concurrency: Int
+    private let priority: TaskPriority
+    /// When set, a thumbnail is scaled down from a preview of at least this long edge and never taken from a
+    /// smaller one (the film strip's 160 px edge would otherwise pick the camera's padded EXIF thumbnail).
+    private let sourceAtLeast: Int?
+    /// While true no new load starts; loads already running finish (the film strip, V-20, while keys repeat).
+    private(set) var isPaused = false
 
     /// Called on the main actor each time a thumbnail becomes available (or is known to be impossible).
     var onResolved: ((Key) -> Void)?
 
-    init(store: DiskThumbnailCache, concurrency: Int = 4) {
+    init(store: DiskThumbnailCache, concurrency: Int = 4, priority: TaskPriority = .userInitiated, budget: Int = 256 << 20,
+         sourceAtLeast: Int? = nil) {
+        self.sourceAtLeast = sourceAtLeast
+        cache = ByteBudgetCache(budget: budget)
         self.store = store
         self.concurrency = concurrency
+        self.priority = priority
+    }
+
+    func setPaused(_ paused: Bool) {
+        guard paused != isPaused else { return }
+        isPaused = paused
+        if !paused { pump() }
     }
 
     func image(for key: Key) -> CGImage? { cache.value(for: key) }
@@ -61,6 +77,7 @@ final class GridThumbnailLoader {
     }
 
     private func pump() {
+        guard !isPaused else { return }
         for key in wanted {
             if inflight.count >= concurrency { break }
             if cache.contains(key) || failed.contains(key) || inflight[key] != nil { continue }
@@ -72,8 +89,9 @@ final class GridThumbnailLoader {
         nextID += 1
         let id = nextID
         let store = store
-        let task = Task.detached(priority: .userInitiated) { [weak self] in
-            let loaded = Self.load(key, store: store)
+        let sourceAtLeast = sourceAtLeast
+        let task = Task.detached(priority: priority) { [weak self] in
+            let loaded = Self.load(key, store: store, sourceAtLeast: sourceAtLeast)
             guard !Task.isCancelled else { return }
             await self?.finished(key, id: id, loaded: loaded)
         }
@@ -93,18 +111,25 @@ final class GridThumbnailLoader {
         pump()
     }
 
-    private nonisolated static func load(_ key: Key, store: DiskThumbnailCache) -> Loaded {
+    private nonisolated static func load(_ key: Key, store: DiskThumbnailCache, sourceAtLeast: Int?) -> Loaded {
         let token = Perf.begin(.gridThumbnail)
         defer { Perf.end(token) }
         let f = key.frame
-        if let hit = store.thumbnail(path: f.url.path, size: f.fileSize, modified: f.modified, longEdge: key.edge) {
+        let variant = sourceAtLeast.map { "source\($0)" } ?? ""
+        if let hit = store.thumbnail(path: f.url.path, size: f.fileSize, modified: f.modified, longEdge: key.edge, variant: variant) {
             return Loaded(image: hit.image.upright(hit.orientation))
         }
         guard !Task.isCancelled, let source = try? PreviewSource.open(f.url, isRaw: f.isRaw),
-              !Task.isCancelled, let decoded = try? source.decodeGrid(longEdge: key.edge)
+              !Task.isCancelled,
+              let decoded = try? decode(source, edge: key.edge, sourceAtLeast: sourceAtLeast)
         else { return Loaded(image: nil) }
         store.store(decoded.image, orientation: decoded.orientation, path: f.url.path, size: f.fileSize,
-                    modified: f.modified, longEdge: key.edge)
+                    modified: f.modified, longEdge: key.edge, variant: variant)
         return Loaded(image: decoded.image.upright(decoded.orientation))
+    }
+
+    private nonisolated static func decode(_ source: PreviewSource, edge: Int, sourceAtLeast: Int?) throws(PreviewError) -> DecodedPreview {
+        if let sourceAtLeast { return try source.decodeGrid(longEdge: edge, sourceAtLeast: sourceAtLeast) }
+        return try source.decodeGrid(longEdge: edge)
     }
 }

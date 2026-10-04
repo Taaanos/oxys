@@ -26,7 +26,8 @@ struct FolderView: View {
             case .photos:
                 let mode = model.commands.mode
                 let loupeActive = mode == .loupe
-                do {
+                // The strip is layout under the picture, not a layer on it: the Loupe view's bounds shrink by the band.
+                VStack(spacing: 0) {
                     ZStack {
                         LoupeScreen(model: model, active: loupeActive)
                             .opacity(loupeActive ? 1 : 0)
@@ -40,6 +41,7 @@ struct FolderView: View {
                     .safeAreaBar(edge: .top, spacing: 0) {
                         if model.showFilterBar { FilterBar(model: model) }
                     }
+                    if model.filmStripVisible { FilmStripView(controller: model.filmStrip) }
                 }
             }
         }

@@ -334,9 +334,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
                      label: label(for: photo), isPair: photo.isPair)
     }
 
-    private func label(for photo: Photo) -> String {
-        [photo.name, photo.isPair ? "RAW and JPEG" : nil, photo.decision.isUndecided ? nil : photo.decision.summary].compactMap { $0 }.joined(separator: ", ")
-    }
+    private func label(for photo: Photo) -> String { photo.cellLabel }
 
     fileprivate func clicked(_ url: URL, open: Bool, modifiers: NSEvent.ModifierFlags) {
         if open {
@@ -376,6 +374,13 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     }
 }
 
+extension Photo {
+    /// What VoiceOver says for a cell: "name, RAW and JPEG, 3 stars, red label" (Grid and the film strip).
+    var cellLabel: String {
+        [name, isPair ? "RAW and JPEG" : nil, decision.isUndecided ? nil : decision.summary].compactMap { $0 }.joined(separator: ", ")
+    }
+}
+
 // MARK: - cell
 
 final class GridItem: NSCollectionViewItem {
@@ -396,6 +401,9 @@ final class GridCellView: NSView {
         let isSelected: Bool
         let label: String
         let isPair: Bool
+        /// The film strip marks the active cell with a glass plate behind it (V-20), so the cell draws no ring over
+        /// the thumbnail, and its tile is clear so the plate shows through the bars of a portrait frame.
+        var showsRing = true
     }
 
     private let imageLayer = CALayer()
@@ -404,7 +412,8 @@ final class GridCellView: NSView {
     private let checkLayer = CATextLayer()
     private let badges = GridBadgeView()
     private(set) var url: URL?
-    private weak var controller: GridController?
+    /// What a click does: the file, whether it was a double-click, and the modifier keys.
+    private var onClick: ((URL, Bool, NSEvent.ModifierFlags) -> Void)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -457,15 +466,21 @@ final class GridCellView: NSView {
     }
 
     func configure(from controller: GridController, index: Int) {
-        self.controller = controller
-        let content = controller.presentation(at: index)
+        configure(controller.presentation(at: index)) { [weak controller] url, open, modifiers in
+            controller?.clicked(url, open: open, modifiers: modifiers)
+        }
+    }
+
+    func configure(_ content: Content, onClick: @escaping (URL, Bool, NSEvent.ModifierFlags) -> Void) {
+        self.onClick = onClick
         url = content.url
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         imageLayer.contents = content.image
         imageLayer.contentsScale = window?.backingScaleFactor ?? 2
         imageLayer.opacity = content.decision.isReject ? 0.35 : 1
-        ringLayer.borderWidth = content.isCurrent ? 3 : 0
+        ringLayer.borderWidth = content.isCurrent && content.showsRing ? 3 : 0
+        layer?.backgroundColor = content.isCurrent && !content.showsRing ? nil : NSColor(white: 0.2, alpha: 1).cgColor
         tintLayer.isHidden = !content.isSelected
         checkLayer.isHidden = !content.isSelected
         CATransaction.commit()
@@ -478,18 +493,18 @@ final class GridCellView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         guard let url else { return }
-        controller?.clicked(url, open: event.clickCount >= 2, modifiers: event.modifierFlags)
+        onClick?(url, event.clickCount >= 2, event.modifierFlags)
     }
 
     override func accessibilityPerformPress() -> Bool {
         guard let url else { return false }
-        controller?.clicked(url, open: true, modifiers: [])
+        onClick?(url, true, [])
         return true
     }
 }
 
 /// The badge strip. Draws nothing for an undecided photo.
-private final class GridBadgeView: NSView {
+final class GridBadgeView: NSView {
     static let height: CGFloat = 22
 
     var decision: Decision? { didSet { if decision != oldValue { needsDisplay = true } } }

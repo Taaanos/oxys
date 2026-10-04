@@ -328,6 +328,8 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     // The inspector opens from every mode; the focus command too (M-18).
     for mode in [ViewMode.grid, .loupe] {
         #expect(press(.i, mode, [.command, .option], at: 1) == [.perform("info.inspector")])
+    #expect(press(.f, .loupe, [.command, .option], at: 1) == [.perform("view.filmstrip")])   // V-20
+    #expect(press(.f, .grid, [.command, .option], at: 1) == [])
         #expect(press(.i, mode, [.command, .control], at: 1) == [.perform("info.inspectorFocus")])
     }
     #expect(press(.upArrow, .loupe, at: 2) == [.perform("info.fieldPrevious")])

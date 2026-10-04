@@ -100,7 +100,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-16 | Interop guidance | M-22, F-04 | done (documentation only, no in-app guidance; ART preference wording and the Lightroom and RawTherapee results stay open with F-04 and M-25) |
 | V-17 | Distribution | G-2 | in progress (license, audit, bundle ID, changelog and cask script done; waiting for you: release key, tap repository, screenshots, clean-Mac test, next release) |
 | V-19 | Optional lens correction for RAW | V-02, M-22 | todo (spike done: `docs/spikes/lens-correction.md`) |
-| V-20 | Film strip in Loupe | M-12, M-13, M-04 | todo |
+| V-20 | Film strip in Loupe | M-12, M-13, M-04 | in progress |
 | V-21 | Export developed JPEG and HEIC | V-13, V-02 | done (checked on six brands and 20 drone files with the bench tool; live panel used by you on 4 Oct 2026) |
 | V-22 | Remove location and serial numbers on export | V-13, V-21 | todo (design open; from audit S-7) |
 | V-23 | Clear the thumbnail cache | M-22, P-02 | done (unit test and build pass; live click-through pending) |
@@ -1940,13 +1940,22 @@ None. Support is read from `isLensCorrectionSupported` when each file is develop
 **Decisions** (V-20)
 - Question 1 **decided** as proposed: off at first launch, and the state is remembered after that.
 - Question 2 **decided** as proposed: bottom, one row.
-- Question 3 **accepted** as proposed: `⌥⌘F`. It is not in the command table today. Check the keymap files and the Lightroom default map before the build.
+- Question 3 **accepted** as proposed: `⌥⌘F`. It is not in the command table today. The check of the keymap files and the Lightroom default map is **not part of this story (user decision)**. It is independent of the film strip and can be done later.
 - Question 4 **accepted** as proposed: Loupe only, not Compare.
 - Question 5 **decided**: a new 160 px edge, not the 512 px Grid edge. It is small in memory and on disk. A folder not yet seen in Grid decodes each preview once, at low priority. The strip has its own loader, so it does not share the Grid's 256 MB cache budget.
 - Question 6 **accepted** as proposed: the strip follows the active photo. A wheel or trackpad scroll moves the strip only, and the next key press brings it back.
 - Question 7 **accepted** as proposed: it shows `visible` only.
 - **No overlay (user decision).** The strip is layout, not a layer: it sits in the `VStack` in `FolderView` under the mode `ZStack`, so the Loupe view's bounds shrink. The Loupe view must handle the resize (refit, keep the zoom center) without a flash of a stale frame. Grid and Compare do not show the strip, so their space does not change.
 - Risk to check first: the thumbnail loader uses `.userInitiated` priority. With a held arrow key the strip must not compete with the frame load. Give the strip's loader a lower priority from the start. If the perf gate still shows a loss, pause strip loads while keys repeat.
+- **Cell shape (design interview) decided**: square cells, 80 pt, 160 px edge. The thumbnail fits inside the cell (side bars for portrait frames, no crop). Every cell has the same width, so the index-range function in `Library` needs only a cell count. This replaces the 64 pt height in question 5.
+- **Load policy decided**: the strip loader runs at `.utility` and also pauses while keys repeat. It resumes about 100 ms after the last key press. This replaces the "pause only if the gate shows a loss" step in the risk note above.
+- **Placeholder decided**: a cell without a thumbnail is a neutral gray cell and still shows its badges, because decision state comes from the sidecar. No spinner (idle CPU stays zero).
+- **Free scroll decided**: a wheel or trackpad scroll is clamped to the ends of `visible`. The strip loads the cells that scroll into view. The next key press returns it to the active photo. There is no idle timer.
+- **Click and zoom decided**: a click on a cell uses the same path as an arrow key, so the zoom rule is the one Loupe already has for next and previous.
+- **Band surface decided**: the same neutral as the Loupe canvas, with a 1 px hairline on top that marks the end of the picture area.
+- **Badges decided**: the strip reuses the Grid badge view, scaled for the cell, along the bottom edge. One source for the look and the VoiceOver text. Check it with `make contrast` over the bright test frames (D-01).
+- **Source of the thumbnail (found on screen)**: a 160 px request would pick the camera's 160×120 EXIF thumbnail, and Sony pads it with black to 4:3. The strip scales down a preview of at least 512 px (`decodeGrid(longEdge:sourceAtLeast:)`) and keeps these in the disk cache under their own key (`variant`), so Grid's entries are unchanged. Cost not measured yet: the perf gate decides.
+- **Active cell (user decision, changes the ring in the scope)**: a Liquid Glass plate behind the cell (`NSGlassEffectView`, light tint, 3 pt outset), not a ring over the thumbnail. A black tint is invisible on the dark band, so the tint is white at 45%. The plate is under the collection view in the clip view, so it scrolls with the cells and moves with a cut.
 
 ### V-21 · Export developed JPEG and HEIC
 

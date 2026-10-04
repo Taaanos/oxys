@@ -31,6 +31,8 @@ public enum PerfInterval: String, CaseIterable, Sendable {
     case gridThumbnail = "grid-thumbnail"
     /// Opening a folder → every thumbnail on the first screen of Grid is drawn (M-12; 300 ms for 1,000 files).
     case gridFirstScreen = "grid-first-screen"
+    /// The film strip's want list changes → its first cell is drawn (V-20).
+    case filmstripRefresh = "filmstrip-refresh"
     /// A zoom command → the zoomed frame is on screen (M-14; one display frame, 16 ms at 60 Hz).
     case zoom = "zoom"
     /// Computing one frame's histogram (M-17), inside the frame load.
@@ -68,6 +70,7 @@ public enum PerfInterval: String, CaseIterable, Sendable {
         case .sidecarRead: "sidecar-read"
         case .gridThumbnail: "grid-thumbnail"
         case .gridFirstScreen: "grid-first-screen"
+        case .filmstripRefresh: "filmstrip-refresh"
         case .zoom: "zoom"
         case .histogram: "histogram"
         case .rawDevelop: "raw-develop"

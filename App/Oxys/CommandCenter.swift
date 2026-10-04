@@ -21,6 +21,8 @@ final class CommandCenter {
     var mode: ViewMode = .loupe
     /// Offered every bare or `⌥` key first (M-18): code, shift, option. True when the inspector used the key.
     @ObservationIgnored var inspectorKey: (UInt16, Bool, Bool) -> Bool = { _, _, _ in false }
+    /// Called for every key-down the window gets, held keys included (the film strip, V-20, waits for keys to stop).
+    @ObservationIgnored var keyActivity: () -> Void = {}
     /// True while an in-window overlay (the cheat sheet) owns the keyboard; it gets every key but `⌘` chords.
     @ObservationIgnored var modalActive: () -> Bool = { false }
     /// Offered each key-down of a modal overlay: key code and the character the key types.
@@ -146,6 +148,7 @@ final class CommandCenter {
         guard let window = event.window, window.isKeyWindow, !(window is NSPanel), window.sheetParent == nil,
               let input = KeyInput(event: event, layout: KeyLayout.asciiCapable())
         else { return false }
+        if event.type == .keyDown { keyActivity() }
         if modalActive(), !event.modifierFlags.contains(.command) {
             if event.type == .keyDown { modalKey(event.keyCode, input.character) }
             return true

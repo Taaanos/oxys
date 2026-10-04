@@ -170,6 +170,16 @@ public struct PreviewSource: Sendable {
         try decode(wanting: longEdge, maxPixelSize: longEdge)
     }
 
+    /// A thumbnail of exactly `longEdge` (or the source's own size when it is smaller) that is never taken from a
+    /// source smaller than `sourceAtLeast`. A camera's tiny EXIF thumbnail (160 px) is often padded with black to
+    /// 4:3, so a portrait frame comes out with bars; the film strip (V-20) therefore scales down a real preview.
+    public func decodeGrid(longEdge: Int, sourceAtLeast: Int) throws(PreviewError) -> DecodedPreview {
+        switch kind {
+        case .raw: try decode(wanting: sourceAtLeast, maxPixelSize: longEdge)
+        case .original: try decodeOriginal(gridEdge: nil, maxPixelSize: longEdge, deferred: false)
+        }
+    }
+
     private func decode(wanting gridEdge: Int?, maxPixelSize: Int?, deferred: Bool = false) throws(PreviewError) -> DecodedPreview {
         let token = Perf.begin(.decode)
         defer { Perf.end(token) }
