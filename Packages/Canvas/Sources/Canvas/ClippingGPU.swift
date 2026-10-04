@@ -15,12 +15,16 @@ final class ClippingMask: @unchecked Sendable {
     let thresholds: ClippingThresholds
     /// The counts, filled by the GPU. Read after the command buffer completed.
     let counts: any MTLBuffer
+    /// What the texture counts in ``OverlayMemory`` (P-06); shared with a mask that reuses the texture.
+    let allocation: OverlayMemory.Allocation
 
     var levels: Int { texture.mipmapLevelCount }
     var width: Int { texture.width }
     var height: Int { texture.height }
 
-    init(texture: any MTLTexture, levelViews: [any MTLTexture], source: any MTLTexture, thresholds: ClippingThresholds, counts: any MTLBuffer) {
+    init(texture: any MTLTexture, levelViews: [any MTLTexture], source: any MTLTexture, thresholds: ClippingThresholds, counts: any MTLBuffer,
+         allocation: OverlayMemory.Allocation? = nil) {
+        self.allocation = allocation ?? OverlayMemory.Allocation(texture)
         self.texture = texture
         self.levelViews = levelViews
         self.source = source
@@ -88,8 +92,10 @@ final class ClippingGPU: @unchecked Sendable {
         while edge > 1, levels < Self.maxLevels { edge >>= 1; levels += 1 }
         let texture: any MTLTexture
         let views: [any MTLTexture]
+        var shared: OverlayMemory.Allocation?
         if let previous, previous.width == width, previous.height == height, previous.levels == levels {
             (texture, views) = (previous.texture, previous.levelViews)
+            shared = previous.allocation
         } else {
             let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rg8Unorm, width: width, height: height, mipmapped: levels > 1)
             descriptor.mipmapLevelCount = levels
@@ -107,7 +113,7 @@ final class ClippingGPU: @unchecked Sendable {
         guard let counts = device.makeBuffer(length: 8, options: .storageModeShared), let blit = buffer.makeBlitCommandEncoder() else { return nil }
         blit.fill(buffer: counts, range: 0..<8, value: 0)
         blit.endEncoding()
-        let mask = ClippingMask(texture: texture, levelViews: views, source: source, thresholds: thresholds, counts: counts)
+        let mask = ClippingMask(texture: texture, levelViews: views, source: source, thresholds: thresholds, counts: counts, allocation: shared)
 
         guard let encoder = buffer.makeComputeCommandEncoder() else { return nil }
         encoder.label = "Clipping mask"

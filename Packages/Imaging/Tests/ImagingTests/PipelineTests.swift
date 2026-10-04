@@ -371,6 +371,19 @@ private func solidImage(_ width: Int, _ height: Int) -> CGImage {
     #expect(memory.used == 700)
 }
 
+@Test func overlayMasksCountAgainstTheBudgetAndTakeFromTheFrames() async throws {
+    let memory = MemoryBudget(total: 1_000)
+    let pipeline = FramePipeline<Int>(budget: 1_000, memory: memory) { key in LoadedFrame(frame: number(key), cost: 100) }
+    memory.setUsed(.overlays, 300)
+    #expect(memory.used == 300)
+    #expect(memory.share(of: .frames) == 700)
+    for n in 0..<10 { _ = try await pipeline.frame(for: key(n), prefetch: []) }
+    #expect(await pipeline.cachedBytes <= 700)
+    #expect(memory.used <= 1_000)
+    memory.setUsed(.overlays, 0)
+    #expect(memory.share(of: .frames) == 1_000)
+}
+
 @Test func aWarningKeepsTheFrameOnScreenAndTwoNeighborsAndCriticalOnlyTheFrame() async throws {
     let pipeline = FramePipeline<Int>(budget: 10_000) { key in LoadedFrame(frame: number(key), cost: 100) }
     let window = (1...6).map { key($0) }

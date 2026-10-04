@@ -45,10 +45,16 @@ public final class LoupeView: NSView {
     private var dragging = false
     /// Focus peaking (V-06); nil is off. Set with ``setPeaking(_:token:)``.
     public private(set) var peaking: PeakingStyle?
+    /// Kept while the overlay is off (P-06), so the next toggle runs no analysis and allocates nothing. Dropped when the
+    /// picture changes (``show(_:keyToFrame:sameZoom:zoomSizeFactor:keepView:isStandIn:)``) and under memory pressure
+    /// (``releaseIdleMasks()``). A new mode or new thresholds make the next analysis reuse the same texture.
     private var peakingMask: PeakingMask?
     /// Clipping overlays (V-07); nil is off. Set with ``setClipping(_:token:)``.
     public private(set) var clipping: ClippingStyle?
     private var clippingMask: ClippingMask?
+    /// The numbers of `clippingMask`, once its analysis has finished: they come back when the overlay is turned on
+    /// again with the mask kept.
+    private var clippingResult: (mask: ClippingMask, stats: ClippingStats)?
     /// Told, on the main thread, how much of the frame is clipped, or nil when there is nothing to report (overlay
     /// off, a stand-in, no picture). Called once per analysis, not per frame.
     public var onClippingStats: (@MainActor (ClippingStats?) -> Void)?
@@ -96,10 +102,16 @@ public final class LoupeView: NSView {
             let oldWidth = zoomSize(of: old).width, newWidth = image.displaySize.width * zoomSizeFactor
             zoom = .scale(ZoomGeometry.scale(s, keepingSizeFrom: oldWidth, to: newWidth))
         }
+        let changed = image?.texture !== self.image?.texture
         self.image = image
         self.isStandIn = isStandIn
         sizeFactor = zoomSizeFactor
-        if image == nil { peakingMask = nil; clippingMask = nil }
+        // A mask of the old picture is no use. One that an overlay still shows stays until the new analysis takes over
+        // its texture (a burst allocates nothing); one of an overlay that is off goes now.
+        if changed || image == nil {
+            if peaking == nil || image == nil { peakingMask = nil }
+            if clipping == nil || image == nil { clippingMask = nil; clippingResult = nil }
+        }
         if clipping != nil { onClippingStats?(nil) }
         if !stickyZoom && !(sameZoom && image != nil) { resetZoom() }
         render(deferAnalysis: true)
@@ -110,7 +122,6 @@ public final class LoupeView: NSView {
     public func setPeaking(_ style: PeakingStyle?, token: Perf.Token? = nil) {
         guard style != peaking else { if let token { Perf.end(token) }; return }
         peaking = style
-        if style == nil { peakingMask = nil }
         if image != nil, window != nil {
             if let token {
                 if let stale = pendingToken { Perf.end(stale) }
@@ -128,7 +139,12 @@ public final class LoupeView: NSView {
     public func setClipping(_ style: ClippingStyle?, token: Perf.Token? = nil) {
         guard style != clipping else { if let token { Perf.end(token) }; return }
         clipping = style
-        if style == nil || style?.marks.isEmpty == true { clippingMask = nil; onClippingStats?(nil) }
+        if style == nil || style?.marks.isEmpty == true {
+            onClippingStats?(nil)
+        } else if let mask = clippingMask, mask.thresholds == style?.thresholds, mask.source === image?.texture,
+                  let result = clippingResult, result.mask === mask, !isStandIn {
+            onClippingStats?(result.stats)  // the kept mask is current: no analysis follows, so say its numbers now
+        }
         if image != nil, window != nil {
             if let token {
                 if let stale = pendingToken { Perf.end(stale) }
@@ -138,6 +154,12 @@ public final class LoupeView: NSView {
         } else if let token {
             Perf.end(token)
         }
+    }
+
+    /// Drops the masks of overlays that are off (memory pressure, P-06). A mask that an overlay shows stays.
+    public func releaseIdleMasks() {
+        if peaking == nil { peakingMask = nil }
+        if clipping == nil { clippingMask = nil; clippingResult = nil }
     }
 
     /// The mask and parameters for this frame, encoding the analysis into `buffer` when the picture or thresholds changed.
@@ -156,7 +178,8 @@ public final class LoupeView: NSView {
                 let stats = made.stats()
                 DispatchQueue.main.async {
                     guard let self, self.clippingMask === made else { return }
-                    self.onClippingStats?(stats)
+                    self.clippingResult = (made, stats)
+                    if self.clipping != nil { self.onClippingStats?(stats) }
                 }
             }
         } else {

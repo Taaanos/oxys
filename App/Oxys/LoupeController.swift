@@ -395,6 +395,9 @@ final class LoupeController {
             try await FrameLoader.loadScreenSize(key, request: request, thumbnails: thumbnails)
         }) { key in try await FrameLoader.load(key, thumbnails: thumbnails) }
         startPressureSource()
+        // P-06: the overlay masks that canvases keep count against the same budget. The handler can run on any thread.
+        let memory = memory
+        OverlayMemory.setOnChange { memory.setUsed(.overlays, $0) }
         budgetObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -434,6 +437,8 @@ final class LoupeController {
         Task { await pipeline.setPressure(level) }
         guard level != .normal else { return }
         rawCache.trim(keeping: shown.map(FrameLoader.key(for:)))
+        // P-06: masks of overlays that are off are kept for the next toggle; pressure takes them back.
+        for view in [canvas].compactMap({ $0 }) + compareCanvases() { view.releaseIdleMasks() }
     }
 
     private func applyBudget() {

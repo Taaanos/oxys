@@ -207,3 +207,26 @@ private func overlayPixels(_ image: PreparedImage, width: Int, height: Int, mark
     let gray = picture(48, 48) { _, _ in (128, 128, 128) }
     #expect(try overlayPixels(try prepared(gray.image), width: 48, height: 48).allSatisfy { !$0.red && !$0.blue })
 }
+
+// MARK: kept masks count against the budget (P-06)
+
+@Test func aMaskCountsItsTextureOnceEvenWhenAnotherMaskReusesIt() throws {
+    let gpu = try #require(LoupeGPU.shared)
+    let clipping = try #require(gpu.clipping), peaking = try #require(gpu.peaking)
+    let image = try prepared(picture(64, 48) { _, _ in (128, 128, 128) }.image)
+    let buffer = try #require(gpu.queue.makeCommandBuffer())
+
+    let first = try #require(clipping.makeMask(for: image, thresholds: ClippingThresholds(), reusing: nil, in: buffer))
+    #expect(first.allocation.bytes == first.texture.allocatedSize && first.allocation.bytes > 0)
+    #expect(OverlayMemory.bytes >= first.allocation.bytes)
+    // New thresholds on the same picture: the texture is reused, so the bytes belong to one allocation.
+    let second = try #require(clipping.makeMask(for: image, thresholds: ClippingThresholds(highlight: 90), reusing: first, in: buffer))
+    #expect(second.texture === first.texture && second.allocation === first.allocation)
+
+    let edges = try #require(peaking.makeMask(for: image, mode: .edges, threshold: 0.9, reusing: nil, in: buffer))
+    let fine = try #require(peaking.makeMask(for: image, mode: .fineDetail, threshold: 0.9, reusing: edges, in: buffer))
+    #expect(fine.texture === edges.texture && fine.allocation === edges.allocation)
+    #expect(OverlayMemory.bytes >= first.allocation.bytes + edges.allocation.bytes)
+    buffer.commit()
+    buffer.waitUntilCompleted()
+}

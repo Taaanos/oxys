@@ -111,7 +111,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | P-03 | Screen-size frame first (cold next image) | P-02 | done (criteria 1 and 3 met; criterion 2: prefetched p95 is 62 ms, not under 50, unchanged by this story; see the story) |
 | P-04 | One memory budget | P-02 | done (develop-always and the 61 MP scrub meet the limit; the 24 MP scrub peak does not, accepted on 4 Oct 2026: see the story) |
 | P-05 | Keys within one display frame while frames load | P-01 | closed, won't fix (1:1 scale cached; cull and zoom p95 about 50 ms, not noticeable; gate rows now report only) |
-| P-06 | Overlay toggles without new allocations | P-01 | todo |
+| P-06 | Overlay toggles without new allocations | P-01 | done (masks kept; the step did not reproduce; the display-frame row stays open: see the story) |
 | P-07 | Capture times in under 3 s | P-01 | todo |
 | P-08 | Grid first pass without dropped frames | P-01 | todo |
 | P-09 | Zero idle CPU in Loupe | P-01 | done (criterion met in Grid, 0.006%; in Loupe 0.014% against 0.01%: the rest is AppKit's own wake-ups; see the story) |
@@ -2304,8 +2304,28 @@ The code changes the M-26 diagnosis in two places, found while planning this pha
 - Find the cause of the V-06 step (toggles 2.5 times slower after about 45). If the step stays after this change, record what the trace shows.
 
 **Acceptance criteria**
-- [ ] `peaking-still` and `clipping-still`: the p95 of toggles 50 to 100 is within 10% of toggles 1 to 45, and meets the P-01/Q1 statistic.
-- [ ] The memory of a kept mask counts against the budget.
+- [x] `peaking-still` and `clipping-still`: the p95 of toggles 50 to 100 is within 10% of toggles 1 to 45. Met in every run (ratio 0.94 to 1.10). The second half, the P-01/Q1 statistic, is **not shown**: see the result.
+- [x] The memory of a kept mask counts against the budget.
+
+**Result (4 Oct 2026, Apple M4, Bench build, `24mp-1000`)**
+
+- Built: the canvas keeps `peakingMask` and `clippingMask` when the overlay goes off. "Off" only skips the draw; "on" with a mask that fits the picture runs no analysis and makes no texture. One run of `clipping-still` (100 toggles) called `makeMask` once.
+- The masks go when the picture changes (`show` drops the mask of an overlay that is off at once; a mask that an overlay still shows stays, so the next analysis can reuse its texture in a burst), when the canvas goes (it frees them), and on a memory-pressure warning or critical (`LoupeView.releaseIdleMasks`, called from `LoupeController.memoryPressure`). **Changed from the scope:** a new peaking mode or new thresholds do not drop the mask. The next analysis reuses its texture, which allocates nothing and is cheaper than a drop.
+- The clipping numbers come back with the kept mask. The analysis reports them through its completion handler, so a toggle with no analysis would have shown no readout. The canvas keeps the last result with its mask and reports it again when H or S turns on.
+- Budget: `OverlayMemory` (Canvas) adds the texture size of each mask when it is made and takes it off when it is freed. A mask that reuses another mask's texture shares one `Allocation`, so the texture counts once. `LoupeController` sends the total to `MemoryBudget` as a third holder, `.overlays`. It only reports: it takes from the share of the frame cache and the RAW cache, and it has no shrink call, because the canvas drops it on pressure.
+- Measured with a temporary switch that brought the old drop-on-off behavior back (removed), GPU time of the frame that turns the overlay on, p50:
+
+| Overlay | Mask dropped (before) | Mask kept (after) |
+| --- | --- | --- |
+| Peaking | 8.7 ms | 1.9 ms |
+| Clipping | 13.6 ms | 2.1 ms |
+
+  Commit to presented: 11 and 14 ms before, 3 ms after. A frame with the overlay off needs 0.6 ms of GPU and 1 ms to present.
+- **The V-06 step (after about 45 toggles, 2.5 times slower) did not reproduce.** Five runs before and after the change (the two scenarios, 100 toggles each) show the p95 of toggles 50 to 100 within 0.94 to 1.10 of toggles 1 to 45. The old code allocated 100 masks in a run and showed no step either, so the allocation is not the cause. The step may have come from the busy Mac (`dasd`, Spotlight) at the time of V-06; no trace of it was kept, so the cause is not known.
+- **Not shown: the P-01/Q1 statistic (one display frame, 16.7 ms, at p95).** The toggle-to-next-display-tick numbers of this session are not stable. Two earlier runs gave 23 ms for "on" and 9 ms for "off", and in those runs a frame was also presented about 24 ms after its commit, with the overlay off as well. That is the unexplained wait of P-05 (closed, won't fix), not the mask. The later runs gave 0.7 ms for both, which cannot be a real latency. No `overlays` row in `scripts/perf-targets.tsv` covers F, H or S, so the gate does not change.
+- Added `scripts/toggle-step.py <log>`: p50 and p95 of toggles 1 to 45 and 50 to 100 and their ratio, for the two `-still` scenarios.
+- Checked: unit tests (`Canvas` 73, new: a mask counts its texture once, also when a second mask reuses it; `Imaging` 109, new: overlay bytes take from the frame share), `make test` all green, Release build with no warnings, arm64.
+- **Not checked:** the overlays in the live window with the keyboard (this session's screen capture is black); a Metal frame capture; real memory pressure (the drop is not run against the system source); Compare with kept masks in two panes.
 
 ### P-07 · Capture times in under 3 s
 

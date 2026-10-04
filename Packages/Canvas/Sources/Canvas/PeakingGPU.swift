@@ -16,12 +16,16 @@ final class PeakingMask: @unchecked Sendable {
     let mode: PeakingMode
     /// The stored threshold the counts above level 0 were made with.
     var pyramidThreshold: Float
+    /// What the texture counts in ``OverlayMemory`` (P-06); shared with a mask that reuses the texture.
+    let allocation: OverlayMemory.Allocation
 
     var width: Int { texture.width }
     var height: Int { texture.height }
     var levels: Int { texture.mipmapLevelCount }
 
-    init(texture: any MTLTexture, levelViews: [any MTLTexture], source: any MTLTexture, mode: PeakingMode, pyramidThreshold: Float) {
+    init(texture: any MTLTexture, levelViews: [any MTLTexture], source: any MTLTexture, mode: PeakingMode, pyramidThreshold: Float,
+         allocation: OverlayMemory.Allocation? = nil) {
+        self.allocation = allocation ?? OverlayMemory.Allocation(texture)
         self.texture = texture
         self.levelViews = levelViews
         self.source = source
@@ -91,7 +95,8 @@ final class PeakingGPU: @unchecked Sendable {
         let levels = Self.levelCount(width: width, height: height)
         let mask: PeakingMask
         if let previous, previous.width == width, previous.height == height, previous.levels == levels {
-            mask = PeakingMask(texture: previous.texture, levelViews: previous.levelViews, source: source, mode: mode, pyramidThreshold: threshold)
+            mask = PeakingMask(texture: previous.texture, levelViews: previous.levelViews, source: source, mode: mode, pyramidThreshold: threshold,
+                               allocation: previous.allocation)
         } else {
             let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm, width: width, height: height, mipmapped: levels > 1)
             descriptor.mipmapLevelCount = levels
