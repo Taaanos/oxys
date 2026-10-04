@@ -258,6 +258,29 @@ private func solidImage(_ width: Int, _ height: Int) -> CGImage {
     #expect(capped.thumbnail(path: "/p/2.arw", size: 2, modified: date, longEdge: 32) == nil)
 }
 
+@Test func diskCacheClearRemovesOnlyThumbnailsAndKeepsWorking() throws {
+    let dir = tempDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let decoyBeside = dir.appendingPathComponent("keep.jpg")
+    try Data([9]).write(to: decoyBeside)
+    let cache = DiskThumbnailCache(directory: dir.appendingPathComponent("t"))
+    let date = Date(timeIntervalSince1970: 1_000)
+    for n in 0..<3 {
+        cache.store(solidImage(32, 32), orientation: .up, path: "/p/\(n).arw", size: n, modified: date, longEdge: 32)
+    }
+    let before = cache.totalBytes
+    #expect(before > 0)
+    #expect(cache.clear() == before)
+    #expect(cache.totalBytes == 0)
+    #expect(cache.thumbnail(path: "/p/0.arw", size: 0, modified: date, longEdge: 32) == nil)
+    #expect(FileManager.default.fileExists(atPath: decoyBeside.path))
+    // It fills again, and clearing an absent folder is harmless.
+    cache.store(solidImage(32, 32), orientation: .up, path: "/p/0.arw", size: 0, modified: date, longEdge: 32)
+    #expect(cache.thumbnail(path: "/p/0.arw", size: 0, modified: date, longEdge: 32) != nil)
+    try FileManager.default.removeItem(at: cache.directory)
+    #expect(cache.clear() == 0)
+}
+
 @Test func diskCacheNeverWritesIntoThePhotoFolder() throws {
     let photos = tempDirectory(), caches = tempDirectory()
     defer { try? FileManager.default.removeItem(at: photos); try? FileManager.default.removeItem(at: caches) }

@@ -73,6 +73,8 @@ private struct MemoryPane: View {
     /// What the slider shows while Automatic is on, and what returns when Custom is chosen.
     @State private var manualMB = 2048
     @State private var manualRawCount = LoupeController.automaticRawCount
+    /// Bytes in the thumbnail cache; nil until the first measurement (V-23).
+    @State private var thumbnailBytes: Int?
 
     private static let step = 256
     private static let automaticMB = LoupeController.automaticBudget >> 20
@@ -171,6 +173,18 @@ private struct MemoryPane: View {
                 }
                 note("The frame cache size is the higher limit. If the frames do not fit in it, the oldest ones go first.")
             }
+            Section("Thumbnail cache") {
+                LabeledContent("On disk") {
+                    HStack {
+                        Text(thumbnailBytes.map { $0.formatted(.byteCount(style: .file)) } ?? "…")
+                            .monospacedDigit()
+                            .accessibilityLabel("Thumbnail cache size")
+                        Button("Clear Thumbnail Cache") { clearThumbnails() }
+                            .disabled(thumbnailBytes == 0)
+                    }
+                }
+                note("Small pictures kept so the grid opens fast, up to 2 GB. Clearing removes only these; they are made again as you browse. Your photos, decisions and recent folders stay.")
+            }
         }
         .formStyle(.grouped)
         .fixedSize(horizontal: false, vertical: true)
@@ -178,6 +192,26 @@ private struct MemoryPane: View {
         .onAppear {
             if budgetMB > 0 { manualMB = budgetMB }
             if rawCount > 0 { manualRawCount = rawCount }
+            refreshThumbnailBytes()
+        }
+    }
+
+    private func refreshThumbnailBytes() {
+        Task.detached {
+            let bytes = FrameLoader.sharedThumbnails.totalBytes
+            await MainActor.run { thumbnailBytes = bytes }
+        }
+    }
+
+    private func clearThumbnails() {
+        Task.detached {
+            FrameLoader.sharedThumbnails.clear()
+            let bytes = FrameLoader.sharedThumbnails.totalBytes
+            await MainActor.run {
+                thumbnailBytes = bytes
+                NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
+                                     userInfo: [.announcement: "Thumbnail cache cleared", .priority: NSAccessibilityPriorityLevel.high.rawValue])
+            }
         }
     }
 

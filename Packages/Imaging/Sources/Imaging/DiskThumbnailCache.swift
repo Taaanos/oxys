@@ -88,6 +88,25 @@ public final class DiskThumbnailCache: @unchecked Sendable {
         }
     }
 
+    /// Deletes every thumbnail (V-23). Only `.jpg` files directly in `directory` go; the folder itself and
+    /// anything beside it stay. Safe while loads run: a read of a removed file is a miss and the thumbnail is
+    /// built again. Returns the bytes freed.
+    @discardableResult
+    public func clear() -> Int {
+        let keys: [URLResourceKey] = [.fileSizeKey]
+        guard let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: keys)
+        else { return 0 }
+        var freed = 0
+        for url in files where url.pathExtension == "jpg" {
+            let size = (try? url.resourceValues(forKeys: Set(keys)).fileSize) ?? 0
+            if (try? FileManager.default.removeItem(at: url)) != nil { freed += size }
+        }
+        lock.lock()
+        writesSinceTrim = 0
+        lock.unlock()
+        return freed
+    }
+
     public var totalBytes: Int {
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
         return files.reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }

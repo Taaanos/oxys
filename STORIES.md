@@ -103,7 +103,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-20 | Film strip in Loupe | M-12, M-13, M-04 | todo |
 | V-21 | Export developed JPEG and HEIC | V-13, V-02 | built, needs a live check (the ⇧⌘E Format menu, folder guard and plate not clicked through; checked on six brands and 20 drone files with the bench tool) |
 | V-22 | Remove location and serial numbers on export | V-13, V-21 | todo (design open; from audit S-7) |
-| V-23 | Clear the thumbnail cache | M-22, P-02 | todo (from audit S-8) |
+| V-23 | Clear the thumbnail cache | M-22, P-02 | done (unit test and build pass; live click-through and VoiceOver check pending) |
 | V-18 | v1.0 gate | all v1.0, P-11 | todo |
 | **Phase 2b** | **Performance** (build before V-18) | | |
 | P-01 | Performance gate tool and a real shoot | M-26 | done (criterion 1 not met: the M-26 table does not reproduce; cold rows run warm, no `purge`) |
@@ -2027,7 +2027,12 @@ From security audit S-8. `DiskThumbnailCache` keeps up to 2 GB of small JPEGs in
 
 **Decisions and checks**
 
-*(none yet)*
+Open questions 1 to 3 took the proposals: no session state cleared, no age limit, no confirmation.
+- `DiskThumbnailCache.clear()` deletes only `.jpg` files directly in the cache folder and returns the bytes freed. A read of a removed file is a miss, so an open grid or loupe builds the thumbnail again; nothing is held open.
+- Settings → Memory has a "Thumbnail cache" section: size (measured off the main thread when the pane appears), the "Clear Thumbnail Cache" button (disabled at 0, a normal tab stop), and a VoiceOver announcement when done.
+- Unit test `diskCacheClearRemovesOnlyThumbnailsAndKeepsWorking`: size reads 0, a decoy `.jpg` beside the folder stays, the cache fills again, clearing a missing folder is harmless.
+- Not checked yet: clearing with a folder open in the live app, and VoiceOver reading.
+
 
 ### V-18 · v1.0 gate
 
