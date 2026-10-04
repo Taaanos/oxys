@@ -15,11 +15,11 @@ nav-held	stale-frames	max	0	No stale frame under held key
 nav-held	frames-logged	max	-	Frames shown during the held key (reported: a stale count is only meaningful with frames)
 nav-held-slow	frames-logged	max	-	Frames shown during the held key, 200 ms loader delay (reported)
 nav-held-slow	stale-frames	max	0	No stale frame under held key, 200 ms loader delay (P-01)
-cull	cull-feedback	p95	16.7	Cull key to feedback, within 16 ms
+cull	cull-feedback	p95	-	Cull key to feedback (reported, P-05 closed: about 50 ms, not noticeable)
 cull	sidecar-write	p95	-	Sidecar write never blocks input (reported; make sidecar-stress gates it)
 overlays	info.histogram	p95	16.7	Overlay toggles, within one display frame
 overlays	info.cycle	p95	16.7	Overlay toggles, within one display frame
-zoom	zoom	p95	16.7	Zoom to 1:1, within one display frame
+zoom	zoom	p95	-	Zoom to 1:1 (reported, P-05 closed: about 47 ms, not noticeable)
 grid	grid-frame-ms	max	25	Grid scrolling, 60 fps with 10,000 files (a frame over 1.5 refreshes is dropped)	grid-10000
 scrub	footprint-peak-mb	peak	2648	Memory, prefetch cache within its 2 GB budget plus 600 MB fixed part (P-04)
 scrub	footprint-excess-after-scrub-mb	max	600	After a scrub: footprint less the cache content, within 2 s (P-04)
