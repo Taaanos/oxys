@@ -42,6 +42,9 @@ First stable release. See the [release notes](notes/1.0.0.md).
 - A key pressed in the Settings window no longer rates or rejects the photo in the main window.
 - The keypad digits show as "Keypad 1" and so on, so they differ from the digit row in the menus and the `?` list.
 - A folder that disappears keeps the list and its decisions.
+- Reopening a folder starts with no filter, and only the sort comes back. A saved filter could hide every photo and look like an empty folder.
+- `\` hides the filter bar even when the search field has the keyboard. Only `⌘F` keeps it open.
+- `I` cycles the info strip through Off, filename and EXIF. The histogram belongs to `⇧I` alone, so `I` no longer does nothing when the histogram is on.
 
 ## [0.1.0] - 2026-10-03
 
