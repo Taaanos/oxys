@@ -117,7 +117,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | P-08 | Grid first pass without dropped frames | P-01 | done (criterion 1 met in 15 of 18 runs, accepted on 4 Oct 2026 with one frame of 38 to 45 ms in the other 3, where the capture times arrive; criterion 2 met; the RawCamera crash got a limit of 8 ImageIO opens at once, see the story) |
 | P-09 | Zero idle CPU in Loupe | P-01 | done (criterion met in Grid, 0.006%; in Loupe 0.014% against 0.01%: the rest is AppKit's own wake-ups; see the story) |
 | P-10 | RAW develop and extraction on real files | P-01 | done (develop p95 470 ms at 24 to 33 MP, 276 ms at 48.8 MP, 480 ms at 61 MP; extraction 0.34 to 0.48 of the copy warm, cold not measured by decision; 61 MP develop-always peak 3.1 GB accepted) |
-| P-11 | Performance gate | P-02 to P-10 | todo |
+| P-11 | Performance gate | P-02 to P-10 | done (closed by your decision on 4 Oct 2026; `make perf-gate` not re-run for it, no `docs/perf/v1.md`) |
 | **Phase 2c** | **Design (Liquid Glass)** (see G-14) | | |
 | D-01 | Contrast probe for labels on the photo | M-18, V-05, P-01 | done (measured in dark appearance only; the Reduce Transparency, Increase Contrast and light runs are open) |
 | D-02 | Glass for the badges on the photo | D-01 | in progress (built; contrast passes in the dark appearance; the perf gate and the accessibility-setting runs are open) |
@@ -2600,7 +2600,9 @@ The code changes the M-26 diagnosis in two places, found while planning this pha
 - `docs/perf/v1.md`: each target, the measured value, pass or fail, the Mac (G-3), and what was not measured (other Macs, slow media).
 
 **Acceptance criteria**
-- [ ] Every PRD performance target passes, or has a recorded decision from you.
+- [x] Every PRD performance target passes, or has a recorded decision from you.
+
+**Decided by you (4 Oct 2026):** the performance of the app is excellent, and this story is done. The misses that P-03, P-04, P-07, P-08, P-09 and P-10 accepted stay accepted (see each story). No new gate run was made and `docs/perf/v1.md` was not written. The cold rows of P-01 still ran warm (no `purge`), and other Macs and slow media stay unmeasured (G-3, G-11).
 
 ---
 
