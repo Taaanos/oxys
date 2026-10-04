@@ -321,7 +321,7 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
             decision: photo.decision,
             isCurrent: isCurrent, isSelected: false,
             label: isCurrent ? "\(photo.cellLabel), current photo" : photo.cellLabel, isPair: photo.isPair, showsRing: false,
-            badgePlate: false, badgesInImage: isCurrent)
+            badgePlate: false, badgesInImage: isCurrent, badgeLift: Self.badgeLift)
         cell.configure(content) { [weak self] url, _, _ in self?.folder.setCurrent(url) }
     }
 
@@ -340,8 +340,9 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
         return image ?? plain
     }
 
-    /// How far above the cell's bottom edge the badges sit on the lens: past the bending rim, so it does not cut them.
-    private static let lensBadgeLift: CGFloat = 16
+    /// How far above the cell's bottom edge the badges sit, on every cell: past the active cell's bending rim (12 pt), so
+    /// the rim does not cut them and they do not move when a cell becomes active.
+    private static let badgeLift: CGFloat = 12
 
     /// Draws the badges (and, for a reject, the veil that dims the picture) into the lens bitmap, in cell points.
     private static func drawDecision(_ decision: Decision, isPair: Bool, into ctx: CGContext, edge: Int) {
@@ -359,7 +360,7 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
             NSRect(x: 0, y: 0, width: cell, height: cell).fill()
         }
         GridBadgeView.drawBadges(decision: decision, isPair: isPair,
-                                 in: NSRect(x: 4, y: cell - GridBadgeView.height - Self.lensBadgeLift, width: cell - 8, height: GridBadgeView.height),
+                                 in: NSRect(x: 0, y: cell - GridBadgeView.height - Self.badgeLift, width: cell, height: GridBadgeView.height),
                                  plate: false)
     }
 
