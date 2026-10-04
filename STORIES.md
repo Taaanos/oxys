@@ -110,7 +110,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | P-02 | Decode once, into GPU memory | P-01 | done (criterion 2 met against the P-01 baseline, not against the stale 3.4 GB; see the story) |
 | P-03 | Screen-size frame first (cold next image) | P-02 | done (criteria 1 and 3 met; criterion 2: prefetched p95 is 62 ms, not under 50, unchanged by this story; see the story) |
 | P-04 | One memory budget | P-02 | done (develop-always and the 61 MP scrub meet the limit; the 24 MP scrub peak does not, accepted on 4 Oct 2026: see the story) |
-| P-05 | Keys within one display frame while frames load | P-01 | in progress (1:1 scale cached; cull and zoom still fail; cause is after `commit`, not on the main thread; no fix yet) |
+| P-05 | Keys within one display frame while frames load | P-01 | deferred by decision (1:1 scale cached; cull and zoom p95 still about 50 ms; cause is after `commit`; return to it only with a System Trace) |
 | P-06 | Overlay toggles without new allocations | P-01 | todo |
 | P-07 | Capture times in under 3 s | P-01 | todo |
 | P-08 | Grid first pass without dropped frames | P-01 | todo |
@@ -2290,6 +2290,7 @@ The code changes the M-26 diagnosis in two places, found while planning this pha
 - One experiment moved it: a `@MainActor` task that submitted a tiny blit every 4 ms during `zoom` gave p95 19.8 ms (from 48). Tried to turn that into a feature, all with no gain: the same blit every 4 ms from a background thread (zoom 48 ms, cull 49 ms), the blit sent from the main thread by a helper thread (zoom 28 ms), a do-nothing display link at 120 Hz while commands run (zoom 38 ms), the same link plus a blit per tick (zoom 47 ms, cull 41 ms). None is kept. Single runs differ by 10 ms or more, so only the 19.8 ms result may be real.
 - Open: what the 4 ms main-thread timer did that the others did not. Next step is a System Trace of `zoom` with the main thread, GPU and display tracks (Instruments), looking at what the app and WindowServer do between `commit` and the present. Do not build the two-queue split until the trace shows a wait behind other work.
 - Not done: criterion 1 (cull p95 and zoom p95 still fail on `24mp-1000`); `real-drone-840` not run in this pass.
+- **Decision (owner): deferred.** The gain is small (a key after a pause shows about 30 ms late) and no cause is known, so the return is not worth a System Trace now. The gate rows stay FAIL and honest; V-18 must list them as known misses.
 
 ### P-06 · Overlay toggles without new allocations
 
