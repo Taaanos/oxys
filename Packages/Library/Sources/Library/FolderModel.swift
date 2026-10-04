@@ -345,7 +345,7 @@ public final class FolderModel {
         defer { if mine == generation { isReadingSidecars = false } }
         let token = Perf.begin(.sidecarRead)
         defer { Perf.end(token) }
-        let targets = photos.map { (url: $0.url, embedded: $0.format.hasEmbeddedXMP) }
+        let targets = photos.map { (url: $0.url, format: $0.format) }
         let naming = sidecarNaming
         let chunkSize = 64
         let chunks = stride(from: 0, to: targets.count, by: chunkSize).map { Array(targets[$0..<min($0 + chunkSize, targets.count)]) }
@@ -361,7 +361,12 @@ public final class FolderModel {
                 let chunk = chunks[next]
                 next += 1
                 group.addTask {
-                    chunk.map { ($0.url, SidecarReader.read(photo: $0.url, embeddedFallback: $0.embedded, index: index, naming: naming)) }
+                    var results: [(URL, SidecarReadResult)] = []
+                    results.reserveCapacity(chunk.count)
+                    for target in chunk {
+                        results.append((target.url, await GatedRead.sidecar(of: target.url, format: target.format, index: index, naming: naming)))
+                    }
+                    return results
                 }
             }
             for _ in 0..<min(4, chunks.count) { addNext() }
@@ -472,11 +477,15 @@ public final class FolderModel {
     private func reloadSidecars(of urls: [URL], generation mine: Int) {
         guard let folder else { return }
         let naming = sidecarNaming
-        let targets = photos.filter { urls.contains($0.url) }.map { (url: $0.url, embedded: $0.format.hasEmbeddedXMP) }
+        let targets = photos.filter { urls.contains($0.url) }.map { (url: $0.url, format: $0.format) }
         Task { [weak self] in
             let results = await Task.detached { () -> [(URL, SidecarReadResult)] in
                 let index = SidecarIndex(folder: folder)
-                return targets.map { ($0.url, SidecarReader.read(photo: $0.url, embeddedFallback: $0.embedded, index: index, naming: naming)) }
+                var results: [(URL, SidecarReadResult)] = []
+                for target in targets {
+                    results.append((target.url, await GatedRead.sidecar(of: target.url, format: target.format, index: index, naming: naming)))
+                }
+                return results
             }.value
             guard let self, mine == generation else { return }
             applyOutsideChanges(results)

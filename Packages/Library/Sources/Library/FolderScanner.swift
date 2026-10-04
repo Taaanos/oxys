@@ -59,17 +59,17 @@ public enum FolderScanner {
     public static func captureTimes(for photos: [Photo], width: Int = 8) async -> [Date?] {
         let token = Perf.begin(.captureTimes)
         defer { Perf.end(token) }
-        let urls = photos.map(\.url)
+        let files = photos.map { (url: $0.url, format: $0.format) }
         return await withTaskGroup(of: (Int, Date?).self) { group in
-            var times = [Date?](repeating: nil, count: urls.count)
+            var times = [Date?](repeating: nil, count: files.count)
             var next = 0
             func addNext() {
-                guard next < urls.count else { return }
-                let (index, url) = (next, urls[next])
+                guard next < files.count else { return }
+                let (index, file) = (next, files[next])
                 next += 1
-                group.addTask { (index, CaptureTime.read(from: url)) }
+                group.addTask { (index, await GatedRead.captureTime(of: file.url, format: file.format)) }
             }
-            for _ in 0..<min(width, urls.count) { addNext() }
+            for _ in 0..<min(width, files.count) { addNext() }
             while let (index, time) = await group.next() {
                 times[index] = time
                 addNext()

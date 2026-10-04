@@ -113,7 +113,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | P-05 | Keys within one display frame while frames load | P-01 | closed, won't fix (1:1 scale cached; cull and zoom p95 about 50 ms, not noticeable; gate rows now report only) |
 | P-06 | Overlay toggles without new allocations | P-01 | done (masks kept; the step did not reproduce; the display-frame row stays open: see the story) |
 | P-07 | Capture times in under 3 s | P-01 | closed, won't fix (accepted on 4 Oct 2026: 3.7 s against 3 s on 5,000 files is not noticeable; the re-open cache is not built) |
-| P-08 | Grid first pass without dropped frames | P-01 | done (criterion 1 met in 15 of 18 runs, accepted on 4 Oct 2026 with one frame of 38 to 45 ms in the other 3, where the capture times arrive; criterion 2 met; the RawCamera crash stays open, see the story) |
+| P-08 | Grid first pass without dropped frames | P-01 | done (criterion 1 met in 15 of 18 runs, accepted on 4 Oct 2026 with one frame of 38 to 45 ms in the other 3, where the capture times arrive; criterion 2 met; the RawCamera crash got a limit of 8 ImageIO opens at once, see the story) |
 | P-09 | Zero idle CPU in Loupe | P-01 | done (criterion met in Grid, 0.006%; in Loupe 0.014% against 0.01%: the rest is AppKit's own wake-ups; see the story) |
 | P-10 | RAW develop and extraction on real files | P-01 | todo |
 | P-11 | Performance gate | P-02 to P-10 | todo |
@@ -2419,7 +2419,21 @@ The code changes the M-26 diagnosis in two places, found while planning this pha
   - Second pass: 16.7 ms at every tick in all 18 runs (before: 33.3 ms in 2 of 3 runs).
   - `real-drone-840` (3 runs): every tick of both passes 16.7 ms.
 - **Criterion 1 is not met strictly, accepted by you on 4 Oct 2026**: 3 of 18 runs have a frame of 38 to 45 ms. Criterion 2 is met. What is left is the one frame where the capture times arrive in a folder whose file names are not in capture order (the 10,000 clones are not; a real shoot is, and then the list is the same and nothing happens). To go lower, split that turn over two frames or make SwiftUI do less when `photos` changes.
-- **Not part of this story, open:** the crash report you pasted (4 Oct 2026, 17:24) is a segmentation fault inside Apple's RawCamera (`_value_entry_release`) on a thread that reads a capture time. It matches the one bench run that stopped at frame 165. Ten threads were inside RawCamera at once: `captureTimes` (8 wide) and the embedded-XMP fallback of `readSidecars` (4 wide). Both have run together since M-01 and M-07, and nothing of P-08 is in the stack. 1 crash in about 80 runs of this build and none in 14 + 30 stress runs after it. Option: limit the ImageIO opens of RAW and DNG that run together. Decided on 4 Oct 2026: no own parser for capture times. It would cover only the containers we know, every new format would need another case, and it gains about 3 s on 5,000 files; it would also not remove the race, because the sidecar fallback and the EXIF panel still use ImageIO.
+- **Follow-up to P-08, the RawCamera crash (4 Oct 2026): a limit is built.** The crash report you pasted (17:24) is a segmentation fault inside Apple's RawCamera (`_value_entry_release`) on a thread that reads a capture time. It matches the one bench run that stopped at frame 165. Ten threads were inside RawCamera at once: `captureTimes` (8 wide) and the embedded-XMP fallback of `readSidecars` (4 wide). Both have run together since M-01 and M-07, and nothing of P-08 is in the stack. It crashed 1 time in about 80 runs of this build, and 0 times in 14 + 30 stress runs after it. A sidecar is written atomically (G-9), so a crash cannot damage one.
+  - **Decided: no own parser for capture times.** It would cover only the containers we know, every new format would need another case, and it gains about 3 s on 5,000 files. It would not remove the race either, because the sidecar fallback and the EXIF panel still use ImageIO.
+  - **Built: `ImageIOGate`, one limit of 8 on the ImageIO opens of RAW, DNG and TIFF files.** The capture-time pass and the sidecar fallback share it (before: 8 + 4 = 12 at once). JPEG and HEIC do not go through RawCamera and skip it. A task that waits is suspended, not blocked, so it holds no thread of the pool. It lives in `Library`, where the two widths were set, so `Metadata` and `Sidecar` stay free of it. Unit tests: the limit is never passed (1, 3, 8), values come back, a file that needs no slot does not wait, a waiter takes a released slot.
+  - **Measured** (`open` on `scan-5000`, 5,000 files of ARW, CR2, CR3, DNG, RAF and 1,667 TIFF; the signpost interval of each pass):
+
+    | Limit | `capture-times` | `sidecar-read` | Both passes done |
+    |---|---|---|---|
+    | none (12 at once), 3 runs | 3.58 to 3.62 s | 3.27 to 3.31 s | 3.6 s |
+    | 12 | 3.67 to 3.93 s | 3.36 to 3.65 s | 3.7 to 3.9 s |
+    | 8, 12 runs | 3.51 to 3.60 s | 3.70 to 3.84 s | 3.7 s (+4%) |
+    | 6 | 3.84 to 3.93 s | 4.03 to 4.12 s | 4.0 s (+12%) |
+    | 4 | 4.26 to 4.29 s | 4.47 to 4.49 s | 4.5 s (+24%) |
+
+    We took 8: the capture times end when they did, the stars from the embedded fallback arrive about 0.4 s later, and the first image is not affected (225 to 388 ms before and after). 6 and 4 are slower than a photographer would want for a gain we cannot see.
+  - **Not proven.** The limit makes the overlap smaller (12 to 8). It cannot remove Apple's race, and one crash in 80 runs is too rare to show a change: 12 runs of the final build ended with no crash report. If the crash comes back, the next step is a lower limit (4 costs 24%). Not behind the gate: the EXIF panel (one file at a time, started by the photographer) and the capture time of an RAF in the export path.
 
 ### P-09 · Zero idle CPU in Loupe
 
