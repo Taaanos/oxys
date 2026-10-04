@@ -61,8 +61,9 @@ Oxys can save your photos as JPEG or HEIC files. You can share them without a RA
 1. Select the photos, or leave nothing selected to use the active photo.
 2. Press `⇧⌘E`. Choose a folder. Make a new one if you need to. Do not choose a folder that holds the photos: Oxys refuses it, because it writes only sidecars into those folders.
 3. Choose the format in the `Format` menu below the folder list. Oxys remembers your choice.
-4. Press `Export`. Oxys works in the background. A box at the bottom left shows progress. You can keep working. Press `Cancel` or `⌘.` to stop. The file in progress is finished, the next one is not started, and no partial file stays.
-5. When it ends, the box shows a summary. It lists the photos that have no embedded JPEG, the RAW files that Oxys could not develop, the files that are not RAW (JPEG and HEIC are skipped), the files that failed, and the files that got a new name. Press `Show in Finder` to see the files. Press `Close` or `⌘.` to close the box.
+4. Optional: turn on `Remove location and serial numbers` (see below). It is off the first time, and Oxys remembers your choice.
+5. Press `Export`. Oxys works in the background. A box at the bottom left shows progress. You can keep working. Press `Cancel` or `⌘.` to stop. The file in progress is finished, the next one is not started, and no partial file stays.
+6. When it ends, the box shows a summary. It lists the photos that have no embedded JPEG, the RAW files that Oxys could not develop, the files that are not RAW (JPEG and HEIC are skipped), the files that failed, and the files that got a new name. Press `Show in Finder` to see the files. Press `Close` or `⌘.` to close the box.
 
 What you get, for all three formats:
 
@@ -86,8 +87,24 @@ About a developed file:
 
 - Oxys uses the decoder of macOS with its default settings: the white balance of the camera, the default tone, and the normal sharpening, noise reduction and lens correction. Oxys makes no other changes. This is not the neutral picture that `R` shows in the viewer.
 - The work takes about half a second for a 48 MP photo on an Apple silicon Mac. A big job uses a lot of memory and processor time.
+- The panel's caption says what each format keeps. All three keep the GPS position unless you turn on the switch above.
 - GPS in a HEIC can move by about 10 cm, because the format stores it as degrees, minutes and seconds.
 - To change the quality, quit Oxys and run `defaults write com.thanosam.Oxys exportJPEGQuality -float 0.9` (or `exportHEICQuality`). The value is between 0.05 and 1. The defaults are 0.92 for JPEG and 0.8 for HEIC.
+
+### Remove location and serial numbers
+
+By default an export is a faithful copy: it keeps the GPS position of the photo. If you share the files on the web, the position can show where you were. Turn on `Remove location and serial numbers` in the export panel to take it out. The switch is off until you turn it on. It works in the same way for all three formats.
+
+The switch removes:
+
+- **EXIF:** the whole GPS block, the camera owner name, the camera and lens serial numbers and the image unique ID.
+- **Maker note:** all of it, because it holds serial numbers in a form that is different for each brand. The camera's own data in the maker note, such as focus data, is lost too.
+- **XMP:** every GPS value, the owner name and the serial numbers, the drone maker's block of a drone photo (it holds position, altitude and the drone's serial number), and the city, state and country fields.
+- **IPTC:** the city, state, country and place fields, and the creator's contact details.
+
+The switch keeps the camera and lens model, the exposure, the capture time, and the artist and copyright text (they are the credit you chose to publish). It keeps your rating and label in the XMP of a developed file. For the embedded JPEG, it removes the JPEG's own XMP too, so the file has no rating and label. This also holds when you choose the exact embedded bytes (`extractExactBytes`): the image data does not change, but the EXIF, XMP and IPTC of the preview are cleaned.
+
+If Oxys cannot read an XMP packet, it leaves that XMP out and lists the file in the summary. Oxys never copies an XMP that it could not clean. The sidecar next to your RAW is not changed, because it is not an export. The capture time and the file dates still show when the photo was taken. The picture itself can also show a place, for example a street sign.
 
 ## Reload the folder
 

@@ -10,9 +10,11 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
     private let formats: [ExportFormat]
     private let menu = NSPopUpButton(frame: .zero, pullsDown: false)
     private let caption = NSTextField(wrappingLabelWithString: "")
+    /// V-22: off unless the user turned it on (and then it stays on, the next time).
+    private let removePrivate = NSButton(checkboxWithTitle: "Remove location and serial numbers", target: nil, action: nil)
 
-    /// `remembered` is the raw value of the format used last time.
-    init(sources: [URL], remembered: String?) {
+    /// `remembered` is the raw value of the format used last time; `rememberedRemovePrivate` the switch's last state.
+    init(sources: [URL], remembered: String?, rememberedRemovePrivate: Bool = false) {
         self.sources = sources
         // A format the system cannot write is not offered.
         formats = ExportFormat.allCases.filter { format in
@@ -24,6 +26,8 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
         menu.setAccessibilityLabel("Export format")
         menu.target = self
         menu.action = #selector(formatChanged)
+        removePrivate.state = rememberedRemovePrivate ? .on : .off
+        removePrivate.setAccessibilityHelp(Self.removePrivateHelp)
         caption.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         caption.textColor = .secondaryLabelColor
         caption.preferredMaxLayoutWidth = Self.captionWidth
@@ -46,13 +50,16 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
     static func detail(_ format: ExportFormat) -> String {
         switch format {
         case .embeddedJPEG:
-            "The camera's own JPEG from inside the RAW, unchanged. The fastest choice. Keeps EXIF, rating, file dates and tags."
+            "The camera's own JPEG from inside the RAW, unchanged. The fastest choice. Keeps EXIF, GPS location, rating, file dates and tags."
         case .developedJPEG:
-            "Full size, developed by macOS. sRGB, 8-bit: opens the same everywhere. Keeps EXIF, GPS, rating, file dates and tags."
+            "Full size, developed by macOS. sRGB, 8-bit: opens the same everywhere. Keeps EXIF, GPS location, rating, file dates and tags."
         case .developedHEIC:
-            "Full size, developed by macOS. Display P3, 10-bit: more colors, smoother gradients. Keeps EXIF, GPS, rating, file dates and tags; no maker note."
+            "Full size, developed by macOS. Display P3, 10-bit: more colors, smoother gradients. Keeps EXIF, GPS location, rating, file dates and tags; no maker note."
         }
     }
+
+    /// What the switch takes out, for the VoiceOver help and the summary.
+    static let removePrivateHelp = "Takes out the GPS position, the camera owner name, the camera and lens serial numbers and the maker note, and the place and contact fields of IPTC and XMP. The rating and label stay for a developed file, and not for an unchanged embedded JPEG."
 
     @objc private func formatChanged() {
         let format = formats[max(0, menu.indexOfSelectedItem)]
@@ -61,7 +68,7 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
     }
 
     /// Shows the panel. Nil when the user cancels.
-    func run(lastFolder: String?) -> (URL, ExportFormat)? {
+    func run(lastFolder: String?) -> (URL, ExportFormat, removePrivate: Bool)? {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -79,7 +86,8 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
         label.setAccessibilityElement(false)
         menu.translatesAutoresizingMaskIntoConstraints = false
         menu.widthAnchor.constraint(equalToConstant: 170).isActive = true   // does not change with the item
-        let grid = NSGridView(views: [[label, menu], [NSGridCell.emptyContentView, caption]])
+        removePrivate.translatesAutoresizingMaskIntoConstraints = false
+        let grid = NSGridView(views: [[label, menu], [NSGridCell.emptyContentView, caption], [NSGridCell.emptyContentView, removePrivate]])
         grid.columnSpacing = 8
         grid.rowSpacing = 4
         grid.column(at: 0).xPlacement = .trailing
@@ -108,7 +116,7 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
         panel.accessoryView = container
 
         guard panel.runModal() == .OK, let destination = panel.url else { return nil }
-        return (destination, formats[max(0, menu.indexOfSelectedItem)])
+        return (destination, formats[max(0, menu.indexOfSelectedItem)], removePrivate.state == .on)
     }
 
     // MARK: NSOpenSavePanelDelegate

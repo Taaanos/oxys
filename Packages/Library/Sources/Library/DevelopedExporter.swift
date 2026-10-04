@@ -13,11 +13,14 @@ import Metadata
 /// - **HEIC**: ImageIO writes the Exif, GPS and IPTC. It cannot write a maker note, so a HEIC has none.
 /// - **XMP**: the Oxys sidecar's packet (rating and label), or a DNG's own, without its develop settings.
 /// - **File**: dates, permissions and extended attributes, as in V-13.
+///
+/// With `removePrivate` (V-22) the file holds no GPS value, no owner name, no serial number and no maker note, in the
+/// Exif, the XMP and the IPTC.
 public enum DevelopedExporter {
     /// Develops and writes one file. Never overwrites: a taken name gets `-1`, `-2`... The file appears whole or not at
     /// all. `isCancelled` is checked after the render, the slow step; a render that has started cannot be stopped.
     public static func export(_ source: URL, into folder: URL, as format: DevelopedFormat, quality: Double? = nil,
-                              sidecar: URL? = nil, renderer: DevelopedRenderer,
+                              sidecar: URL? = nil, removePrivate: Bool = false, renderer: DevelopedRenderer,
                               isCancelled: () -> Bool = { false }) throws -> ExportedFile {
         if let known = PhotoFormat(pathExtension: source.pathExtension), !known.isRaw { throw ExportFailure.notRaw }
         let data = try Data(contentsOf: source, options: .alwaysMapped)
@@ -39,10 +42,12 @@ public enum DevelopedExporter {
         defer { Perf.end(encodeToken) }
         let sourceProperties = CGImageSourceCreateWithURL(source as CFURL, nil)
             .flatMap { CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [CFString: Any] } ?? [:]
-        let properties = ExportMetadata.properties(from: sourceProperties, width: pixels.width, height: pixels.height)
-        let transplant = ExifTransplant.segment(fromRAW: data, previewWidth: pixels.width, previewHeight: pixels.height, orientation: 1)
+        let properties = ExportMetadata.properties(from: sourceProperties, width: pixels.width, height: pixels.height,
+                                                     removePrivate: removePrivate)
+        let transplant = ExifTransplant.segment(fromRAW: data, previewWidth: pixels.width, previewHeight: pixels.height,
+                                                orientation: 1, removePrivate: removePrivate)
         let packet = sidecar.flatMap { try? Data(contentsOf: $0) } ?? transplant?.embeddedXMP
-        let xmp = packet.flatMap(ExportMetadata.developedXMP)
+        let xmp = packet.flatMap { ExportMetadata.developedXMP(from: $0, removePrivate: removePrivate) }
         let quality = quality ?? format.defaultQuality
 
         var bytes: Data
@@ -78,14 +83,14 @@ public enum DevelopedExporter {
     /// Runs the job and returns when it is done (see ``ExportRunner``). One file at a time by default: a develop of a
     /// 61 MP RAW holds about half a gigabyte of pixels, and the decoder already uses every core.
     public static func run(_ sources: [URL], into folder: URL, as format: DevelopedFormat, quality: Double? = nil,
-                           sidecars: [URL: URL] = [:], parallelism: Int = 1,
+                           sidecars: [URL: URL] = [:], removePrivate: Bool = false, parallelism: Int = 1,
                            progress: @Sendable (Int) -> Void = { _ in }, isCancelled: @Sendable () -> Bool = { false }) -> ExportSummary {
         let renderer = DevelopedRenderer()
-        return ExportRunner.run(sources, into: folder, parallelism: parallelism, progress: progress, isCancelled: isCancelled) { source in
+        return ExportRunner.run(sources, into: folder, parallelism: parallelism, removedPrivate: removePrivate, progress: progress, isCancelled: isCancelled) { source in
             // Core Image and ImageIO hand back autoreleased objects, and a worker's loop never returns to a run loop
             // to drain them: without a pool per file the pixels of every file stay in memory until the job ends.
             try autoreleasepool {
-                try export(source, into: folder, as: format, quality: quality, sidecar: sidecars[source], renderer: renderer, isCancelled: isCancelled)
+                try export(source, into: folder, as: format, quality: quality, sidecar: sidecars[source], removePrivate: removePrivate, renderer: renderer, isCancelled: isCancelled)
             }
         }
     }

@@ -189,3 +189,63 @@ private func scratch() throws -> URL {
     #expect(summary.renamed.count == 10 && summary.renamed.allSatisfy { $0.name.hasSuffix(".NEF") && $0.detail.hasSuffix("-1.jpg") })
     #expect(try FileManager.default.contentsOfDirectory(atPath: out.path).count == sources.count)
 }
+
+// MARK: V-22
+
+@Test func theSwitchRemovesTheSidecarsLocationButKeepsRatingAndLabel() throws {
+    let dir = try scratch(); defer { try? FileManager.default.removeItem(at: dir) }
+    let source = dir.appendingPathComponent("A.ARW"), sidecar = dir.appendingPathComponent("A.xmp")
+    try fakeRaw(orientation: 1, preview: jpeg(width: 160, height: 120)).write(to: source)
+    let packet = "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"><rdf:Description xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\" xmlns:exif=\"http://ns.adobe.com/exif/1.0/\" xmlns:aux=\"http://ns.adobe.com/exif/1.0/aux/\" xmp:Rating=\"4\" xmp:Label=\"Green\" exif:GPSLatitude=\"47,49.3N\" aux:SerialNumber=\"BODY999\"/></rdf:RDF></x:xmpmeta>"
+    try Data(packet.utf8).write(to: sidecar)
+    let out = try scratch(); defer { try? FileManager.default.removeItem(at: out) }
+
+    let result = try EmbeddedJPEGExtractor.extract(source, into: out, sidecar: sidecar, removePrivate: true)
+    #expect(result.xmpAdded && !result.xmpSkipped)
+    let data = try Data(contentsOf: result.output)
+    let segment = try #require(JPEGSegments.list(data)?.first { $0.isXMP })
+    let text = String(decoding: data[segment.range], as: UTF8.self)
+    #expect(text.contains("Rating") && text.contains("Green"))
+    #expect(!text.contains("47,49") && !text.contains("BODY999") && !text.contains("GPSLatitude"))
+}
+
+@Test func anUnreadableSidecarIsLeftOutWhenTheSwitchIsOn() throws {
+    let dir = try scratch(); defer { try? FileManager.default.removeItem(at: dir) }
+    let source = dir.appendingPathComponent("A.ARW"), sidecar = dir.appendingPathComponent("A.xmp")
+    try fakeRaw(orientation: 1, preview: jpeg(width: 160, height: 120)).write(to: source)
+    try Data("this is not xmp, 47.8N".utf8).write(to: sidecar)
+    let out = try scratch(); defer { try? FileManager.default.removeItem(at: out) }
+
+    let result = try EmbeddedJPEGExtractor.extract(source, into: out, sidecar: sidecar, removePrivate: true)
+    #expect(result.xmpSkipped && !result.xmpAdded)
+    #expect(try #require(JPEGSegments.list(Data(contentsOf: result.output))).allSatisfy { !$0.isXMP })
+}
+
+@Test func exactBytesWithTheSwitchKeepsTheImageButDropsThePreviewsOwnXMPAndIPTC() throws {
+    let dir = try scratch(); defer { try? FileManager.default.removeItem(at: dir) }
+    let plain = jpeg(width: 160, height: 120)
+    let xmp = try #require(JPEGSegments.xmpSegment(Data("<x:xmpmeta>Munich</x:xmpmeta>".utf8)))
+    let iptc = Data([0xFF, 0xED, 0, 11]) + Data("Photoshop".utf8)
+    let preview = plain.prefix(2) + xmp + iptc + plain.dropFirst(2)
+    let source = dir.appendingPathComponent("A.ARW")
+    try fakeRaw(orientation: 1, preview: Data(preview)).write(to: source)
+    let out = try scratch(); defer { try? FileManager.default.removeItem(at: out) }
+
+    let kept = try EmbeddedJPEGExtractor.extract(source, into: out, exactBytes: true)
+    #expect(try Data(contentsOf: kept.output) == Data(preview))     // as before: unchanged
+    let result = try EmbeddedJPEGExtractor.extract(source, into: out, exactBytes: true, removePrivate: true)
+    let data = try Data(contentsOf: result.output)
+    #expect(data.range(of: Data("Munich".utf8)) == nil)
+    #expect(try #require(JPEGSegments.list(data)).allSatisfy { !$0.isXMP && $0.marker != 0xED })
+    #expect(data.suffix(14) == plain.suffix(14))                     // the scan data is the same
+}
+
+@Test func theRunnerRemembersThatThePrivateFieldsWereRemoved() throws {
+    let dir = try scratch(); defer { try? FileManager.default.removeItem(at: dir) }
+    let source = dir.appendingPathComponent("A.ARW")
+    try fakeRaw(orientation: 1, preview: jpeg(width: 160, height: 120)).write(to: source)
+    let out = try scratch(); defer { try? FileManager.default.removeItem(at: out) }
+    #expect(EmbeddedJPEGExtractor.run([source], into: out, removePrivate: true).removedPrivate)
+    #expect(!EmbeddedJPEGExtractor.run([source], into: out).removedPrivate)
+}
+

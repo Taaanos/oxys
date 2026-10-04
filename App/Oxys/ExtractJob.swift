@@ -33,7 +33,7 @@ final class ExtractJob {
 
     /// Starts the job on a background thread. Does nothing while another job runs. `finished` gets the spoken summary.
     func start(_ sources: [URL], into folder: URL, format: ExportFormat, exactBytes: Bool, quality: Double?, sidecars: [URL: URL],
-               finished: @escaping @MainActor @Sendable (String) -> Void) {
+               removePrivate: Bool = false, finished: @escaping @MainActor @Sendable (String) -> Void) {
         guard !isRunning, !sources.isEmpty else { return }
         cancelFlag.set(false)
         self.format = format
@@ -54,11 +54,11 @@ final class ExtractJob {
             let cancelled: @Sendable () -> Bool = { flag.isSet }
             let summary: ExportSummary
             if let developed = format.developedFormat {
-                summary = DevelopedExporter.run(sources, into: folder, as: developed, quality: quality, sidecars: sidecars,
+                summary = DevelopedExporter.run(sources, into: folder, as: developed, quality: quality, sidecars: sidecars, removePrivate: removePrivate,
                                                 progress: progress, isCancelled: cancelled)
             } else {
                 summary = EmbeddedJPEGExtractor.run(sources, into: folder, exactBytes: exactBytes, sidecars: sidecars,
-                                                    progress: progress, isCancelled: cancelled)
+                                                    removePrivate: removePrivate, progress: progress, isCancelled: cancelled)
             }
             await MainActor.run {
                 self?.state = .finished(summary)
@@ -183,11 +183,14 @@ private struct SummaryView: View {
     /// What the written files carry, in one paragraph.
     private var note: String {
         let format = job.format
-        let what = ["EXIF"] + (format.isDeveloped ? ["GPS"] : []) + (summary.xmpAdded > 0 ? ["XMP (rating and label)"] : [])
+        let what = summary.removedPrivate
+            ? ["EXIF"] + (summary.xmpAdded > 0 ? ["XMP (rating and label)"] : [])
+            : ["EXIF"] + (format.isDeveloped ? ["GPS"] : []) + (summary.xmpAdded > 0 ? ["XMP (rating and label)"] : [])
         let who = summary.exifAdded == summary.written
             ? (summary.written == 1 ? "The file got" : "All \(summary.written.formatted()) files got")
             : "\(summary.exifAdded.formatted()) of \(summary.written.formatted()) files got"
         var text = "\(who) the RAW's \(what.formatted(.list(type: .and, width: .standard))). File dates, permissions and extended attributes were copied."
+        if summary.removedPrivate { text += " Location, owner name, serial numbers and the maker note were removed." }
         switch format {
         case .embeddedJPEG: text += " The image data is unchanged."
         case .developedJPEG: text += " Developed at the decoder's defaults, as sRGB."

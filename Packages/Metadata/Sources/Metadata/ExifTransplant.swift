@@ -41,9 +41,24 @@ public enum ExifTransplant {
     }
 
     /// `raw` is a whole RAW file (TIFF-based, or CR3). Nil for other containers and for files without Exif.
-    public static func segment(fromRAW raw: Data, previewWidth: Int, previewHeight: Int, orientation: UInt16?) -> Result? {
+    /// `removePrivate` leaves out what says where the photo was taken and which gear made it (V-22): the GPS IFD, the
+    /// camera owner name, the body and lens serial numbers, the image unique ID and the whole maker note (it holds
+    /// serial numbers in a form that differs from brand to brand). The result then reports no maker note.
+    public static func segment(fromRAW raw: Data, previewWidth: Int, previewHeight: Int, orientation: UInt16?,
+                               removePrivate: Bool = false) -> Result? {
         guard let source = readTIFF(raw) ?? readCR3(raw) else { return nil }
-        return build(source, previewWidth: previewWidth, previewHeight: previewHeight, orientation: orientation)
+        return build(source, previewWidth: previewWidth, previewHeight: previewHeight, orientation: orientation,
+                     removePrivate: removePrivate)
+    }
+
+    /// The same, from the Exif APP1 segment of a JPEG (marker and length included). It is how a JPEG's own Exif gets
+    /// the clean-up of `removePrivate` when the RAW's container is not read (V-22).
+    public static func segment(fromExifSegment segment: Data, previewWidth: Int, previewHeight: Int, orientation: UInt16?,
+                               removePrivate: Bool = false) -> Result? {
+        guard segment.count > 10 else { return nil }
+        guard let source = readTIFF(Data(segment.dropFirst(10))) else { return nil }
+        return build(source, previewWidth: previewWidth, previewHeight: previewHeight, orientation: orientation,
+                     removePrivate: removePrivate)
     }
 
     // MARK: reading
@@ -167,8 +182,20 @@ public enum ExifTransplant {
     ]
     /// Pointers are written by us; the thumbnail and the sizes are the preview's, not the RAW's.
     private static let exifDrop: Set<UInt16> = [0xA005, 0x927C, 0xA002, 0xA003, 0x8769]
+    /// Tags that name the owner or the gear (V-22): IFD0 DNG camera serial `0xC62F`; Exif camera owner `0xA430`, body
+    /// serial `0xA431`, lens serial `0xA435` and image unique ID `0xA420`. Artist and Copyright stay: they are the
+    /// credit the photographer chose to publish.
+    static let privateTags: Set<UInt16> = [0xC62F, 0xA430, 0xA431, 0xA435, 0xA420]
 
-    private static func build(_ source: Source, previewWidth: Int, previewHeight: Int, orientation: UInt16?) -> Result? {
+    private static func build(_ source: Source, previewWidth: Int, previewHeight: Int, orientation: UInt16?,
+                              removePrivate: Bool) -> Result? {
+        var source = source
+        if removePrivate {
+            source.gps = []
+            source.note = nil
+            source.ifd0.removeAll { privateTags.contains($0.tag) }
+            source.exif.removeAll { privateTags.contains($0.tag) }
+        }
         let order = source.order
         func u16(_ v: Int) -> Data { order == .little ? Data([UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF)]) : Data([UInt8((v >> 8) & 0xFF), UInt8(v & 0xFF)]) }
         func u32(_ v: Int) -> Data {

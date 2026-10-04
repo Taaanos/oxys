@@ -41,10 +41,13 @@ public enum JPEGSegments {
     /// `jpeg` without its Exif segments and with `exif`, `xmp` and `icc` (whole segments, marker included) after the
     /// JFIF APP0, if there is one. An `xmp` or `icc` is added only when the JPEG has none of its own. Nil if `jpeg` is
     /// not a JPEG.
-    public static func rewriting(_ jpeg: Data, exif: Data?, xmp: Data?, icc: Data? = nil) -> Data? {
+    ///
+    /// `droppingXMPAndIPTC` (V-22) also takes out the JPEG's own XMP and its Photoshop/IPTC segment (APP13), which can
+    /// hold a place name or contact details; `xmp`, if given, is then added.
+    public static func rewriting(_ jpeg: Data, exif: Data?, xmp: Data?, icc: Data? = nil, droppingXMPAndIPTC: Bool = false) -> Data? {
         guard let segments = list(jpeg) else { return nil }
         let base = jpeg.startIndex
-        let hasXMP = segments.contains { $0.isXMP }
+        let hasXMP = !droppingXMPAndIPTC && segments.contains { $0.isXMP }
         let hasICC = segments.contains { $0.isICC }
         var out = Data(capacity: jpeg.count + (exif?.count ?? 0) + (xmp?.count ?? 0) + (icc?.count ?? 0))
         out.append(jpeg[base..<(base + 2)])
@@ -65,7 +68,7 @@ public enum JPEGSegments {
                 continue
             }
             insert()
-            if s.isExif {
+            if s.isExif || (droppingXMPAndIPTC && (s.isXMP || s.marker == 0xED)) {
                 out.append(jpeg[(base + cursor)..<(base + s.range.lowerBound)])
                 cursor = s.range.upperBound
             }

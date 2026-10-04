@@ -1,5 +1,5 @@
 // V-13 tool. Not shipped.
-//   ExtractBench <folder or files...> [--exact] [--verify] [--developed=jpeg|heic] [--quality=0.9]
+//   ExtractBench <folder or files...> [--exact] [--verify] [--developed=jpeg|heic] [--quality=0.9] [--private]
 // Extracts every file's largest embedded JPEG into a new temporary folder, then copies that folder with `cp -R`
 // (a real byte copy: the stand-in for Finder) and prints both times. The extraction must be within 20% of the copy.
 // --out=DIR keeps the JPEGs there instead of a temporary folder.
@@ -8,6 +8,9 @@
 // --developed=jpeg|heic (V-21) develops every RAW at the decoder's defaults instead, one at a time, prints the time
 // per file, and checks each output against its source: Exif and GPS values, size, orientation, depth, profile, and
 // the file's dates, permissions and extended attributes. No oracle is needed. Exit 1 on a difference.
+// --private (V-22) writes with "remove location and serial numbers" on, then reads every output with ImageIO (and with
+// the reference reader of PREVIEW_ORACLE, if it is set) and fails if any GPS, serial, owner or maker note field is left.
+// It also prints how many of the sources had such fields, so that a pass on files with none means nothing.
 import Containers
 import Foundation
 import ImageIO
@@ -19,6 +22,7 @@ let exact = paths.contains("--exact") || paths.contains("--verify")
 let verify = paths.contains("--verify")
 let keep = paths.first { $0.hasPrefix("--out=") }.map { URL(fileURLWithPath: String($0.dropFirst(6))) }
 let developed = paths.first { $0.hasPrefix("--developed=") }.flatMap { DevelopedFormat(rawValue: String($0.dropFirst(12))) }
+let removing = paths.contains("--private")
 let quality = paths.first { $0.hasPrefix("--quality=") }.flatMap { Double($0.dropFirst(10)) }
 paths.removeAll { $0.hasPrefix("--") }
 guard !paths.isEmpty else {
@@ -50,12 +54,56 @@ let out = keep ?? work.appendingPathComponent("out"), copy = work.appendingPathC
 try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
 defer { try? FileManager.default.removeItem(at: work) }
 
+/// What V-22 must have removed and is still in `url`: read with ImageIO, and with the reference reader if PREVIEW_ORACLE is set.
+func privateLeft(in url: URL) -> [String] {
+    var left: [String] = []
+    let p = CGImageSourceCreateWithURL(url as CFURL, nil).flatMap { CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [CFString: Any] } ?? [:]
+    if p[kCGImagePropertyGPSDictionary] != nil { left.append("ImageIO: GPS dictionary") }
+    let exif = p[kCGImagePropertyExifDictionary] as? [CFString: Any] ?? [:]
+    for key in [kCGImagePropertyExifBodySerialNumber, kCGImagePropertyExifLensSerialNumber, kCGImagePropertyExifCameraOwnerName,
+                kCGImagePropertyExifImageUniqueID] where exif[key] != nil { left.append("ImageIO: Exif \(key)") }
+    if let iptc = p[kCGImagePropertyIPTCDictionary] as? [CFString: Any] {
+        for key in [kCGImagePropertyIPTCCity, kCGImagePropertyIPTCSubLocation, kCGImagePropertyIPTCCreatorContactInfo] where iptc[key] != nil {
+            left.append("ImageIO: IPTC \(key)")
+        }
+    }
+    if let oracle = ProcessInfo.processInfo.environment["PREVIEW_ORACLE"] {
+        let task = Process(), pipe = Pipe()
+        task.executableURL = URL(fileURLWithPath: oracle)
+        task.arguments = ["-a", "-G1", "-s", url.path]
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+        if (try? task.run()) != nil {
+            let text = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            task.waitUntilExit()
+            let words = ["gps", "serial", "owner", "uniqueid", "makernote", "drone", "contactinfo", "sublocation", "locationshown", "locationcreated"]
+            for line in text.split(separator: "\n") {
+                let lower = line.lowercased()
+                if words.contains(where: lower.contains) { left.append("reference reader: \(line.prefix(100))") }
+            }
+        }
+    }
+    return left
+}
+
+/// How many `sources` carry GPS, a serial number or a maker note at all.
+func sourcesWithPrivate(_ sources: [URL]) -> (gps: Int, serial: Int) {
+    var gps = 0, serial = 0
+    for url in sources {
+        let p = CGImageSourceCreateWithURL(url as CFURL, nil).flatMap { CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [CFString: Any] } ?? [:]
+        if p[kCGImagePropertyGPSDictionary] != nil { gps += 1 }
+        let exif = p[kCGImagePropertyExifDictionary] as? [CFString: Any] ?? [:]
+        if exif[kCGImagePropertyExifBodySerialNumber] != nil || exif[kCGImagePropertyExifLensSerialNumber] != nil { serial += 1 }
+    }
+    return (gps, serial)
+}
+
 let clock = ContinuousClock()
 func seconds(_ d: Duration) -> Double { Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18 }
 
 if let developed {
     var summary = ExportSummary()
-    let time = clock.measure { summary = DevelopedExporter.run(sources, into: out, as: developed, quality: quality) }
+    let time = clock.measure { summary = DevelopedExporter.run(sources, into: out, as: developed, quality: quality, removePrivate: removing) }
     print("files \(sources.count), written \(summary.written), could not develop \(summary.couldNotDevelop.count), not RAW \(summary.notRaw.count), failed \(summary.failed.count), maker note skipped \(summary.makerNoteSkipped.count), XMP skipped \(summary.xmpSkipped.count), renamed \(summary.renamed.count)")
     print(String(format: "developed %.2f s, %.2f s per file", seconds(time), seconds(time) / Double(max(1, summary.written))))
     if !summary.makerNoteSkipped.isEmpty { print("MAKER NOTE NOT COPIED: \(summary.makerNoteSkipped.joined(separator: ", "))") }
@@ -86,7 +134,7 @@ if let developed {
         let ea = a[kCGImagePropertyExifDictionary] as? [CFString: Any] ?? [:], eb = b[kCGImagePropertyExifDictionary] as? [CFString: Any] ?? [:]
         for key in [kCGImagePropertyExifDateTimeOriginal, kCGImagePropertyExifFNumber, kCGImagePropertyExifExposureTime,
                     kCGImagePropertyExifISOSpeedRatings, kCGImagePropertyExifFocalLength, kCGImagePropertyExifLensModel,
-                    kCGImagePropertyExifBodySerialNumber] where ea[key] != nil && text(ea[key]) != text(eb[key]) {
+                    kCGImagePropertyExifBodySerialNumber] where (!removing || key != kCGImagePropertyExifBodySerialNumber) && ea[key] != nil && text(ea[key]) != text(eb[key]) {
             problems.append("Exif \(key): \(text(ea[key])) -> \(text(eb[key]))")
         }
         let ta = a[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:], tb = b[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
@@ -95,7 +143,7 @@ if let developed {
         }
         let ga = a[kCGImagePropertyGPSDictionary] as? [CFString: Any] ?? [:], gb = b[kCGImagePropertyGPSDictionary] as? [CFString: Any] ?? [:]
         for key in [kCGImagePropertyGPSLatitude, kCGImagePropertyGPSLongitude, kCGImagePropertyGPSLatitudeRef, kCGImagePropertyGPSLongitudeRef]
-        where ga[key] != nil && gpsText(ga[key], against: gb[key]) != gpsText(gb[key], against: ga[key]) {
+        where !removing && ga[key] != nil && gpsText(ga[key], against: gb[key]) != gpsText(gb[key], against: ga[key]) {
             problems.append("GPS \(key): \(gpsText(ga[key], against: gb[key])) -> \(gpsText(gb[key], against: ga[key]))")
         }
         if text(b[kCGImagePropertyOrientation]) != "1" { problems.append("orientation \(text(b[kCGImagePropertyOrientation]))") }
@@ -111,9 +159,26 @@ if let developed {
         let xa = (try? FileManager.default.listxattr(source)) ?? [], xb = (try? FileManager.default.listxattr(output)) ?? []
         if Set(xa).subtracting(xb).isEmpty == false { problems.append("xattrs missing: \(Set(xa).subtracting(xb).sorted())") }
         let size = "\(text(b[kCGImagePropertyPixelWidth]))x\(text(b[kCGImagePropertyPixelHeight]))"
+        if removing { problems += privateLeft(in: output) }
         print(problems.isEmpty ? "ok   \(output.lastPathComponent) \(size)" : "FAIL \(output.lastPathComponent) \(size)")
         for p in problems { print("       \(p)"); }
         if !problems.isEmpty { bad += 1 }
+    }
+    exit(bad > 0 || summary.written == 0 ? 1 : 0)
+}
+
+if removing {
+    let summary = EmbeddedJPEGExtractor.run(sources, into: out, exactBytes: exact, removePrivate: true)
+    let had = sourcesWithPrivate(sources)
+    print("files \(sources.count), written \(summary.written), no JPEG \(summary.withoutEmbeddedJPEG.count), failed \(summary.failed.count), XMP skipped \(summary.xmpSkipped.count); sources with GPS \(had.gps), with a serial number \(had.serial)")
+    var bad = 0
+    for source in sources {
+        let output = out.appendingPathComponent(source.deletingPathExtension().lastPathComponent + ".jpg")
+        guard FileManager.default.fileExists(atPath: output.path) else { continue }
+        let left = privateLeft(in: output)
+        print(left.isEmpty ? "ok   \(output.lastPathComponent)" : "FAIL \(output.lastPathComponent)")
+        for l in left { print("       \(l)") }
+        if !left.isEmpty { bad += 1 }
     }
     exit(bad > 0 || summary.written == 0 ? 1 : 0)
 }

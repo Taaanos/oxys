@@ -152,3 +152,84 @@ private var rawProperties: [CFString: Any] { [
     #expect(DevelopedFormat.heic.fileExtension == "heic")
     #expect(DevelopedRenderer.isSupported(.jpeg))
 }
+
+// MARK: V-22, remove location and serial numbers
+
+private let privatePacket = Data("""
+<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\
+<rdf:Description rdf:about="" xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmlns:exif="http://ns.adobe.com/exif/1.0/" \
+xmlns:exifEX="http://cipa.jp/exif/1.0/" xmlns:aux="http://ns.adobe.com/exif/1.0/aux/" \
+xmlns:drone-dji="http://www.dji.com/drone/dji/1.0/" xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/" \
+xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/" \
+xmp:Rating="4" xmp:Label="Green" exif:FNumber="28/10" exif:GPSLatitude="47,49.3N" exif:GPSLongitude="11,8.6E" \
+exifEX:BodySerialNumber="BODY999" exifEX:LensSerialNumber="LENS777" exifEX:CameraOwnerName="Jane Doe" \
+exif:ImageUniqueID="UNIQUE1" aux:SerialNumber="BODY999" aux:LensSerialNumber="LENS777" aux:Lens="20mm" \
+drone-dji:GpsLatitude="47.8" drone-dji:AbsoluteAltitude="566" drone-dji:CameraSerialNumber="DRONE1" \
+photoshop:City="Munich" photoshop:Country="Germany" crs:Exposure2012="+1.50"/>\
+</rdf:RDF></x:xmpmeta>
+""".utf8)
+
+@Test func theSwitchTakesLocationSerialNumbersAndOwnerOutOfTheXMP() throws {
+    let clean = try #require(ExportMetadata.scrubbedPacket(privatePacket))
+    let metadata = try #require(CGImageMetadataCreateFromXMPData(clean as CFData))
+    func has(_ path: String) -> Bool { CGImageMetadataCopyTagWithPath(metadata, nil, path as CFString) != nil }
+    for path in ["exif:GPSLatitude", "exif:GPSLongitude", "exifEX:BodySerialNumber", "exifEX:LensSerialNumber",
+                 "exifEX:CameraOwnerName", "exif:ImageUniqueID", "aux:SerialNumber", "aux:LensSerialNumber",
+                 "drone-dji:GpsLatitude", "drone-dji:AbsoluteAltitude", "drone-dji:CameraSerialNumber",
+                 "photoshop:City", "photoshop:Country"] {
+        #expect(!has(path), "\(path)")
+    }
+    #expect(has("xmp:Rating") && has("xmp:Label") && has("exif:FNumber") && has("aux:Lens"))
+    for text in ["BODY999", "LENS777", "Jane Doe", "47,49", "Munich", "DRONE1"] { #expect(clean.range(of: Data(text.utf8)) == nil, "\(text)") }
+}
+
+@Test func theDevelopedXMPDropsTheSameFieldsAndTheDevelopSettingsToo() throws {
+    let metadata = try #require(ExportMetadata.developedXMP(from: privatePacket, removePrivate: true))
+    func has(_ path: String) -> Bool { CGImageMetadataCopyTagWithPath(metadata, nil, path as CFString) != nil }
+    #expect(has("xmp:Rating") && !has("exif:GPSLatitude") && !has("aux:SerialNumber") && !has("crs:Exposure2012"))
+    // Without the switch the position stays, as before.
+    let kept = try #require(ExportMetadata.developedXMP(from: privatePacket))
+    #expect(CGImageMetadataCopyTagWithPath(kept, nil, "exif:GPSLatitude" as CFString) != nil)
+}
+
+@Test func anUnreadablePacketIsNotCopiedWhenTheSwitchIsOn() {
+    #expect(ExportMetadata.scrubbedPacket(Data("not xmp".utf8)) == nil)
+}
+
+@Test func theSwitchKeepsGPSAndSerialNumbersOutOfTheEncoderProperties() throws {
+    var source = rawProperties
+    var exif = source[kCGImagePropertyExifDictionary] as! [CFString: Any]
+    exif[kCGImagePropertyExifBodySerialNumber] = "BODY999"
+    exif[kCGImagePropertyExifLensSerialNumber] = "LENS777"
+    exif[kCGImagePropertyExifCameraOwnerName] = "Jane Doe"
+    exif[kCGImagePropertyExifImageUniqueID] = "UNIQUE1"
+    source[kCGImagePropertyExifDictionary] = exif
+    source[kCGImagePropertyIPTCDictionary] = [
+        kCGImagePropertyIPTCCity: "Munich", kCGImagePropertyIPTCSubLocation: "Marienplatz", kCGImagePropertyIPTCProvinceState: "Bavaria",
+        kCGImagePropertyIPTCCountryPrimaryLocationName: "Germany", kCGImagePropertyIPTCCreatorContactInfo: ["CiAdrCity": "Munich"],
+        kCGImagePropertyIPTCKeywords: ["alps"], kCGImagePropertyIPTCCaptionAbstract: "A walk",
+    ] as [CFString: Any]
+
+    let kept = ExportMetadata.properties(from: source, width: 100, height: 80)
+    #expect(kept[kCGImagePropertyGPSDictionary] != nil)
+    #expect((kept[kCGImagePropertyExifDictionary] as? [CFString: Any])?[kCGImagePropertyExifBodySerialNumber] as? String == "BODY999")
+    #expect((kept[kCGImagePropertyIPTCDictionary] as? [CFString: Any])?[kCGImagePropertyIPTCCity] as? String == "Munich")
+
+    let clean = ExportMetadata.properties(from: source, width: 100, height: 80, removePrivate: true)
+    #expect(clean[kCGImagePropertyGPSDictionary] == nil)
+    let cleanExif = try #require(clean[kCGImagePropertyExifDictionary] as? [CFString: Any])
+    for key in ExportMetadata.privateExifKeys { #expect(cleanExif[key] == nil) }
+    #expect(cleanExif[kCGImagePropertyExifFNumber] as? Double == 2.8)
+    let iptc = try #require(clean[kCGImagePropertyIPTCDictionary] as? [CFString: Any])
+    for key in ExportMetadata.privateIPTCKeys { #expect(iptc[key] == nil) }
+    #expect(iptc[kCGImagePropertyIPTCCaptionAbstract] as? String == "A walk" && iptc[kCGImagePropertyIPTCKeywords] != nil)
+}
+
+@Test func aHEICWrittenWithTheSwitchHasNoGPS() throws {
+    let image = flat(width: 64, height: 48, bits: 16, space: CGColorSpace.displayP3)
+    guard DevelopedRenderer.isSupported(.heic) else { return }
+    let props = ExportMetadata.properties(from: rawProperties, width: 64, height: 48, removePrivate: true)
+    let data = try DevelopedRenderer.encode(image, as: .heic, quality: 0.8, properties: props)
+    #expect(properties(of: data)[kCGImagePropertyGPSDictionary] == nil)
+}
+

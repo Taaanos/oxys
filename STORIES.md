@@ -102,7 +102,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-19 | Optional lens correction for RAW | V-02, M-22 | todo (spike done: `docs/spikes/lens-correction.md`) |
 | V-20 | Film strip in Loupe | M-12, M-13, M-04 | built, checked in the live app (open: idle CPU row, which fails with the strip off too, see P-09; VoiceOver not checked by decision) |
 | V-21 | Export developed JPEG and HEIC | V-13, V-02 | done (checked on six brands and 20 drone files with the bench tool; live panel used by you on 4 Oct 2026) |
-| V-22 | Remove location and serial numbers on export | V-13, V-21 | todo (design open; from audit S-7) |
+| V-22 | Remove location and serial numbers on export | V-13, V-21 | built (opt-in switch in the ⇧⌘E panel; checked on seven real files in all three formats; panel not looked at on screen, VoiceOver skipped by decision) |
 | V-23 | Clear the thumbnail cache | M-22, P-02 | done (unit test and build pass; live click-through pending) |
 | V-18 | v1.0 gate | all v1.0, P-11 | todo |
 | **Phase 2b** | **Performance** (build before V-18) | | |
@@ -2026,10 +2026,10 @@ From security audit S-7 (`docs/security-audit.md`, git-ignored). Every export fo
 - Correct the Embedded JPEG caption so it says that location is kept (do this even if the option is late).
 
 **Acceptance criteria**
-- [ ] With the option on, no export format holds a GPS value or a serial number, checked on files that have them (a DJI DNG for GPS; a Sony or Canon file for serials), by reading the output with the bench tool and with an independent reader.
-- [ ] With the option off, the files are as before (the V-13 and V-21 checks still pass).
-- [ ] The panel caption for every format says what is kept.
-- [ ] Unit tests for each removed tag in Exif, XMP and IPTC; keyboard and VoiceOver for the new control.
+- [x] With the option on, no export format holds a GPS value or a serial number, checked on files that have them (a DJI DNG for GPS; a Sony or Canon file for serials), by reading the output with the bench tool and with an independent reader. (`ExtractBench --private`, with `--exact`, `--developed=jpeg` and `--developed=heic`: DJI DNG, iPhone DNG, Canon CR2, Sony ARW x2, Sony-converted DNG, Fujifilm RAF; ImageIO and the reference reader of `PREVIEW_ORACLE` find nothing left. The same check finds 7 and 18 matching lines in a normal export of the Canon and iPhone files, so it can see them.)
+- [x] With the option off, the files are as before (the V-13 and V-21 checks still pass). (All new parameters default to off; the existing tests pass unchanged; the bench without `--private` writes the same files. The Fujifilm RAF developed JPEG without Exif is not new: it fails the same way on the code before this story.)
+- [x] The panel caption for every format says what is kept. (All three captions now say "GPS location"; the Embedded JPEG caption did not before.)
+- [x] Unit tests for each removed tag in Exif, XMP and IPTC; keyboard and VoiceOver for the new control. (Tests for every tag below. The control is a standard `NSButton` checkbox in the key-view loop with an accessibility help text; Space toggles it. Not looked at in the running app. VoiceOver is not checked, by your decision on 4 Oct 2026.)
 
 **Open questions**
 1. On or off by default? *Proposed:* off, so the default stays "a faithful copy", with the caption saying what is kept. A privacy-first default is the other choice; it would surprise someone who relies on GPS in their editor.
@@ -2040,7 +2040,24 @@ From security audit S-7 (`docs/security-audit.md`, git-ignored). Every export fo
 
 **Decisions and checks**
 
-*(none yet)*
+- Q1 **Decided by you:** opt-in. The switch is off the first time.
+- Q2 **Decided:** remembered in `exportRemovePrivate`, next to `exportFormat`. Once you turn it on it stays on, which is the safe direction.
+- Q3 **Decided, wider than proposed:** GPS (the whole IFD and the XMP and drone-maker GPS values), camera owner name `0xA430`, body serial `0xA431`, lens serial `0xA435`, image unique ID `0xA420`, DNG camera serial `0xC62F`; XMP `exifEX:` and `aux:` serials and owner, the whole `drone-dji` block (position, absolute altitude, drone serial), `photoshop:` city, state and country, and the IPTC location and contact fields (`Iptc4xmpCore:CreatorContactInfo`, `Location`, `Iptc4xmpExt:LocationShown` and `LocationCreated`, and the IPTC dictionary's city, state, country, sub-location and contact keys). **The whole maker note goes**, because it holds serial numbers in a form that differs from brand to brand (a Sony file has `InternalSerialNumber`, a Canon file `InternalSerialNumber` and `LensSerialNumber` there) and the app cannot list every brand's field. The cost is that the camera's own focus data is lost. Artist and Copyright stay: they are the credit the photographer chose to publish.
+- Q4 **Decided:** the sidecar is not changed. It is not an export.
+- Q5 **Decided:** one switch, as proposed.
+- **Where it is done** (the same rule in every format):
+  - `ExifTransplant.segment(..., removePrivate:)` leaves out the GPS IFD, the private tags and the maker note. A new `segment(fromExifSegment:...)` applies the same clean-up to a JPEG's own Exif when the RAW's container is not read (RAF).
+  - `ExportMetadata.properties(..., removePrivate:)` is the ImageIO side (developed JPEG and HEIC): no GPS dictionary, no private Exif keys, no IPTC location and contact keys. `ExportMetadata.scrubbedPacket` and `developedXMP(from:removePrivate:)` clean an XMP packet. A packet that cannot be read is left out and the file is listed under "XMP not copied", so nothing uncleaned is copied.
+  - `JPEGSegments.rewriting(..., droppingXMPAndIPTC:)` takes out the preview's own XMP and its APP13 (IPTC) segment.
+  - **Embedded JPEG:** with the switch on, a file is rewritten even in the exact-bytes mode. The picture data is unchanged; the preview's Exif is cleaned, and its XMP and IPTC are dropped. In exact mode the rating and label are not added (exact mode never added them). When neither the RAW nor the preview Exif can be read, the file gets only make, model, orientation and capture time.
+  - The summary says "Location, owner name, serial numbers and the maker note were removed." and does not list every file as "maker note not copied".
+- **Panel:** a checkbox under the caption, titled "Remove location and serial numbers". The captions of all three formats say that GPS location is kept.
+- **Bench tool:** `ExtractBench <files> --private [--exact | --developed=jpeg|heic]` (see the top of `main.swift`).
+- **Not checked:** the panel on screen (layout of the new row, the Space key on the checkbox); a Nikon, Pentax or CR3 file (the corpus has none with GPS or serials); HEIC in other readers; IPTC and XMP location in a file that really has them (covered by unit tests only, because no corpus file carries them); the camera's own unique ID inside other private blocks (for example the DNG `RawDataUniqueID`, a hash of the raw data, which is not copied by V-13 or V-21 and so is not in the files).
+- **Found on the way, not part of this story:** the developed JPEG of the Fujifilm RAF corpus file has no Exif at all, with or without the switch. It fails the same way on the commit before this story. A separate task was suggested for it.
+- Unit tests: `ExifTransplantTests` (private tags and maker note gone, the rest and the credit kept, bytes hold no private text, the JPEG's own Exif is cleaned), `ExportMetadataTests` (XMP, developed XMP, unreadable packet, encoder properties, HEIC without GPS), `ContainersTests` (XMP and APP13 dropped, scan untouched), `EmbeddedJPEGExtractorTests` (sidecar location gone and rating kept, unreadable sidecar left out, exact bytes cleaned, the runner flag).
+- Docs: the guide `filtering.md` has a section "Remove location and serial numbers".
+
 
 ### V-23 · Clear the thumbnail cache
 

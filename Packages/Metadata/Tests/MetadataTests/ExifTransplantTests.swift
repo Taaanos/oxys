@@ -58,4 +58,61 @@ import Testing
     @Test func aFileWithoutExifIsRefused() {
         #expect(ExifTransplant.segment(fromRAW: Data("not a raw".utf8), previewWidth: 1, previewHeight: 1, orientation: 1) == nil)
     }
+
+    // MARK: V-22, remove location and serial numbers
+
+    /// A RAW whose IFD0 holds a camera serial (DNG tag `0xC62F`), whose Exif IFD holds the owner name, the body and lens
+    /// serial numbers, the image unique ID and a maker note, and whose GPS IFD holds a position.
+    private func rawWithPrivateFields() -> Data {
+        func ifd0(exif: Int, gps: Int) -> [TIFFFixture.Entry] {
+            [le.ascii(0x010F, "SONY"), le.ascii(0x0110, "ZV-1"), le.ascii(0xC62F, "CAM123"), le.ascii(0x8298, "Me"),
+             le.longs(0x8769, [exif]), le.longs(0x8825, [gps])]
+        }
+        let exif = [le.ascii(0x9003, "2026:09:30 14:05:09"), le.ascii(0xA434, "Viltrox 20mm F2.8 FE"), le.ascii(0xA430, "Jane Doe"),
+                    le.ascii(0xA431, "BODY999"), le.ascii(0xA435, "LENS777"), le.ascii(0xA420, "UNIQUE1"),
+                    le.blob(0x927C, Array("SONY DSC ".utf8) + [0, 0, 0] + le.ifd([le.shorts(0x2027, [1, 2, 3, 4])], origin: 0, base: 0).bytes)]
+        let gps = [le.ascii(0x0001, "N"), le.rationals(0x0002, [(47, 1), (49, 1), (18, 1)])]
+        let exifAt = 8 + le.ifd(ifd0(exif: 0, gps: 0), origin: 8, base: 0).bytes.count
+        let gpsAt = exifAt + le.ifd(exif, origin: exifAt, base: 0).bytes.count
+        return Data(le.header + le.ifd(ifd0(exif: exifAt, gps: gpsAt), origin: 8, base: 0).bytes
+                    + le.ifd(exif, origin: exifAt, base: 0).bytes + le.ifd(gps, origin: gpsAt, base: 0).bytes)
+    }
+
+    @Test func withoutTheSwitchTheLocationAndTheSerialNumbersTravel() throws {
+        let r = try #require(ExifTransplant.segment(fromRAW: rawWithPrivateFields(), previewWidth: 100, previewHeight: 100, orientation: 1))
+        let ifd0 = try #require(TIFFDirectory.firstDirectory(in: tiff(r), at: 0))
+        #expect(ifd0.entry(0xC62F) != nil && ifd0.entry(0x8825) != nil)
+        let exif = try exifIFD(ifd0)
+        for tag: UInt16 in [0xA430, 0xA431, 0xA435, 0xA420] { #expect(exif.entry(tag) != nil) }
+        #expect(r.hadMakerNote)
+    }
+
+    @Test func theSwitchTakesOutEveryPrivateTagAndTheMakerNoteAndKeepsTheRest() throws {
+        let r = try #require(ExifTransplant.segment(fromRAW: rawWithPrivateFields(), previewWidth: 100, previewHeight: 100,
+                                                    orientation: 1, removePrivate: true))
+        let ifd0 = try #require(TIFFDirectory.firstDirectory(in: tiff(r), at: 0))
+        #expect(ifd0.entry(0xC62F) == nil)      // camera serial
+        #expect(ifd0.entry(0x8825) == nil)      // GPS IFD pointer
+        let exif = try exifIFD(ifd0)
+        for tag: UInt16 in [0xA430, 0xA431, 0xA435, 0xA420, 0x927C] { #expect(exif.entry(tag) == nil, "tag \(tag)") }
+        // What describes the photo, and the credit the photographer chose, stays.
+        #expect(ifd0.string(0x010F) == "SONY" && ifd0.string(0x0110) == "ZV-1" && ifd0.string(0x8298) == "Me")
+        #expect(exif.string(0x9003) == "2026:09:30 14:05:09" && exif.string(0xA434) == "Viltrox 20mm F2.8 FE")
+        // No private text is left in the bytes, whatever IFD it was in.
+        for text in ["Jane Doe", "BODY999", "LENS777", "UNIQUE1", "CAM123"] { #expect(r.segment.range(of: Data(text.utf8)) == nil) }
+        // A note that is left out on purpose is not a note that failed.
+        #expect(!r.hadMakerNote && !r.makerNoteCopied)
+    }
+
+    @Test func aJPEGsOwnExifGetsTheSameCleanUp() throws {
+        let raw = rawWithPrivateFields()
+        let length = 2 + 6 + raw.count
+        let segment = Data([0xFF, 0xE1, UInt8(length >> 8), UInt8(length & 0xFF)]) + Data("Exif\0\0".utf8) + raw
+        let r = try #require(ExifTransplant.segment(fromExifSegment: segment, previewWidth: 100, previewHeight: 100,
+                                                    orientation: 1, removePrivate: true))
+        let ifd0 = try #require(TIFFDirectory.firstDirectory(in: tiff(r), at: 0))
+        #expect(ifd0.entry(0x8825) == nil && ifd0.entry(0xC62F) == nil)
+        #expect(try exifIFD(ifd0).entry(0xA431) == nil)
+        #expect(ExifTransplant.segment(fromExifSegment: Data("short".utf8), previewWidth: 1, previewHeight: 1, orientation: 1) == nil)
+    }
 }

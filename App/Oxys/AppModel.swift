@@ -136,10 +136,12 @@ final class AppModel {
         let sources = folder.cullTargets
         guard !sources.isEmpty, !extract.isRunning else { return }
         let defaults = UserDefaults.standard
-        let picker = ExportPanel(sources: sources, remembered: defaults.string(forKey: "exportFormat"))
-        guard let (destination, format) = picker.run(lastFolder: defaults.string(forKey: "extractFolder")) else { return }
+        let picker = ExportPanel(sources: sources, remembered: defaults.string(forKey: "exportFormat"),
+                                 rememberedRemovePrivate: defaults.bool(forKey: "exportRemovePrivate"))
+        guard let (destination, format, removePrivate) = picker.run(lastFolder: defaults.string(forKey: "extractFolder")) else { return }
         defaults.set(destination.path, forKey: "extractFolder")
         defaults.set(format.rawValue, forKey: "exportFormat")
+        defaults.set(removePrivate, forKey: "exportRemovePrivate")
         let noun = ExtractJob.noun(format, plural: sources.count != 1)
         announce(sources.count == 1 ? "Exporting 1 \(noun)" : "Exporting \(sources.count.formatted()) \(noun)")
         // A queued rating must be in its sidecar before the sidecar is read.
@@ -150,7 +152,7 @@ final class AppModel {
                                   uniquingKeysWith: { first, _ in first })
         let quality = defaults.object(forKey: format == .developedHEIC ? "exportHEICQuality" : "exportJPEGQuality") as? Double
         extract.start(sources, into: destination, format: format, exactBytes: defaults.bool(forKey: "extractExactBytes"),
-                      quality: quality, sidecars: sidecars) { [unowned self] summary in
+                      quality: quality, sidecars: sidecars, removePrivate: removePrivate) { [unowned self] summary in
             announce(summary)
         }
     }

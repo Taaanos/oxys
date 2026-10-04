@@ -363,3 +363,25 @@ private func onSmallStack(_ work: @escaping @Sendable () -> Void) {
     #expect(TIFFPreviewLocator.locate(in: chain(length: 20))?.previews.count == 1)
     #expect(TIFFPreviewLocator.locate(in: chain(length: 1_000))?.previews.isEmpty == true)
 }
+
+@Test func droppingXMPAndIPTCTakesOutBothAndAddsOurXMP() throws {
+    let plain = makeJPEG(width: 160, height: 120, orientation: 1, icc: false)
+    let old = try #require(JPEGSegments.xmpSegment(Data("<x:xmpmeta>old: Munich</x:xmpmeta>".utf8)))
+    let new = try #require(JPEGSegments.xmpSegment(Data("<x:xmpmeta>new</x:xmpmeta>".utf8)))
+    let iptc = Data([0xFF, 0xED, 0, 11]) + Data("Photoshop".utf8)
+    let loaded = try #require(JPEGSegments.rewriting(plain, exif: nil, xmp: old))
+    let withIPTC = loaded.prefix(2) + iptc + loaded.dropFirst(2)
+    #expect(try #require(JPEGSegments.list(Data(withIPTC))).contains { $0.marker == 0xED })
+
+    let out = try #require(JPEGSegments.rewriting(Data(withIPTC), exif: nil, xmp: new, droppingXMPAndIPTC: true))
+    let segments = try #require(JPEGSegments.list(out))
+    #expect(!segments.contains { $0.marker == 0xED })
+    #expect(segments.filter(\.isXMP).count == 1)
+    #expect(out.range(of: Data("Munich".utf8)) == nil && out.range(of: Data("new".utf8)) != nil)
+    #expect(out.suffix(14) == plain.suffix(14))     // the scan is untouched
+    // Without the flag the JPEG keeps its own XMP and its IPTC.
+    let kept = try #require(JPEGSegments.rewriting(Data(withIPTC), exif: nil, xmp: new))
+    #expect(try #require(JPEGSegments.list(kept)).contains { $0.marker == 0xED })
+    #expect(kept.range(of: Data("Munich".utf8)) != nil)
+}
+

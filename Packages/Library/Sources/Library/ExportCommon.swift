@@ -68,6 +68,8 @@ public struct ExportSummary: Sendable, Equatable {
     public var failed: [Item] = []
     public var cancelled = false
     public var destination: URL?
+    /// The job removed location and serial numbers (V-22).
+    public var removedPrivate = false
 
     public init() {}
     public var hasProblems: Bool {
@@ -113,7 +115,7 @@ enum ExportRunner {
     /// whose names would collide (`IMG_1.ARW`, `IMG_1.NEF`) stay in one thread, in order, so the suffixes do not
     /// depend on timing. `isCancelled` is checked before each file; a file is written whole, so a cancel leaves no
     /// partial file. `progress` gets the number of files done, from any thread.
-    static func run(_ sources: [URL], into folder: URL, parallelism: Int,
+    static func run(_ sources: [URL], into folder: URL, parallelism: Int, removedPrivate: Bool = false,
                     progress: @Sendable (Int) -> Void, isCancelled: @Sendable () -> Bool,
                     perFile: @Sendable (URL) throws -> ExportedFile) -> ExportSummary {
         enum Outcome { case done(ExportedFile), noJPEG, notRaw, cannotDevelop(String), failed(String) }
@@ -155,6 +157,7 @@ enum ExportRunner {
         var summary = ExportSummary()
         summary.total = sources.count
         summary.destination = folder
+        summary.removedPrivate = removedPrivate
         for (i, source) in sources.enumerated() {
             let name = source.lastPathComponent
             switch outcomes.withLock({ $0[i] }) {
