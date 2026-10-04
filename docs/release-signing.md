@@ -9,9 +9,9 @@ One key pair, type Ed25519, with a passphrase. The private key stays off GitHub:
 Make the key once:
 
 ```sh
-ssh-keygen -t ed25519 -C "oxys-release" -f ~/.ssh/oxys-release        # asks for a passphrase
-# Hardware key (best): ssh-keygen -t ed25519-sk -C "oxys-release" -f ~/.ssh/oxys-release
-echo "oxys-release $(cut -d' ' -f1,2 ~/.ssh/oxys-release.pub)" > docs/release-signers
+ssh-keygen -t ed25519 -C "taaanos-release" -f ~/.ssh/taaanos-release        # asks for a passphrase
+# Hardware key (best): ssh-keygen -t ed25519-sk -C "taaanos-release" -f ~/.ssh/taaanos-release
+echo "taaanos-release $(cut -d' ' -f1,2 ~/.ssh/taaanos-release.pub)" > docs/release-signers
 ssh-keygen -lf docs/release-signers                                    # the fingerprint to publish
 ```
 
@@ -26,7 +26,7 @@ If the private key is lost or stolen: make a new key, publish the new fingerprin
 ## Each release
 
 ```sh
-export OXYS_SIGNING_KEY=~/.ssh/oxys-release
+export OXYS_SIGNING_KEY=~/.ssh/taaanos-release
 scripts/release.sh 1.0.1          # builds, signs, verifies the signature, uploads Oxys.zip, .sha256 and .sig
 scripts/release.sh 1.0.1 --tap ../homebrew-tap   # the same, then writes the Homebrew cask, shows it, asks, and pushes the tap
 ```

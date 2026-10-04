@@ -23,6 +23,16 @@ xattr -dr com.apple.quarantine /Applications/Oxys.app
 
 See [Install Oxys](docs/guide/install.md) for the System Settings way and for other ways.
 
+### Release key fingerprint
+
+Each release zip is signed with the Taaanos release key, which signs all Taaanos apps. The fingerprint of its public key is:
+
+```
+SHA256:LwCXsIldlnJTEIbwsXmy8q/6twNbhYRjW9FjZ/nLyC0
+```
+
+Compare it with the same line on [github.com/Taaanos](https://github.com/Taaanos) and on [thanosam.com/about](https://www.thanosam.com/about). Trust the key only if all three match. The public key file is [docs/release-signers](docs/release-signers).
+
 ## Build from source
 
 ```sh

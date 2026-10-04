@@ -14,5 +14,5 @@ signers=${OXYS_SIGNERS:-docs/release-signers}
 rm -f dist/Oxys.zip.sig
 ssh-keygen -Y sign -f "$key" -n oxys-release dist/Oxys.zip
 # The check a user will do, so a wrong key is found here and not after the upload.
-ssh-keygen -Y verify -f "$signers" -I oxys-release -n oxys-release -s dist/Oxys.zip.sig < dist/Oxys.zip
+ssh-keygen -Y verify -f "$signers" -I taaanos-release -n oxys-release -s dist/Oxys.zip.sig < dist/Oxys.zip
 echo "dist/Oxys.zip.sig"

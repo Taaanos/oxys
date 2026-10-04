@@ -43,10 +43,10 @@ Each release has a file `Oxys.zip.sig`. It is a signature made with the Oxys rel
 4. Check the signature:
 
    ```sh
-   ssh-keygen -Y verify -f release-signers -I oxys-release -n oxys-release -s Oxys.zip.sig < Oxys.zip
+   ssh-keygen -Y verify -f release-signers -I taaanos-release -n oxys-release -s Oxys.zip.sig < Oxys.zip
    ```
 
-   The answer must start with `Good "oxys-release" signature`. Any other answer means: do not open the app.
+   The answer must start with `Good "taaanos-release" signature`. Any other answer means: do not open the app.
 
 After the first time, keep the `release-signers` file you checked and use it for later releases. If the file on GitHub is different from yours, the key changed: look for an announcement before you go on.
 
@@ -65,7 +65,7 @@ These ways do not set the quarantine mark, so macOS does not show the warning.
   ```sh
   curl -LO https://github.com/Taaanos/oxys/releases/latest/download/Oxys.zip
   curl -LO https://github.com/Taaanos/oxys/releases/latest/download/Oxys.zip.sig
-  ssh-keygen -Y verify -f release-signers -I oxys-release -n oxys-release -s Oxys.zip.sig < Oxys.zip
+  ssh-keygen -Y verify -f release-signers -I taaanos-release -n oxys-release -s Oxys.zip.sig < Oxys.zip
   ditto -x -k Oxys.zip /Applications
   ```
 
