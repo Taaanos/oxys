@@ -104,6 +104,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-21 | Export developed JPEG and HEIC | V-13, V-02 | done (checked on six brands and 20 drone files with the bench tool; live panel used by you on 4 Oct 2026) |
 | V-22 | Remove location and serial numbers on export | V-13, V-21 | built (opt-in switch in the ⇧⌘E panel; checked on seven real files in all three formats; panel not looked at on screen, VoiceOver skipped by decision) |
 | V-23 | Clear the thumbnail cache | M-22, P-02 | done (unit test and build pass; live click-through pending) |
+| V-24 | Focus mode | M-13, M-18, V-20 | built (tests, Release build and arm64 pass; not yet checked on screen, VoiceOver skipped by decision) |
 | V-18 | v1.0 gate | all v1.0, P-11 | todo |
 | **Phase 2b** | **Performance** (build before V-18) | | |
 | P-01 | Performance gate tool and a real shoot | M-26 | done (criterion 1 not met: the M-26 table does not reproduce; cold rows run warm, no `purge`) |
@@ -2103,6 +2104,43 @@ Open questions 1 to 3 took the proposals: no session state cleared, no age limit
 - Settings → Memory has a "Thumbnail cache" section: size (measured off the main thread when the pane appears), the "Clear Thumbnail Cache" button (disabled at 0, a normal tab stop), and a VoiceOver announcement when done.
 - Unit test `diskCacheClearRemovesOnlyThumbnailsAndKeepsWorking`: size reads 0, a decoy `.jpg` beside the folder stays, the cache fills again, clearing a missing folder is harmless.
 - Live check (2026-10-04, by the owner): Clear works in the running app; the size reads Zero kB and the button turns off. Not checked yet: VoiceOver reading. (VoiceOver: not checked, by decision 4 Oct 2026)
+
+
+### V-24 · Focus mode
+
+**Depends on:** M-13, M-18, V-20
+
+> As a photographer, I want `⇥` to clear the window down to the photo, the RAW badge and my decision, and every other part of the window to have a key of its own, so that I can judge a frame with nothing else in the way and still call up one panel when I need it.
+
+Before this story `⇥` flipped one flag (`chromeHidden`) that hid the toolbar, the inspector and the film strip, but not the filter bar, the info strip, the EXIF panel or the histogram. The toolbar had no key of its own, and the RAW badge had no switch at all.
+
+**Scope**
+- Panels: toolbar, inspector, filter bar, film strip, info (strip and EXIF panel), histogram. Each has its own key and works alone: `⌥⌘T`, `⌥⌘I`, `\`, `⌥⌘F`, `I`, `⇧I`.
+- `⇥` is focus mode, a flag on top of the saved toggles. It hides every panel and leaves the RAW badge and the decision. `⇥` again restores the layout. In Compare `⇥` still switches the side, so `⌥⇥` is focus mode in every mode.
+- `⌥I` shows or hides the decision, `⌥P` the RAW badge. Both are on by default and focus mode does not touch them.
+- The inspector no longer has a key that moves focus into it; a click on a row does that.
+
+**Acceptance criteria**
+- [x] `FocusMode` has unit tests for every rule below.
+- [x] The command table has the new keys; no default key conflicts.
+- [ ] On screen: with every panel on, `⇥` leaves only the decision and the RAW badge; `⇥` again returns the same layout.
+- [ ] On screen: in focus mode `⇧I` shows only the histogram, `\` only the filter bar; `⇥` then restores the saved layout.
+- [ ] On screen: `⌥I` and `⌥P` hide the decision and the badge in the strip, in the corner and in Compare, and they survive `⇥`.
+- [ ] The pointer at the top edge brings nothing back in focus mode.
+
+**Decisions**
+- Rule: a panel is on screen when it is saved on and either focus mode is off or the user called it up since focus began. Entering or leaving focus clears the called-up set.
+- A panel key in focus mode shows that panel and leaves the rest hidden. If the panel was saved off, the key turns it on, and it stays on after `⇥`. `I` in focus mode first shows the info (off becomes the name level), then cycles as before. `⌘F` shows the filter bar in focus mode.
+- Focus mode is not remembered across launches; the saved toggles are.
+- The peaking and clipping readouts and the auto-advance badge stay visible in focus mode: they describe an overlay or setting that is still active.
+- The decision and the RAW badge each have a saved switch (`showDecision`, `showTruthBadge`, default on). With the strip on, they are in the strip; with the strip off or hidden by focus mode, they are in the corners (the old `ratingCorner` setting is gone, and the corner now shows by default). Grid's cell badges are the decision there and are not touched.
+- `⌥⌘T` is now the toolbar alone (the standard macOS key). `⌃⌘I` (Move Focus to Inspector) and the `⇥` walk through inspector rows are removed; click, `↑` `↓`, `⌥↑` `⌥↓`, `Esc` and `⌘C` stay.
+- With Full Keyboard Access on the system keeps `⇥` (M-13 decision); focus mode is then `⌥⇥` or the menu.
+- Logic is in `Packages/Commands` (`FocusMode`), so it is tested without the app.
+
+**Checked**
+- `make test` passes (Commands 66 tests, 7 new in `FocusModeTests`; the table tests cover `⇥`, `⌥⇥`, `⌥P`, `⌥I` and the removed `⌃⌘I`). `make build` clean, `make check-arch` prints arm64.
+- Not checked: the acceptance criteria marked open (the window was not driven by key events in this session), the contrast of the corner decision and badge, VoiceOver (skipped by decision).
 
 
 ### V-18 · v1.0 gate

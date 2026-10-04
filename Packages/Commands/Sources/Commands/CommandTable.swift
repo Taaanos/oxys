@@ -212,14 +212,14 @@ public struct CommandTable: Sendable {
         // focused one (all when none is), and Show in Maps opens the GPS spot.
         Command("info.cycle", "Cycle Info", menu: .init(.view, group: 4), modes: loupeAndCompare, requires: .photos,
                 keys: [Shortcut(.position(.i))]),
-        Command("info.rating", "Always Show Rating", menu: .init(.view, group: 4), modes: loupeAndCompare, requires: .photos,
+        Command("info.decision", "Show Decision", menu: .init(.view, group: 4), modes: loupeAndCompare, requires: .photos,
                 kind: .toggle, keys: [Shortcut(.position(.i), [.option])]),
+        Command("info.truthBadge", "Show RAW Badge", menu: .init(.view, group: 4), modes: loupeAndCompare, requires: .photos,
+                kind: .toggle, keys: [Shortcut(.position(.p), [.option])]),
         Command("info.histogram", "Show Histogram", menu: .init(.view, group: 4), modes: loupe, requires: .photos,
                 kind: .toggle, keys: [Shortcut(.position(.i), [.shift])]),
         Command("info.inspector", "Show Inspector", menu: .init(.view, group: 4), requires: .photos,
                 kind: .toggle, symbol: "sidebar.trailing", keys: [Shortcut(.position(.i), [.command, .option])]),
-        Command("info.inspectorFocus", "Move Focus to Inspector", menu: .init(.view, group: 4), requires: .photos,
-                keys: [Shortcut(.position(.i), [.command, .control])]),
         Command("info.fieldNext", "Next EXIF Value", menu: .init(.view, group: 4), modes: loupe, requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.downArrow))]),
         Command("info.fieldPrevious", "Previous EXIF Value", menu: .init(.view, group: 4), modes: loupe, requires: .photos, repeats: true,
@@ -228,14 +228,16 @@ public struct CommandTable: Sendable {
                 keys: [Shortcut(.position(.c), [.command])]),
         Command("info.maps", "Show in Maps", menu: .init(.view, group: 4), modes: loupe, requires: .photos),
 
-        // `⇥` hides the toolbar and panels; the pointer at the top edge, or `⇥` again, brings them back (M-13). In
-        // Compare `⇥` switches the active side (PRD), so the bare key is a second command for the other two modes
-        // and `⌥⌘T` stays everywhere.
+        // Focus mode (V-24): `⇥` hides every panel but the RAW badge and the decision, and `⇥` again brings back the
+        // layout as it was. Each panel keeps its own key. In Compare `⇥` switches the active side (PRD), so the bare
+        // key is a second command for the other two modes and `⌥⇥` stays everywhere. `⌥⌘T` is the toolbar alone.
         Command("view.chrome", "Hide Toolbar", menu: .init(.view, group: 2),
                 keys: [Shortcut(.position(.t), [.option, .command])]),
-        Command("view.chromeTab", "Hide Toolbar with Tab", menu: .init(.view, group: 2), modes: [.grid, .loupe],
+        Command("view.focus", "Focus Mode", menu: .init(.view, group: 2),
+                keys: [Shortcut(.position(.tab), [.option])]),
+        Command("view.focusTab", "Focus Mode with Tab", menu: .init(.view, group: 2), modes: [.grid, .loupe],
                 keys: [Shortcut(.position(.tab))]),
-        // The film strip (V-20): a row of thumbnails under the picture in Loupe, off at first launch, hidden with the panels by `⇥`.
+        // The film strip (V-20): a row of thumbnails under the picture in Loupe, off at first launch, hidden by focus mode.
         Command("view.filmstrip", "Show Film Strip", menu: .init(.view, group: 2), modes: loupe, requires: .photos,
                 kind: .toggle, keys: [Shortcut(.position(.f), [.command, .option])]),
         Command("view.fullscreen", "Enter Full Screen", menu: .init(.view, group: 2),

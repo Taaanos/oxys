@@ -37,9 +37,9 @@ struct FolderView: View {
                         if mode == .grid { GridScreen(controller: model.grid) }
                     }
                     // With the chrome hidden the photo reclaims the titlebar strip; an open filter bar keeps it.
-                    .ignoresSafeArea(.container, edges: model.chromeHidden && !model.showFilterBar ? .top : [])
+                    .ignoresSafeArea(.container, edges: !model.toolbarVisible && !model.filterBarVisible ? .top : [])
                     .safeAreaBar(edge: .top, spacing: 0) {
-                        if model.showFilterBar { FilterBar(model: model) }
+                        if model.filterBarVisible { FilterBar(model: model) }
                     }
                     if model.filmStripVisible { FilmStripView(controller: model.filmStrip) }
                 }
@@ -51,8 +51,8 @@ struct FolderView: View {
             }
         }
         .inspector(isPresented: Binding(
-            get: { model.showInspector && !model.chromeHidden },
-            set: { if !model.chromeHidden { model.setInspector($0) } })) {
+            get: { model.inspectorVisible },
+            set: { if model.inspectorVisible { model.setInspector($0) } })) {
             InspectorView(model: model)
                 .inspectorColumnWidth(min: 240, ideal: 280, max: 420)
         }
@@ -71,8 +71,8 @@ struct FolderView: View {
         .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: model.extract.isShowing)
         .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: folder.banner != nil)
         .toolbar(id: "oxys.main") { ToolbarItems(model: model) }
-        .toolbarVisibility(model.chromeHidden ? .hidden : .visible, for: .windowToolbar)
-        .background(WindowToolbarCollapser(hidden: model.chromeHidden))
+        .toolbarVisibility(model.toolbarVisible ? .visible : .hidden, for: .windowToolbar)
+        .background(WindowToolbarCollapser(hidden: !model.toolbarVisible))
         .navigationTitle(folder.folder?.lastPathComponent ?? "Oxys")
         .navigationSubtitle(Self.subtitle(folder))
         .dropDestination(for: URL.self) { (urls: [URL], _: CGPoint) -> Bool in model.handleDrop(urls) }
@@ -129,9 +129,9 @@ private struct ToolbarItems: CustomizableToolbarContent {
             // The table has the plain symbol; the filled one says that a filter is narrowing the folder.
             Toggle("Filter Bar", systemImage: model.folder.filter.isNarrowing ? "\(symbol("filter.bar")).fill" : symbol("filter.bar"),
                    isOn: Binding(
-                    get: { model.showFilterBar },
+                    get: { model.filterBarVisible },
                     set: { on in
-                        guard on != model.showFilterBar else { return }
+                        guard on != model.filterBarVisible else { return }
                         model.commands.perform("filter.bar")
                     }))
                 .toggleStyle(.button)
@@ -141,9 +141,9 @@ private struct ToolbarItems: CustomizableToolbarContent {
         ToolbarSpacer(.flexible)
         ToolbarItem(id: "inspector", placement: .primaryAction) {
             Toggle("Inspector", systemImage: symbol("info.inspector"), isOn: Binding(
-                get: { model.showInspector },
+                get: { model.inspectorVisible },
                 set: { on in
-                    guard on != model.showInspector else { return }
+                    guard on != model.inspectorVisible else { return }
                     model.commands.perform("info.inspector")
                 }))
                 .toggleStyle(.button)

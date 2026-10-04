@@ -5,7 +5,7 @@ import Metadata
 import SwiftUI
 
 /// The inspector sidebar (M-18, `⌥⌘I`): Histogram, RAW, EXIF and Sidecar for the active photo, in Grid and in Loupe.
-/// "Move Focus to Inspector" (`⌃⌘I`) or a click on a row activates it: `⇥`/`⇧⇥` and `↑`/`↓` walk the rows, `⌘C`
+/// A click on a row activates it (V-24: there is no key for that): `↑`/`↓` walk the rows, `⌘C`
 /// copies the focused one, `Esc` hands the keyboard back to the image. The text can also be selected with the pointer.
 struct InspectorView: View {
     let model: AppModel

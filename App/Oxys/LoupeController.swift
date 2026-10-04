@@ -298,14 +298,23 @@ final class LoupeController {
     /// Counts the cull keys that took effect. The rating glyphs bounce when it changes, so the cue sits where the
     /// rating is already drawn and nothing covers the photo.
     private(set) var cullPulse = 0
-    /// `⌥I`: keep the rating in the bottom-left corner while the info strip is off.
-    private(set) var showRatingCorner = UserDefaults.standard.bool(forKey: "ratingCorner") {
-        didSet { UserDefaults.standard.set(showRatingCorner, forKey: "ratingCorner") }
+    /// `⌥I`: show the decision (stars, label, reject): in the info strip, or in the bottom-left corner when the strip is off or hidden by focus mode (V-24). On at first launch.
+    private(set) var showDecision = UserDefaults.standard.object(forKey: "showDecision") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(showDecision, forKey: "showDecision") }
+    }
+    /// `⌥P`: show the RAW (truth) badge, in the strip's trailing capsule or in the bottom-right corner. On at first launch.
+    private(set) var showTruthBadge = UserDefaults.standard.object(forKey: "showTruthBadge") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(showTruthBadge, forKey: "showTruthBadge") }
     }
 
-    func toggleRatingCorner() {
-        showRatingCorner.toggle()
-        announce(showRatingCorner ? "Rating always shown" : "Rating hidden")
+    func toggleDecision() {
+        showDecision.toggle()
+        announce(showDecision ? "Decision shown" : "Decision hidden")
+    }
+
+    func toggleTruthBadge() {
+        showTruthBadge.toggle()
+        announce(showTruthBadge ? "RAW badge shown" : "RAW badge hidden")
     }
 
     /// Loupe's screen builds a new canvas each time it is entered from Grid, and its load task can run before

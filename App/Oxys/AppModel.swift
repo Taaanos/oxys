@@ -26,8 +26,17 @@ final class AppModel {
     let compare: CompareController
     let filmStrip: FilmStripController
     let commands: CommandCenter
-    /// `⇥` hides the toolbar (and, later, the panels); the pointer at the top edge brings it back (M-13).
-    private(set) var chromeHidden = false
+    /// Focus mode (V-24, `⇥`): hides every panel but the RAW badge and the decision, on top of each panel's saved state, so `⇥` again restores the layout. Not remembered across launches. The pointer at the top edge brings nothing back (M-13).
+    private(set) var focus = FocusMode()
+    /// The toolbar's own saved state (`⌥⌘T`), remembered across launches.
+    private(set) var showToolbar = UserDefaults.standard.object(forKey: "showToolbar") as? Bool ?? true
+    var toolbarVisible: Bool { focus.isVisible(.toolbar, saved: showToolbar) }
+    var inspectorVisible: Bool { focus.isVisible(.inspector, saved: showInspector) }
+    var filterBarVisible: Bool { focus.isVisible(.filterBar, saved: showFilterBar) }
+    /// The info strip and, at its deeper levels, the EXIF panel.
+    var infoVisible: Bool { focus.isVisible(.info, saved: loupe.showInfoStrip) }
+    var exifVisible: Bool { infoVisible && loupe.showExif }
+    var histogramVisible: Bool { focus.isVisible(.histogram, saved: loupe.showHistogram && loupe.showInfoStrip) }
     /// The `?` sheet (M-23).
     var showCheatSheet = false
     var cheatScroll = ScrollPosition()
@@ -44,12 +53,12 @@ final class AppModel {
     var autoAdvance = UserDefaults.standard.bool(forKey: "autoAdvance") {
         didSet { if autoAdvance != UserDefaults.standard.bool(forKey: "autoAdvance") { UserDefaults.standard.set(autoAdvance, forKey: "autoAdvance") } }
     }
-    /// The inspector sidebar (⌥⌘I), remembered across launches. Hidden along with the toolbar by `⇥` (M-13).
+    /// The inspector sidebar (⌥⌘I), remembered across launches. Hidden by focus mode.
     private(set) var showInspector = UserDefaults.standard.bool(forKey: "showInspector")
-    /// The film strip under the picture in Loupe (V-20, `⌥⌘F`), remembered across launches, off at first launch. Hidden along with the toolbar by `⇥`.
+    /// The film strip under the picture in Loupe (V-20, `⌥⌘F`), remembered across launches, off at first launch. Hidden by focus mode.
     private(set) var showFilmStrip = UserDefaults.standard.bool(forKey: "showFilmStrip")
-    /// Whether the strip is on screen: Loupe only, and not while the panels are hidden.
-    var filmStripVisible: Bool { showFilmStrip && !chromeHidden && commands.mode == .loupe && folder.content == .photos }
+    /// Whether the strip is on screen: Loupe only, and not while focus mode hides it.
+    var filmStripVisible: Bool { focus.isVisible(.filmStrip, saved: showFilmStrip) && commands.mode == .loupe && folder.content == .photos }
     /// True after "Move Focus to Inspector" until `Esc`: `⇥`, `⇧⇥`, `↑` and `↓` walk the inspector's rows and
     /// `⌘C` copies the focused one. Driven by our own key handling, not SwiftUI focus, which cannot take the
     /// keyboard from the image view.
@@ -163,7 +172,7 @@ final class AppModel {
     func inspectorKey(code: UInt16, shift: Bool, option: Bool) -> Bool {
         // `⌥↑` and `⌥↓` walk the rows whenever the inspector is open, like chat apps' message navigation.
         // They take over Loupe's pan keys then; `⌥⇧` still pans a whole view.
-        if option, !shift, showInspector, !chromeHidden, commands.mode != .compare,
+        if option, !shift, inspectorVisible, commands.mode != .compare,
            code == PhysicalKey.upArrow.rawValue || code == PhysicalKey.downArrow.rawValue {
             // A first press lands on the first or last row, as `moveInspectorFocus` does with no row focused.
             if !inspectorActive { inspectorActive = true; inspectorFocusID = nil }
@@ -173,7 +182,6 @@ final class AppModel {
         guard inspectorActive, !option else { return false }
         switch code {
         case PhysicalKey.escape.rawValue: deactivateInspector()
-        case PhysicalKey.tab.rawValue: moveInspectorFocus(shift ? -1 : 1, wraps: true)
         case PhysicalKey.downArrow.rawValue: moveInspectorFocus(1, wraps: false)
         case PhysicalKey.upArrow.rawValue: moveInspectorFocus(-1, wraps: false)
         default: return false
@@ -287,17 +295,19 @@ final class AppModel {
         }
         commands.register("help.cheatsheet") { [unowned self] _ in showCheatSheet.toggle() }
         commands.register("view.filmstrip", isOn: { [unowned self] in showFilmStrip }) { [unowned self] _ in
-            showFilmStrip.toggle()
-            UserDefaults.standard.set(showFilmStrip, forKey: "showFilmStrip")
+            panelKey(.filmStrip, saved: showFilmStrip, toggle: { setFilmStrip(!showFilmStrip) }, turnOn: { setFilmStrip(true) })
         }
         commands.keyActivity = { [unowned self] in if filmStripVisible { filmStrip.keyPressed() } }
         commands.register("view.loupe") { [unowned self] _ in commands.mode = .loupe }
         commands.register("view.grid") { [unowned self] _ in commands.mode = .grid }
-        commands.register("view.chrome", title: { [unowned self] in chromeHidden ? "Show Toolbar" : "Hide Toolbar" }) { [unowned self] _ in
-            setChromeHidden(!chromeHidden)
+        commands.register("view.chrome", title: { [unowned self] in toolbarVisible ? "Hide Toolbar" : "Show Toolbar" }) { [unowned self] _ in
+            panelKey(.toolbar, saved: showToolbar, toggle: { setToolbar(!showToolbar) }, turnOn: { setToolbar(true) })
         }
-        commands.register("view.chromeTab", title: { [unowned self] in chromeHidden ? "Show Toolbar with Tab" : "Hide Toolbar with Tab" }) { [unowned self] _ in
-            setChromeHidden(!chromeHidden)
+        commands.register("view.focus", title: { [unowned self] in focus.isOn ? "Leave Focus Mode" : "Focus Mode" }) { [unowned self] _ in
+            toggleFocus()
+        }
+        commands.register("view.focusTab", title: { [unowned self] in focus.isOn ? "Leave Focus Mode with Tab" : "Focus Mode with Tab" }) { [unowned self] _ in
+            toggleFocus()
         }
         commands.register("view.fullscreen", title: {
             NSApp.keyWindow?.styleMask.contains(.fullScreen) == true ? "Exit Full Screen" : "Enter Full Screen"
@@ -360,28 +370,30 @@ final class AppModel {
         commands.register("overlay.clippingThresholds") { [unowned self] _ in
             loupe.toggleClippingPopover()
         }
+        // In focus mode `I` first shows the info alone (turning it on if it was off), then cycles as usual.
         commands.register("info.cycle", title: { [unowned self] in "Cycle Info (now \(loupe.infoLevel.title))" }) { [unowned self] _ in
-            loupe.cycleInfo()
+            panelKey(.info, saved: loupe.showInfoStrip, toggle: { loupe.cycleInfo() }, turnOn: { loupe.cycleInfo() })
         }
-        commands.register("info.rating", isOn: { [unowned self] in loupe.showRatingCorner }) { [unowned self] _ in
-            loupe.toggleRatingCorner()
+        commands.register("info.decision", isOn: { [unowned self] in loupe.showDecision }) { [unowned self] _ in
+            loupe.toggleDecision()
+        }
+        commands.register("info.truthBadge", isOn: { [unowned self] in loupe.showTruthBadge }) { [unowned self] _ in
+            loupe.toggleTruthBadge()
         }
         commands.register("info.histogram", isOn: { [unowned self] in loupe.showHistogram }) { [unowned self] _ in
-            loupe.toggleHistogram()
+            panelKey(.histogram, saved: loupe.showHistogram && loupe.showInfoStrip, toggle: { loupe.toggleHistogram() },
+                     turnOn: { if !loupe.showHistogram { loupe.toggleHistogram() } else if !loupe.showInfoStrip { loupe.cycleInfo() } })
         }
         commands.register("info.inspector", isOn: { [unowned self] in showInspector }) { [unowned self] _ in
-            setInspector(!showInspector)
+            panelKey(.inspector, saved: showInspector, toggle: { setInspector(!showInspector) }, turnOn: { setInspector(true) })
         }
-        commands.register("info.inspectorFocus", isAvailable: { [unowned self] in showInspector && !chromeHidden }) { [unowned self] _ in
-            activateInspector()
-        }
-        commands.register("info.fieldNext", isAvailable: { [unowned self] in loupe.showExif && !inspectorActive }) { [unowned self] _ in
+        commands.register("info.fieldNext", isAvailable: { [unowned self] in exifVisible && !inspectorActive }) { [unowned self] _ in
             loupe.moveExifFocus(1)
         }
-        commands.register("info.fieldPrevious", isAvailable: { [unowned self] in loupe.showExif && !inspectorActive }) { [unowned self] _ in
+        commands.register("info.fieldPrevious", isAvailable: { [unowned self] in exifVisible && !inspectorActive }) { [unowned self] _ in
             loupe.moveExifFocus(-1)
         }
-        commands.register("info.copy", isAvailable: { [unowned self] in inspectorValue != nil || (loupe.showExif && loupe.exif != nil) }) { [unowned self] _ in
+        commands.register("info.copy", isAvailable: { [unowned self] in inspectorValue != nil || (exifVisible && loupe.exif != nil) }) { [unowned self] _ in
             if let inspectorValue { copyToPasteboard(inspectorValue); HUD.shared.show("Copied") } else { loupe.copyExif() }
         }
         commands.register("info.maps", isAvailable: { [unowned self] in loupe.exif?.gps != nil }) { [unowned self] _ in
@@ -451,8 +463,10 @@ final class AppModel {
 
     private func registerFilter() {
         commands.register("filter.bar", isOn: { [unowned self] in showFilterBar }) { [unowned self] _ in
-            showFilterBar.toggle()
-            if !showFilterBar { NSApp.keyWindow?.makeFirstResponder(nil) }
+            panelKey(.filterBar, saved: showFilterBar, toggle: {
+                showFilterBar.toggle()
+                if !showFilterBar { NSApp.keyWindow?.makeFirstResponder(nil) }
+            }, turnOn: { showFilterBar = true })
         }
         commands.register("filter.enabled", isOn: { [unowned self] in folder.filter.isOn }) { [unowned self] _ in
             folder.toggleFilter()
@@ -461,6 +475,7 @@ final class AppModel {
         }
         commands.register("filter.find") { [unowned self] _ in
             showFilterBar = true
+            focus.reveal(.filterBar)
             findRequest += 1
         }
         commands.register("filter.clear", isAvailable: { [unowned self] in folder.filter.hasCriteria }) { [unowned self] _ in
@@ -600,9 +615,31 @@ final class AppModel {
         return compare.pair.flatMap { compare.pane($0.active).zoomInfo }
     }
 
-    /// `⇥` and `⌥⌘T` are the only ways to hide and show the chrome. Moving the pointer to the top edge does nothing, so a pointer that drifts there cannot shift the canvas while the photographer judges a frame.
-    func setChromeHidden(_ hidden: Bool) {
-        chromeHidden = hidden
+    /// `⇥` or `⌥⇥`. Moving the pointer to the top edge does nothing, so a pointer that drifts there cannot shift the canvas while the photographer judges a frame.
+    func toggleFocus() {
+        focus.toggle()
+        // A search field the bar had focused must not keep the keys once the bar is gone.
+        if focus.isOn, showFilterBar { NSApp.keyWindow?.makeFirstResponder(nil) }
+        if focus.isOn { deactivateInspector() }
+    }
+
+    /// A panel's own key (V-24). `FocusMode` decides whether it toggles the saved state, shows a hidden panel, or turns on one that was saved off.
+    private func panelKey(_ panel: Panel, saved: Bool, toggle: () -> Void, turnOn: () -> Void) {
+        switch focus.press(panel, saved: saved) {
+        case .toggle: toggle()
+        case .reveal: break
+        case .turnOnAndReveal: turnOn()
+        }
+    }
+
+    private func setToolbar(_ on: Bool) {
+        showToolbar = on
+        UserDefaults.standard.set(on, forKey: "showToolbar")
+    }
+
+    private func setFilmStrip(_ on: Bool) {
+        showFilmStrip = on
+        UserDefaults.standard.set(on, forKey: "showFilmStrip")
     }
 
     func open(_ url: URL) {

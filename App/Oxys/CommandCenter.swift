@@ -154,7 +154,7 @@ final class CommandCenter {
             return true
         }
         // With Full Keyboard Access on, `⇥` and `⇧⇥` are how the keyboard moves between controls (the filter bar,
-        // the toolbar, the banner's buttons), so they go to the system. "Hide Toolbar" keeps `⌥⌘T`.
+        // the toolbar, the banner's buttons), so they go to the system. "Focus Mode" keeps `⌥⇥`.
         if NSApp.isFullKeyboardAccessEnabled, event.keyCode == PhysicalKey.tab.rawValue,
            event.modifierFlags.isDisjoint(with: [.command, .control, .option]) { return false }
         // A text field or a focused control (button, picker) owns its keys: Space presses a button, arrows move a

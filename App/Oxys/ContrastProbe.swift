@@ -213,7 +213,7 @@ extension ContrastProbe {
         LoupeView.paintsOverlays = false
         model.setInspector(false)
         model.autoAdvance = true
-        if !loupe.showRatingCorner { loupe.toggleRatingCorner() }
+        if !loupe.showDecision { loupe.toggleDecision() }
         commands.perform("overlay.peaking"); commands.perform("overlay.highlights"); commands.perform("overlay.shadows")
         var count = 0
 

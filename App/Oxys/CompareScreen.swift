@@ -16,14 +16,14 @@ struct CompareScreen: View {
         // less the 6 pt gap. The toolbar covers the top corners unless the chrome is hidden, the inspector covers the
         // trailing ones, and full screen is square: those corners keep the small radius.
         let outer = fullScreen ? Plate.paneRadius : max(Plate.paneRadius, Plate.windowRadius - 6)
-        let top = model.chromeHidden ? outer : Plate.paneRadius
-        let trailing = model.showInspector && !model.chromeHidden ? Plate.paneRadius : outer
+        let top = model.toolbarVisible ? Plate.paneRadius : outer
+        let trailing = model.inspectorVisible ? Plate.paneRadius : outer
         HStack(spacing: 6) {
             ComparePaneView(model: model, pane: compare.select, active: compare.pair?.active == .select,
                             shape: Plate.paneShape(topLeading: top, bottomLeading: outer, bottomTrailing: Plate.paneRadius, topTrailing: Plate.paneRadius))
             ComparePaneView(model: model, pane: compare.candidate, active: compare.pair?.active == .candidate,
                             shape: Plate.paneShape(topLeading: Plate.paneRadius, bottomLeading: Plate.paneRadius, bottomTrailing: trailing,
-                                                   topTrailing: model.showInspector && !model.chromeHidden ? Plate.paneRadius : top))
+                                                   topTrailing: model.inspectorVisible ? Plate.paneRadius : top))
         }
         .padding(6)
         .background(Color(white: LoupeView.canvasGray))
@@ -70,18 +70,18 @@ private struct ComparePaneView: View {
                         }
                         if let peaking = loupe.peakingLabel(for: photo, developed: pane.developState == .raw) { PeakingBadgeView(label: peaking) }
                     }
-                    if !loupe.showInfoStrip, loupe.showRatingCorner, let photo = pane.shown {
+                    if !model.infoVisible, loupe.showDecision, let photo = pane.shown {
                         RatingCorner(decision: folder.decision(for: photo.url) ?? Decision(), pulse: compare.cullPulse[pane.side] ?? 0)
                     }
                 } right: {
-                    if let badge = pane.truthBadge, !loupe.showInfoStrip { TruthBadgeView(badge: badge) }
+                    if let badge = pane.truthBadge, !model.infoVisible, loupe.showTruthBadge { TruthBadgeView(badge: badge) }
                     if model.autoAdvance { AutoAdvanceBadge() }
                 }
-                if loupe.showInfoStrip {
+                if model.infoVisible {
                     InfoStrip(photo: pane.shown, decision: pane.shown.flatMap { folder.decision(for: $0.url) }, zoom: pane.zoomInfo,
-                              truth: pane.truthBadge,
-                              exifFields: loupe.showExif ? pane.exif?.compareFields(against: compare.pane(pane.side.other).exif) ?? [] : [],
-                              pulse: compare.cullPulse[pane.side] ?? 0)
+                              truth: loupe.showTruthBadge ? pane.truthBadge : nil,
+                              exifFields: model.exifVisible ? pane.exif?.compareFields(against: compare.pane(pane.side.other).exif) ?? [] : [],
+                              showsDecision: loupe.showDecision, pulse: compare.cullPulse[pane.side] ?? 0)
                 }
             }
         }

@@ -215,14 +215,19 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(press(.e, .loupe).isEmpty)
 }
 
-@Test func tabTogglesChromeInGridAndLoupeEvenWithoutPhotos() {
+@Test func tabTogglesFocusModeInGridAndLoupeEvenWithoutPhotos() {
     var router = KeyRouter(keymap: resolve(nil).keymap)
     for (i, mode) in [ViewMode.grid, .loupe].enumerated() {
         let r = router.handle(KeyInput(keyCode: PhysicalKey.tab.rawValue, timestamp: Double(i)), mode: mode, focus: .canvas)
-        #expect(r.actions == [.perform("view.chromeTab")])
+        #expect(r.actions == [.perform("view.focusTab")])
     }
-    #expect(CommandTable.standard["view.chromeTab"]!.isEnabled(in: .init(mode: .grid, hasPhotos: false)))
-    // Option-Command-T hides the toolbar in every mode, Compare included.
+    #expect(CommandTable.standard["view.focusTab"]!.isEnabled(in: .init(mode: .grid, hasPhotos: false)))
+    // Option-Tab is focus mode in every mode, Compare included; Option-Command-T hides the toolbar alone.
+    for (i, mode) in ViewMode.allCases.enumerated() {
+        let r = router.handle(KeyInput(keyCode: PhysicalKey.tab.rawValue, modifiers: [.option], timestamp: Double(20 + i)),
+                              mode: mode, focus: .canvas)
+        #expect(r.actions == [.perform("view.focus")])
+    }
     for (i, mode) in ViewMode.allCases.enumerated() {
         let r = router.handle(KeyInput(keyCode: PhysicalKey.t.rawValue, modifiers: [.option, .command], timestamp: Double(10 + i)),
                               mode: mode, focus: .canvas)
@@ -321,17 +326,20 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     }
     #expect(press(.i, .loupe, at: 0) == [.perform("info.cycle")])
     #expect(press(.i, .loupe, [.shift], at: 0) == [.perform("info.histogram")])   // M-17
-    #expect(press(.i, .loupe, [.option], at: 0) == [.perform("info.rating")])   // the rating corner, for a bare window
-    #expect(press(.i, .compare, [.option], at: 0) == [.perform("info.rating")])
+    #expect(press(.i, .loupe, [.option], at: 0) == [.perform("info.decision")])   // the decision, in the strip or the corner
+    #expect(press(.i, .compare, [.option], at: 0) == [.perform("info.decision")])
     #expect(press(.i, .grid, [.option], at: 0).isEmpty)
     #expect(press(.i, .grid, at: 1).isEmpty)
-    // The inspector opens from every mode; the focus command too (M-18).
+    #expect(press(.p, .loupe, [.option], at: 0) == [.perform("info.truthBadge")])   // V-24
+    #expect(press(.p, .compare, [.option], at: 0) == [.perform("info.truthBadge")])
+    #expect(press(.p, .grid, [.option], at: 0).isEmpty)
+    // The inspector opens from every mode (M-18). It has no key to move focus in: a click does that (V-24).
     for mode in [ViewMode.grid, .loupe] {
         #expect(press(.i, mode, [.command, .option], at: 1) == [.perform("info.inspector")])
+        #expect(press(.i, mode, [.command, .control], at: 1).isEmpty)
+    }
     #expect(press(.f, .loupe, [.command, .option], at: 1) == [.perform("view.filmstrip")])   // V-20
     #expect(press(.f, .grid, [.command, .option], at: 1) == [])
-        #expect(press(.i, mode, [.command, .control], at: 1) == [.perform("info.inspectorFocus")])
-    }
     #expect(press(.upArrow, .loupe, at: 2) == [.perform("info.fieldPrevious")])
     #expect(press(.c, .loupe, [.command], at: 3) == [.perform("info.copy")])
     #expect(press(.c, .grid, [.command], at: 4).isEmpty)
@@ -421,7 +429,7 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(press(.x, .compare) == [.perform("cull.reject")])
     #expect(press(.digit3, .compare, .shift) == [.performAdvancing("cull.rate.3")])
     // The same keys keep their old meaning elsewhere.
-    #expect(press(.tab, .loupe) == [.perform("view.chromeTab")])
+    #expect(press(.tab, .loupe) == [.perform("view.focusTab")])
     #expect(press(.downArrow, .loupe) == [.perform("info.fieldNext")])
     #expect(press(.upArrow, .grid) == [.perform("nav.up")])
     #expect(press(.downArrow, .grid) == [.perform("nav.down")])

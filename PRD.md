@@ -112,7 +112,10 @@ Checking sharpness is the reason this app exists, so zoom and RAW development ar
 | Histogram on / off | `⇧I` | new |
 | Show / hide inspector (EXIF, histogram) | `⌥⌘I` | HIG |
 | Lights out (dim, then black surround) | `L` | LR. Target v1.x |
-| Hide / show all panels | `⇥` | FRV |
+| Focus mode: hide every panel except the RAW badge and the decision | `⇥` | FRV. In Compare `⌥⇥`, since `⇥` switches the side. A panel's own key shows that panel alone; `⇥` again restores the layout as it was |
+| Show / hide the toolbar | `⌥⌘T` | HIG |
+| Show / hide the decision (stars, label, reject) | `⌥I` | new. Stays visible by default and through focus mode |
+| Show / hide the RAW badge | `⌥P` | new. Stays visible by default and through focus mode |
 | Full screen | `⌃⌘F` | HIG. Bare F is taken by peaking |
 | Shortcut cheat sheet | `?` | new. Shows keys for the current mode |
 
@@ -298,7 +301,7 @@ The interface is a quiet dark frame around the photograph; everything else is on
 
 ### Principles
 
-- **Content first.** Apple advises fewer toolbar items, no heavy backgrounds or tinted controls that compete with content, and toolbars that can hide contextually with a reliable way back. Loupe hides toolbar and panels on `⇥`, and pressing it again restores them. Moving the pointer does not show them.
+- **Content first.** Apple advises fewer toolbar items, no heavy backgrounds or tinted controls that compete with content, and toolbars that can hide contextually with a reliable way back. Every panel has its own key. `⇥` is focus mode: it hides all panels except the RAW badge and the decision, which leave only with their own keys, and pressing it again restores the layout as it was. Moving the pointer does not show anything.
 - **A complete, standard menu bar.** Standard order (app, File, Edit, View, custom menus, Window, Help). Items are disabled, never hidden, so the menu teaches what the app can do. Custom menus: Photo (rate, label, flag, reveal, edit in, extract) and Filter. Settings live at ⌘, in the app menu.
 - **Neutral dark canvas.** The chrome follows the system appearance and there is no in-app appearance switch, as Apple recommends. The image canvas is always a neutral dark gray, a case Apple's Dark Mode guidance allows for media viewing, so the surround never biases exposure judgments. Text contrast is at least 4.5:1.
 - **Windows the Mac way.** One resizable main window with full-screen support; the window title is the folder name and the subtitle reads "312 of 1,204 shown", never the app name.

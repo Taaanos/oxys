@@ -18,11 +18,11 @@ struct LoupeScreen: View {
             if let failure = loupe.failure {
                 ErrorTile(name: loupe.shown?.name ?? "", message: failure)
             }
-            if loupe.showExif, let exif = loupe.exif, loupe.failure == nil {
+            if model.exifVisible, let exif = loupe.exif, loupe.failure == nil {
                 ExifPanel(info: exif, focused: Bindable(loupe).focusedExifField)
             }
             // The inspector has its own Histogram section, so the corner one steps aside while it is open.
-            if loupe.showHistogram, loupe.showInfoStrip, !(model.showInspector && !model.chromeHidden), let histogram = loupe.histogram, loupe.failure == nil {
+            if model.histogramVisible, !model.inspectorVisible, let histogram = loupe.histogram, loupe.failure == nil {
                 HistogramView(histogram: histogram, onPhoto: true)
                     .padding(12)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
@@ -32,11 +32,11 @@ struct LoupeScreen: View {
                 PhotoLabels {
                     if let clipping = loupe.clippingLabel { ClippingReadout(label: clipping) }
                     if let peaking = loupe.peakingLabel { PeakingBadgeView(label: peaking) }
-                    if !loupe.showInfoStrip, loupe.showRatingCorner, let photo = loupe.shown {
+                    if !model.infoVisible, loupe.showDecision, let photo = loupe.shown {
                         RatingCorner(decision: folder.decision(for: photo.url) ?? Decision(), pulse: loupe.cullPulse)
                     }
                 } right: {
-                    if let badge = loupe.truthBadge, !loupe.showInfoStrip { TruthBadgeView(badge: badge) }
+                    if let badge = loupe.truthBadge, !model.infoVisible, loupe.showTruthBadge { TruthBadgeView(badge: badge) }
                     if model.autoAdvance { AutoAdvanceBadge() }
                 }
                 // Anchor for the `⌥H` popover: the corner where the readout sits.
@@ -48,9 +48,9 @@ struct LoupeScreen: View {
                             ClippingThresholdsPopover { loupe.showClippingPopover = false }
                         }
                 }
-                if loupe.showInfoStrip {
-                    InfoStrip(photo: loupe.shown, decision: loupe.shown.flatMap { folder.decision(for: $0.url) }, zoom: loupe.zoomInfo, truth: loupe.truthBadge,
-                              pulse: loupe.cullPulse)
+                if model.infoVisible {
+                    InfoStrip(photo: loupe.shown, decision: loupe.shown.flatMap { folder.decision(for: $0.url) }, zoom: loupe.zoomInfo,
+                              truth: loupe.showTruthBadge ? loupe.truthBadge : nil, showsDecision: loupe.showDecision, pulse: loupe.cullPulse)
                 }
             }
         }
@@ -121,6 +121,8 @@ struct InfoStrip: View {
     /// Compare (V-08, V-09): shutter, aperture, ISO and focal length, short enough for half a window, and any other
     /// setting that differs from the other pane's photo. A differing value is marked.
     var exifFields: [CompareField] = []
+    /// False while `⌥I` has the decision off: the strip keeps the filename and the zoom.
+    var showsDecision = true
     /// Changes when a cull key took effect; the rating glyphs bounce.
     var pulse = 0
 
@@ -159,7 +161,7 @@ struct InfoStrip: View {
     }
 
     private func spoken(_ photo: Photo) -> String {
-        ([photo.name, photo.isPair ? "RAW and JPEG" : nil, decision?.summary].compactMap { $0 } + photo.sidecar.notes).joined(separator: ", ") + (exifSpoken.map { ", " + $0 } ?? "") + zoomSpoken
+        ([photo.name, photo.isPair ? "RAW and JPEG" : nil, showsDecision ? decision?.summary : nil].compactMap { $0 } + photo.sidecar.notes).joined(separator: ", ") + (exifSpoken.map { ", " + $0 } ?? "") + zoomSpoken
     }
 
     /// Two glass capsules (D-11): the photo's state at the leading edge and the truth badge at the trailing edge, so only
@@ -170,9 +172,11 @@ struct InfoStrip: View {
                 HStack(alignment: .bottom, spacing: 12) {
                     // The decision leads the capsule, with empty stars drawn and a slot as wide as five stars, so the filename keeps its place from frame to frame.
                     HStack(spacing: 12) {
-                        ZStack(alignment: .leading) {
-                            DecisionGlyphs(decision: Decision(rating: 5), showsEmptyStars: true).hidden()
-                            DecisionGlyphs(decision: decision ?? Decision(), pulse: pulse, showsEmptyStars: true)
+                        if showsDecision {
+                            ZStack(alignment: .leading) {
+                                DecisionGlyphs(decision: Decision(rating: 5), showsEmptyStars: true).hidden()
+                                DecisionGlyphs(decision: decision ?? Decision(), pulse: pulse, showsEmptyStars: true)
+                            }
                         }
                         state(photo)
                     }
