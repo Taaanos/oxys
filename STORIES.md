@@ -109,7 +109,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | P-01 | Performance gate tool and a real shoot | M-26 | done (criterion 1 not met: the M-26 table does not reproduce; cold rows run warm, no `purge`) |
 | P-02 | Decode once, into GPU memory | P-01 | done (criterion 2 met against the P-01 baseline, not against the stale 3.4 GB; see the story) |
 | P-03 | Screen-size frame first (cold next image) | P-02 | done (criteria 1 and 3 met; criterion 2: prefetched p95 is 62 ms, not under 50, unchanged by this story; see the story) |
-| P-04 | One memory budget | P-02 | in progress (built and measured; develop-always and the 61 MP scrub meet the limit, the 24 MP scrub peak does not: see the story) |
+| P-04 | One memory budget | P-02 | done (develop-always and the 61 MP scrub meet the limit; the 24 MP scrub peak does not, accepted on 4 Oct 2026: see the story) |
 | P-05 | Keys within one display frame while frames load | P-01 | todo |
 | P-06 | Overlay toggles without new allocations | P-01 | todo |
 | P-07 | Capture times in under 3 s | P-01 | todo |
@@ -2222,6 +2222,7 @@ The code changes the M-26 diagnosis in two places, found while planning this pha
 - Criterion 2: met in 5 of 6 runs (329 to 482 MB); one run measured 623 and one 856 MB.
 - Criterion 3: met (table). `idle-cpu-percent-loupe` is 0.07 with and without this change, over the P-09 limit of 0.02 on this busy Mac; not caused by P-04.
 - Not done: `nav-cold` on `real-drone-840` was not re-run after the last change; the run was stopped.
+- **Closed 4 Oct 2026:** the owner accepted the measured values. The 24 MP scrub peak (2.8 to 3.4 GB against 2,648 MB) stays above its limit in `scripts/perf-targets.tsv`, so `make perf-gate` on `24mp-1000` fails that row until the cancelled full-size loads and the late Metal frees are dealt with (P-03 or P-10).
 
 ### P-05 · Keys within one display frame while frames load
 
