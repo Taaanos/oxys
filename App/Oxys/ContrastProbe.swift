@@ -136,6 +136,7 @@ private struct ProbeFrame: ViewModifier {
     }
 }
 
+#if OXYS_DEV_HOOKS
 // MARK: the bench scenario
 
 extension ContrastProbe {
@@ -345,3 +346,4 @@ extension ContrastProbe {
         Perf.record("contrast-captures", Double(out.captures.count))
     }
 }
+#endif

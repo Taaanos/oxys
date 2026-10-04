@@ -434,9 +434,11 @@ final class AppModel {
             }
         }
         // Developer hook, like OXYS_REPORT_LAUNCH: open a folder at launch for scripted checks.
+        #if OXYS_DEV_HOOKS
         if let path = DevHooks.environment["OXYS_OPEN"] {
             if PerfBench.scenario != nil { PerfBench.start(model: self, folder: URL(fileURLWithPath: path)) } else { open(URL(fileURLWithPath: path)) }
         }
+        #endif
         startSessionResume()
     }
 

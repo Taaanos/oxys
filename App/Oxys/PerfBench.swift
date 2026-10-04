@@ -1,3 +1,4 @@
+#if OXYS_DEV_HOOKS
 import AppKit
 import Canvas
 import Commands
@@ -571,3 +572,4 @@ enum DisplayTick {
         }
     }
 }
+#endif

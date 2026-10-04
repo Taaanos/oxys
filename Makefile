@@ -7,10 +7,16 @@ BENCH_APP := $(BUILD_DIR)/Build/Products/Bench/Oxys.app
 BUILD_SETTINGS ?=
 PACKAGES  := $(sort $(dir $(wildcard Packages/*/Package.swift)))
 
-.PHONY: build build-bench test check-arch launch-time corpus manifest bench-folders perf-bench perf-gate perf-selftest perf-report sidecar-stress extract-bench sidecar-gate contrast contrast-quick contrast-selftest ui-walk ui-walk-compare clean
+.PHONY: build build-debug build-bench testcheck-arch launch-time corpus manifest bench-folders perf-bench perf-gate perf-selftest perf-report sidecar-stress extract-bench sidecar-gate contrast contrast-quick contrast-selftest ui-walk ui-walk-compare clean
 
 build:
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release \
+		-destination 'platform=macOS,arch=arm64' -derivedDataPath $(BUILD_DIR) $(BUILD_SETTINGS) build
+
+# Fast loop for edit and check: Debug has no optimizer and compiles per file, so one edit builds in about 3 s (Release: 12 s).
+# It gives the same warnings and errors as `build`. Do not use it for timing: perf work needs `build` or `build-bench`.
+build-debug:
+	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
 		-destination 'platform=macOS,arch=arm64' -derivedDataPath $(BUILD_DIR) $(BUILD_SETTINGS) build
 
 test:

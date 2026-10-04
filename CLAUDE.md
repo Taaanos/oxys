@@ -20,6 +20,7 @@ Keyboard-first RAW culler for macOS. Swift 6, arm64 only, macOS 27+, no sandbox.
 
 ```sh
 make build         # Release build into ./build
+make build-debug   # Debug build, for the edit-and-check loop: one edit builds in about 3 s (Release: 12 s). Same warnings; never use it for timing. Run `make build` before the story commit
 make build-bench   # S-6: the Bench configuration, Release plus the OXYS_DEV_HOOKS compile condition; the OXYS_* variables work only here. perf-bench, perf-gate, contrast and launch-time build and use it; it is never shipped
 make test          # swift test in every Packages/* directory
 make check-arch    # lipo -archs on the built app; must print only "arm64"

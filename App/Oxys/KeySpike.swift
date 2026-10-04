@@ -1,3 +1,4 @@
+#if OXYS_DEV_HOOKS
 import AppKit
 import Commands
 import SwiftUI
@@ -192,3 +193,4 @@ struct KeySpikeCommands: Commands {
         Button(title) { model?.menuFired(id) }.keyboardShortcut(key, modifiers: mods)
     }
 }
+#endif
