@@ -2053,7 +2053,7 @@ Open questions 1 to 3 took the proposals: no session state cleared, no age limit
 - `DiskThumbnailCache.clear()` deletes only `.jpg` files directly in the cache folder and returns the bytes freed. A read of a removed file is a miss, so an open grid or loupe builds the thumbnail again; nothing is held open.
 - Settings → Memory has a "Thumbnail cache" section: size (measured off the main thread when the pane appears), the "Clear Thumbnail Cache" button (disabled at 0, a normal tab stop), and a VoiceOver announcement when done.
 - Unit test `diskCacheClearRemovesOnlyThumbnailsAndKeepsWorking`: size reads 0, a decoy `.jpg` beside the folder stays, the cache fills again, clearing a missing folder is harmless.
-- Not checked yet: clearing with a folder open in the live app, and VoiceOver reading. (VoiceOver: not checked, by decision 4 Oct 2026)
+- Live check (2026-10-04, by the owner): Clear works in the running app; the size reads Zero kB and the button turns off. Not checked yet: VoiceOver reading. (VoiceOver: not checked, by decision 4 Oct 2026)
 
 
 ### V-18 · v1.0 gate
