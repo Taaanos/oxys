@@ -117,4 +117,60 @@ import Testing
         #expect(model.photos.first?.decision.rating == 4)
         #expect(model.hasUnsavedDecisions)
     }
+
+    // The watcher reports every file of a folder that vanished as removed, 200 ms later. The tests below hand
+    // that report to the model themselves, so no order of events and no machine load changes the result.
+
+    @Test func theRemovalReportBeforeTheFailedWriteIsHandledKeepsTheDecision() async throws {
+        let folder = try TempFolder()
+        try folder.add("a.ARW")
+        let model = await open(folder)
+        folder.remove()
+        model.apply(.setRating(4)); model.flushSidecarWrites()
+        // Nothing has suspended since the write failed, so its outcome is still waiting for the main actor.
+        model.handleChanges(["a.ARW"])
+        #expect(await waitUntil { model.unsavedCount == 1 })
+        #expect(model.photos.map(\.name) == ["a.ARW"])
+        #expect(model.photos.first?.decision.rating == 4)
+    }
+
+    @Test func theRemovalReportAfterTheFailedWriteKeepsTheDecisionAndItCanStillBeSavedElsewhere() async throws {
+        let folder = try TempFolder()
+        let elsewhere = try TempFolder(); defer { elsewhere.remove() }
+        try folder.add("a.ARW")
+        let model = await open(folder)
+        folder.remove()
+        model.apply(.setRating(4)); model.flushSidecarWrites()
+        #expect(await waitUntil { model.unsavedCount == 1 })
+        model.handleChanges(["a.ARW"])
+        #expect(model.content == .photos)
+        #expect(model.photos.map(\.name) == ["a.ARW"])
+        #expect(model.photos.first?.decision.rating == 4)
+        #expect(model.unsavedCount == 1)
+        #expect(await model.saveUnsaved(to: elsewhere.url) == 1)
+        let props = try XMPReader.parse(Data(contentsOf: elsewhere.url.appendingPathComponent("a.xmp")))
+        #expect(props.rating == 4)
+    }
+
+    @Test func aVanishedFoldersMissingSidecarDoesNotClearASavedDecision() async throws {
+        let folder = try TempFolder()
+        try folder.add("a.ARW")
+        let model = await open(folder)
+        model.apply(.setRating(3)); model.flushSidecarWrites()
+        #expect(FileManager.default.fileExists(atPath: folder.url.appendingPathComponent("a.xmp").path))
+        folder.remove()
+        model.handleChanges(["a.xmp"])
+        // A re-read of the sidecar would run off the main thread; give it time to show up if it was started.
+        try? await Task.sleep(for: .milliseconds(300))
+        #expect(model.photos.first?.decision.rating == 3)
+    }
+
+    @Test func aPhotoDeletedFromAFolderThatStillExistsLeavesTheList() async throws {
+        let folder = try TempFolder(); defer { folder.remove() }
+        let gone = try folder.add("a.ARW"); try folder.add("b.ARW")
+        let model = await open(folder)
+        try FileManager.default.removeItem(at: gone)
+        model.handleChanges(["a.ARW"])
+        #expect(model.photos.map(\.name) == ["b.ARW"])
+    }
 }

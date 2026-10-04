@@ -373,6 +373,11 @@ public final class FolderModel {
     /// a photo that disappeared leaves the list, a photo that appeared is counted for the banner.
     func handleChanges(_ names: [String], generation mine: Int? = nil) {
         guard let folder, mine == nil || mine == generation, content == .photos else { return }
+        // A folder that is gone (card pulled, share dropped, folder deleted) reports every file as removed. That is
+        // not the photographer deleting photos: the list and its decisions stay as they are, so a retry or
+        // "Save Decisions To…" can still use them (M-11). Without this the report empties the list, and the
+        // decision of a write that has just failed, or a saved one whose sidecar "disappeared", is lost.
+        guard FileManager.default.fileExists(atPath: folder.path) else { return }
         var bySidecarName: [String: [URL]] = [:]
         var known = Set<URL>()
         for photo in photos {

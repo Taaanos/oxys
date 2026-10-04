@@ -779,6 +779,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Q2: when our change to that photo is still queued or being written (`hasPendingWrite`), the decision on screen stays ours, and the sidecar info gets `overwrittenOutsideChange` ("Replaced a change made outside Oxys (…)") for the inspector. Our write then patches our properties onto the fresh file, so other changes survive (M-08).
 - An outside edit that leaves the file unparseable keeps the decision on screen, sets `sidecar.problem`, and so stops our writes until the file parses again. A deleted sidecar clears the decision.
 - The undo history is not rewritten for outside changes: undoing a step restores its recorded "before" value.
+- A folder that is gone (card pulled, share dropped, folder deleted) is not the photographer deleting photos. `FolderModel.handleChanges` ignores every event while the folder does not exist, so the list, the decisions and the unsaved marks stay (M-11). Before this, the watcher reported every file of the gone folder as removed (200 ms later). The list emptied, a failed write found no photo to mark as unsaved, and a saved decision was cleared because its sidecar "disappeared". A photo deleted from a folder that still exists leaves the list, as before.
 
 **Checked**
 - Unit tests (`Library` 56, `Sidecar` 25): a real FSEvents round trip updates the decision in under 1 s, own-write signature versus outside edit, Camera Raw settings added by an outside writer between two writes survive with both rating changes, malformed rewrite, removed and new photos, own-write echo not read back.
@@ -813,6 +814,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Read-only is found on open (`volumeIsReadOnly` or not writable) and again on Retry. Writes are still attempted, so there is one failure path: `SidecarWriteQueue` keeps each `.failed` job (`retryFailed`, `unsavedCount`, `forgetFailure`); a newer decision for the same sidecar replaces it and a retry never overwrites a newer one. Refusals count as unsaved but are not retried.
 - `FolderModel` tracks `SidecarInfo.unsaved` per photo (`unsavedCount`, `banner`, `isBannerDismissed`); the info strip shows "Not saved yet" until the inspector exists. The banner appears once per opened folder (Dismiss hides it), is non-modal, never takes focus, and is announced to VoiceOver. Retry runs from the banner and whenever the app becomes active.
 - Quit: `AppDelegate.applicationShouldTerminate` retries and flushes, and only if something is still unsaved shows the one alert (Save Decisions To…, Cancel, Quit; V-15 renamed the last button).
+- A folder that vanishes keeps the list and its unsaved decisions, so Retry and Save Decisions To… still work (rule in M-10, Decisions). Found when `aFolderThatVanishesMidSessionKeepsEveryDecisionInMemory` failed in about one run in ten under load. It passed only when it asserted before the watcher's removal report arrived. Four tests in `WriteFailureTests` now give that report to the model themselves, in both orders against the failed write, so the result does not depend on FSEvents timing or machine load.
 
 **Checked**
 - Unit tests (`Sidecar` 26, `Library` 63): read-only banner on open, decisions kept and marked unsaved, retry after unlocking, newer decision not overwritten, save to another folder with same names, folder vanishing mid-session.
@@ -2497,7 +2499,7 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 - `glassPlate(in:)` sets white foreground, dark color scheme, `.regular.tint(Plate.glassTint)` and `.glassEffectTransition(.identity)`. The clipping readout uses a rounded rectangle (12 pt); the others use a capsule. `TruthBadgeView` no longer knows the strip: the caller shows it only when the strip is off.
 - `ContrastProbe.Material` now writes its label from `Plate.opacity` and `Plate.glassOpacity`, so the report names the real tint.
 - Result: `docs/design/contrast.md`, all 105 rows pass (dark appearance, Reduce Transparency and Increase Contrast off). Screenshots before and after on the test frames: `docs/design/d-02/`.
-- A Library test (`aFolderThatVanishesMidSessionKeepsEveryDecisionInMemory`) failed once in a full `make test` and passed alone, three times, and on the previous commit. Not related to this change; it looks like a timing flake under load.
+- A Library test (`aFolderThatVanishesMidSessionKeepsEveryDecisionInMemory`) failed once in a full `make test` and passed alone, three times, and on the previous commit. Not related to this change; it looks like a timing flake under load. (Found later: a real race in the folder-watcher path, fixed. See M-10, Decisions.)
 
 
 ### D-03 · Glass for the floating panels
@@ -2531,7 +2533,7 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 - Q2 **Decided:** the extract panel stays dark, as proposed. It uses `glassPlate(in: .rect(cornerRadius: 10), transition:)`; `glassPlate` has a new `transition` parameter that defaults to `.identity`, so the badges still cut.
 - `CheatSheetView` and `EditorChooserView`: `.glassEffect(.regular, in: .rect(cornerRadius: 12))` inside a `GlassEffectContainer`; `.shadow(radius: 24)` removed. The key routing is not touched.
 - Transition: `.materialize`, or `.identity` with Reduce Motion on. `FolderView` animates the three show flags with `.smooth(duration: 0.25)`, or with no animation under Reduce Motion, because a glass transition runs only inside an animation.
-- Checked: `make build` has no warnings; `make test` passes, except `aFolderThatVanishesMidSessionKeepsEveryDecisionInMemory` (the known timing flake from D-02; it passes alone).
+- Checked: `make build` has no warnings; `make test` passes, except `aFolderThatVanishesMidSessionKeepsEveryDecisionInMemory` (the known timing flake from D-02; fixed later, see M-10, Decisions).
 - Not checked yet (quick run only): the opening and closing on screen, `make contrast` for the three panels in light and dark, Reduce Motion, Reduce Transparency and VoiceOver. (VoiceOver: not checked, by decision 4 Oct 2026)
 
 ### D-04 · The write banner as a floating glass notice
