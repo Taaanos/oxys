@@ -54,12 +54,6 @@ private final class FilmStripScrollView: NSScrollView {
     }
 }
 
-/// Holds the glass plate. It is a sibling of the collection view in the clip view, drawn under it, so it scrolls with the cells.
-private final class FilmStripPlateHost: NSView {
-    override var isFlipped: Bool { true }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-}
-
 private final class FilmStripCollectionView: NSCollectionView {
     override var acceptsFirstResponder: Bool { false }
 }
@@ -98,18 +92,20 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
     private var scrolledAway = false
     private var resumeTask: Task<Void, Never>?
     private var refreshToken: Perf.Token?
-    /// The glass plate behind the active cell (V-20). A label's black tint (D-02) would vanish on this dark band, so
-    /// the plate is tinted light: it is the one mark of the active cell, so it must stand out from the band.
-    private let plateHost = FilmStripPlateHost()
-    private let plate: NSGlassEffectView = {
-        let view = NSGlassEffectView()
-        view.cornerRadius = 9
-        view.tintColor = NSColor.white.withAlphaComponent(0.45)
-        view.setAccessibilityElement(false)
-        return view
+    /// The active cell's thumbnail seen through the glass lens, made once per photo that becomes active (V-20).
+    private var lensed: (key: LensKey, image: CGImage)?
+
+    private struct LensKey: Equatable {
+        let thumbnail: GridThumbnailLoader.Key
+        let decision: Decision
+        let isPair: Bool
+    }
+    private static let lensStyle: GlassLens.Style = {
+        var style = GlassLens.Style()
+        style.strength = 0.09
+        style.rimWidth = 0.15
+        return style
     }()
-    /// How far the plate reaches past the cell. Less than the gap between cells, so it never covers a neighbor.
-    private static let plateOutset: CGFloat = 3
 
     init(folder: FolderModel) {
         self.folder = folder
@@ -121,8 +117,6 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
 
     func makeView() -> NSScrollView {
         detach()
-        plate.removeFromSuperview()
-        plateHost.removeFromSuperview()
         let layout = NSCollectionViewFlowLayout()
         layout.scrollDirection = .horizontal
         layout.minimumInteritemSpacing = 0
@@ -133,8 +127,7 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
         collection.collectionViewLayout = layout
         collection.dataSource = self
         collection.isSelectable = false
-        // Clear, so the plate below the collection view shows through; the clip view draws the canvas gray.
-        collection.backgroundColors = [.clear]
+        collection.backgroundColors = [NSColor(white: LoupeView.canvasGray, alpha: 1)]
         collection.register(FilmStripItem.self, forItemWithIdentifier: FilmStripItem.identifier)
 
         let scroll = FilmStripScrollView()
@@ -155,9 +148,6 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
         self.layout = layout
         collectionView = collection
         scrollView = scroll
-        scroll.contentView.drawsBackground = true
-        scroll.contentView.backgroundColor = NSColor(white: LoupeView.canvasGray, alpha: 1)
-        scroll.contentView.addSubview(plateHost, positioned: .below, relativeTo: collection)
 
         photos = folder.visible
         reindex()
@@ -219,7 +209,6 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
     private func widthChanged() {
         guard scrollView != nil else { return }
         applyInsets()
-        positionPlate()
         if !scrolledAway { recenter() }
         refreshWanted()
     }
@@ -228,28 +217,12 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
     private func recenter() {
         guard let scrollView, let collectionView else { return }
         collectionView.layoutSubtreeIfNeeded()
-        positionPlate()
         scrolledAway = false
         let g = geometry
         let x = g.offset(centering: folder.currentIndex ?? 0, count: photos.count)
         guard x != scrollView.contentView.bounds.origin.x else { return }
         scrollView.contentView.scroll(to: NSPoint(x: x, y: 0))
         scrollView.reflectScrolledClipView(scrollView.contentView)
-    }
-
-    /// A cut: the plate goes to the active cell with no animation. It lives in a view under the collection view.
-    private func positionPlate() {
-        guard let collectionView, let index = folder.currentIndex, photos.indices.contains(index) else {
-            plate.removeFromSuperview()
-            return
-        }
-        plateHost.frame = collectionView.frame
-        if plate.superview !== plateHost { plateHost.addSubview(plate) }
-        let g = geometry
-        let o = Self.plateOutset
-        let cell = FilmStripGeometry.cellSize
-        plate.frame = NSRect(x: g.origin(of: index, count: photos.count) - o, y: FilmStripGeometry.verticalInset - o,
-                             width: cell + 2 * o, height: cell + 2 * o)
     }
 
     // MARK: thumbnails
@@ -344,10 +317,50 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
         let key = key(for: photo)
         let isCurrent = photo.url == folder.currentURL
         let content = GridCellView.Content(
-            url: photo.url, image: loader.image(for: key), failed: loader.isFailed(key), decision: photo.decision,
+            url: photo.url, image: isCurrent ? lens(for: key, photo: photo) : loader.image(for: key), failed: loader.isFailed(key),
+            decision: photo.decision,
             isCurrent: isCurrent, isSelected: false,
-            label: isCurrent ? "\(photo.cellLabel), current photo" : photo.cellLabel, isPair: photo.isPair, showsRing: false)
+            label: isCurrent ? "\(photo.cellLabel), current photo" : photo.cellLabel, isPair: photo.isPair, showsRing: false,
+            badgePlate: false, badgesInImage: isCurrent)
         cell.configure(content) { [weak self] url, _, _ in self?.folder.setCurrent(url) }
+    }
+
+    /// The thumbnail through the glass lens, with the decision drawn under the glass, or the plain thumbnail while it
+    /// has not loaded. Made on the first draw of the active cell (about a millisecond) and again when its decision
+    /// changes; kept until another photo is active.
+    private func lens(for key: GridThumbnailLoader.Key, photo: Photo) -> CGImage? {
+        guard let plain = loader.image(for: key) else { return nil }
+        let lensKey = LensKey(thumbnail: key, decision: photo.decision, isPair: photo.isPair)
+        if let lensed, lensed.key == lensKey { return lensed.image }
+        let edge = Self.edge
+        let image = GlassLens.apply(to: plain, edge: edge, background: LoupeView.canvasGray, style: Self.lensStyle) { ctx in
+            Self.drawDecision(photo.decision, isPair: photo.isPair, into: ctx, edge: edge)
+        }
+        lensed = image.map { (lensKey, $0) }
+        return image ?? plain
+    }
+
+    /// How far above the cell's bottom edge the badges sit on the lens: past the bending rim, so it does not cut them.
+    private static let lensBadgeLift: CGFloat = 16
+
+    /// Draws the badges (and, for a reject, the veil that dims the picture) into the lens bitmap, in cell points.
+    private static func drawDecision(_ decision: Decision, isPair: Bool, into ctx: CGContext, edge: Int) {
+        let cell = FilmStripGeometry.cellSize
+        ctx.saveGState()
+        defer { ctx.restoreGState() }
+        // Points, top-left origin, like the cell's own badge view.
+        ctx.translateBy(x: 0, y: CGFloat(edge))
+        ctx.scaleBy(x: CGFloat(edge) / cell, y: -CGFloat(edge) / cell)
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
+        if decision.isReject {
+            NSColor(white: LoupeView.canvasGray, alpha: 0.65).setFill()
+            NSRect(x: 0, y: 0, width: cell, height: cell).fill()
+        }
+        GridBadgeView.drawBadges(decision: decision, isPair: isPair,
+                                 in: NSRect(x: 4, y: cell - GridBadgeView.height - Self.lensBadgeLift, width: cell - 8, height: GridBadgeView.height),
+                                 plate: false)
     }
 
     // MARK: NSCollectionViewDataSource

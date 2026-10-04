@@ -404,6 +404,9 @@ final class GridCellView: NSView {
         /// The film strip marks the active cell with a glass plate behind it (V-20), so the cell draws no ring over
         /// the thumbnail, and its tile is clear so the plate shows through the bars of a portrait frame.
         var showsRing = true
+        /// The film strip draws no plate behind the badges, and the active cell's badges are inside its lens image.
+        var badgePlate = true
+        var badgesInImage = false
     }
 
     private let imageLayer = CALayer()
@@ -478,12 +481,15 @@ final class GridCellView: NSView {
         CATransaction.setDisableActions(true)
         imageLayer.contents = content.image
         imageLayer.contentsScale = window?.backingScaleFactor ?? 2
-        imageLayer.opacity = content.decision.isReject ? 0.35 : 1
+        // A reject is dimmed; in the film strip the lens bitmap carries the dimming with the badges.
+        imageLayer.opacity = content.decision.isReject && !content.badgesInImage ? 0.35 : 1
         ringLayer.borderWidth = content.isCurrent && content.showsRing ? 3 : 0
         layer?.backgroundColor = content.isCurrent && !content.showsRing ? nil : NSColor(white: 0.2, alpha: 1).cgColor
         tintLayer.isHidden = !content.isSelected
         checkLayer.isHidden = !content.isSelected
         CATransaction.commit()
+        badges.plate = content.badgePlate
+        badges.isHidden = content.badgesInImage && content.image != nil
         badges.decision = content.failed ? nil : content.decision
         badges.failed = content.failed
         badges.isPair = content.isPair
@@ -515,36 +521,51 @@ final class GridBadgeView: NSView {
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
+    /// The film strip has no full-width plate behind its badges (V-20): its marks sit in one small capsule.
+    var plate = true { didSet { if plate != oldValue { needsDisplay = true } } }
+
     override func draw(_ dirtyRect: NSRect) {
         if failed {
-            draw("No preview", at: NSPoint(x: 6, y: 4), color: .white, font: .systemFont(ofSize: 11))
+            Self.draw("No preview", at: NSPoint(x: 6, y: 4), color: .white, font: .systemFont(ofSize: 11))
             return
         }
-        let decision = decision ?? .none
+        Self.drawBadges(decision: decision ?? .none, isPair: isPair, in: bounds, plate: plate)
+    }
+
+    /// The badges in `strip` (a rectangle in a flipped coordinate system, `height` tall). Also drawn into the film
+    /// strip's lens bitmap, so the glass bends them with the picture.
+    static func drawBadges(decision: Decision, isPair: Bool, in strip: NSRect, plate: Bool) {
         guard !decision.isUndecided || isPair else { return }
-        NSColor.black.withAlphaComponent(Plate.opacity).setFill()
-        bounds.fill()
-        var x: CGFloat = 6
+        if !plate {
+            drawCompact(decision: decision, isPair: isPair, in: strip)
+            return
+        }
+        if plate {
+            NSColor.black.withAlphaComponent(Plate.opacity).setFill()
+            strip.fill()
+        }
+        let top = strip.minY + 3
+        var x = strip.minX + 6
         if decision.isReject {
-            let mark = NSRect(x: x, y: 3, width: 16, height: 16)
+            let mark = NSRect(x: x, y: top, width: 16, height: 16)
             NSColor(srgbRed: 0.78, green: 0.06, blue: 0.12, alpha: 1).setFill() // white ✕ at 5.9:1
             NSBezierPath(roundedRect: mark, xRadius: 4, yRadius: 4).fill()
             draw("✕", in: mark, color: .white, font: .systemFont(ofSize: 11, weight: .bold))
             x += 22
         } else if decision.stars > 0 {
             let text = String(repeating: "★", count: decision.stars)
-            x += draw(text, at: NSPoint(x: x, y: 3), color: .systemYellow, font: .systemFont(ofSize: 13)) + 6
+            x += draw(text, at: NSPoint(x: x, y: top), color: .systemYellow, font: .systemFont(ofSize: 13)) + 6
         }
-        var right = bounds.width - 6
+        var right = strip.maxX - 6
         if isPair {
-            let chip = NSRect(x: right - 32, y: 3, width: 32, height: 16)
+            let chip = NSRect(x: right - 32, y: top, width: 32, height: 16)
             NSColor.white.withAlphaComponent(0.85).setFill()
             NSBezierPath(roundedRect: chip, xRadius: 4, yRadius: 4).fill()
             draw("R+J", in: chip, color: .black, font: .monospacedSystemFont(ofSize: 10, weight: .bold))
             right -= 38
         }
         if let label = decision.label {
-            let chip = NSRect(x: right - 16, y: 3, width: 16, height: 16)
+            let chip = NSRect(x: right - 16, y: top, width: 16, height: 16)
             label.nsColor.setFill()
             NSBezierPath(roundedRect: chip, xRadius: 4, yRadius: 4).fill()
             draw(String(label.letter), in: chip, color: .black,
@@ -552,14 +573,69 @@ final class GridBadgeView: NSView {
         }
     }
 
+    /// The film strip's badges (V-20): all the marks in one dark capsule with a faint light edge, centered in `strip`.
+    /// Stars shrink to a star and a number when five of them and the chips would not fit.
+    private static func drawCompact(decision: Decision, isPair: Bool, in strip: NSRect) {
+        let gap: CGFloat = 6, padding: CGFloat = 7, height: CGFloat = 20, chip: CGFloat = 16
+        let starFont = NSFont.systemFont(ofSize: 12)
+        func starsText(_ compact: Bool) -> String {
+            compact && decision.stars > 1 ? "★\(decision.stars)" : String(repeating: "★", count: decision.stars)
+        }
+        func width(compact: Bool) -> CGFloat {
+            var items: [CGFloat] = []
+            if decision.isReject { items.append(chip) }
+            else if decision.stars > 0 { items.append(NSAttributedString(string: starsText(compact), attributes: [.font: starFont]).size().width) }
+            if isPair { items.append(32) }
+            if decision.label != nil { items.append(chip) }
+            return items.reduce(0, +) + gap * CGFloat(max(items.count - 1, 0)) + 2 * padding
+        }
+        let compact = width(compact: false) > strip.width
+        let total = width(compact: compact)
+        let pill = NSRect(x: strip.midX - total / 2, y: strip.midY - height / 2, width: total, height: height)
+        let shape = NSBezierPath(roundedRect: pill, xRadius: height / 2, yRadius: height / 2)
+        NSColor.black.withAlphaComponent(0.5).setFill()
+        shape.fill()
+        NSColor.white.withAlphaComponent(0.2).setStroke()
+        shape.lineWidth = 0.5
+        shape.stroke()
+        var x = pill.minX + padding
+        let markY = pill.midY - chip / 2
+        if decision.isReject {
+            let mark = NSRect(x: x, y: markY, width: chip, height: chip)
+            NSColor(srgbRed: 0.78, green: 0.06, blue: 0.12, alpha: 1).setFill()
+            NSBezierPath(roundedRect: mark, xRadius: 4, yRadius: 4).fill()
+            draw("✕", in: mark, color: .white, font: .systemFont(ofSize: 11, weight: .bold))
+            x += chip + gap
+        } else if decision.stars > 0 {
+            let text = NSAttributedString(string: starsText(compact),
+                                          attributes: [.font: starFont, .foregroundColor: NSColor.systemYellow])
+            let size = text.size()
+            text.draw(at: NSPoint(x: x, y: pill.midY - size.height / 2))
+            x += size.width + gap
+        }
+        if isPair {
+            let rect = NSRect(x: x, y: markY, width: 32, height: chip)
+            NSColor.white.withAlphaComponent(0.85).setFill()
+            NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4).fill()
+            draw("R+J", in: rect, color: .black, font: .monospacedSystemFont(ofSize: 10, weight: .bold))
+            x += 32 + gap
+        }
+        if let label = decision.label {
+            let rect = NSRect(x: x, y: markY, width: chip, height: chip)
+            label.nsColor.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4).fill()
+            draw(String(label.letter), in: rect, color: .black, font: .monospacedSystemFont(ofSize: 11, weight: .bold))
+        }
+    }
+
     @discardableResult
-    private func draw(_ text: String, at point: NSPoint, color: NSColor, font: NSFont) -> CGFloat {
+    private static func draw(_ text: String, at point: NSPoint, color: NSColor, font: NSFont) -> CGFloat {
         let string = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
         string.draw(at: point)
         return string.size().width
     }
 
-    private func draw(_ text: String, in rect: NSRect, color: NSColor, font: NSFont) {
+    private static func draw(_ text: String, in rect: NSRect, color: NSColor, font: NSFont) {
         let string = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
         let size = string.size()
         string.draw(at: NSPoint(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2))
