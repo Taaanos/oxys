@@ -1942,7 +1942,7 @@ None. Support is read from `isLensCorrectionSupported` when each file is develop
 - [x] The dates, permissions and extended attributes are those of the RAW (same run).
 - [x] The JPEG is 8-bit sRGB, with the profile in the file. The HEIC is 10-bit Display P3.
 - [x] A name that is taken gets a suffix, nothing is overwritten, and cancel leaves no partial file (tests).
-- [x] The Format menu, the folder guard and the plate are used in the live app, by keyboard and with VoiceOver. You used the panel fully and it works (reported 4 Oct 2026); VoiceOver was not reported separately.
+- [x] The Format menu, the folder guard and the plate are used in the live app, by keyboard and with VoiceOver. You used the panel fully and it works (reported 4 Oct 2026); VoiceOver is not checked, by your decision on 4 Oct 2026: you will not run VoiceOver checks, and someone else does them if they become relevant.
 
 **Open questions**
 1. Which look? *Proposed:* the decoder's defaults. The viewer's R mode is neutral (no sharpening, no noise reduction, no lens correction) so that 1:1 checks are honest; a file made to be shared should look finished.
@@ -1967,7 +1967,7 @@ None. Support is read from `isLensCorrectionSupported` when each file is develop
 - **Concurrency:** one file at a time. A develop of a 61 MP RAW holds about half a gigabyte of pixels, and the decoder already uses every core. Cancel is checked before each file and after the render (a render that has started cannot be stopped; its result is dropped).
 - **Memory lesson:** without an `autoreleasepool` per file the job kept the pixels of every file until the end: 2.7 GB peak for 20 files. With it: 0.77 GB (JPEG) and 1.3 GB (HEIC).
 - **Speed** (`make extract-bench EXTRA=--developed=...`, 20 DJI DNG files of 48.8 MP, one at a time, warm): JPEG 0.32 s per file, HEIC 0.43 s per file. Peak resident size 0.77 GB (JPEG) and 1.3 GB (HEIC). Size at the default qualities: 15.1 MB per JPEG and 15.4 MB per HEIC, so HEIC is not smaller here; a lower HEIC quality is the way to save space. Signposts: `export-develop` (decode and render) and `export-encode` (encode, metadata, no file write) per file. No limit in the PRD; the numbers are the baseline for P-10.
-- **Not checked:** VoiceOver speech as a separate pass; the HEIC in other readers (Photos, Lightroom); a CR3, Nikon or Pentax file; 61 MP files; a cold cache; the JPEG and HEIC quality defaults against file size and look.
+- **Not checked:** VoiceOver (not planned, see the criterion above); the HEIC in other readers (Photos, Lightroom); a CR3, Nikon or Pentax file; 61 MP files; a cold cache; the JPEG and HEIC quality defaults against file size and look.
 - Unit tests: `ExportMetadata` (properties, XMP clean-up, quote and tail repair, JPEG 8-bit and HEIC 10-bit P3 round trips with Exif, GPS and the XMP rating), `JPEGSegments.iccSegment`, `SafeWrite` (suffix, no overwrite, no temp file left, dates, permissions and xattr), `DevelopedExporter` (JPEG original is "not RAW", a broken RAW is "could not be developed", cancel), the command title. A developed file needs a real RAW, so it is checked by the bench tool and not by a unit test.
 - Docs: guide `filtering.md` and `shortcuts.md`, PRD hand-off lines, `CLAUDE.md`.
 
