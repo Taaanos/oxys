@@ -112,7 +112,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | P-04 | One memory budget | P-02 | done (develop-always and the 61 MP scrub meet the limit; the 24 MP scrub peak does not, accepted on 4 Oct 2026: see the story) |
 | P-05 | Keys within one display frame while frames load | P-01 | closed, won't fix (1:1 scale cached; cull and zoom p95 about 50 ms, not noticeable; gate rows now report only) |
 | P-06 | Overlay toggles without new allocations | P-01 | done (masks kept; the step did not reproduce; the display-frame row stays open: see the story) |
-| P-07 | Capture times in under 3 s | P-01 | todo |
+| P-07 | Capture times in under 3 s | P-01 | closed, won't fix (accepted on 4 Oct 2026: 3.7 s against 3 s on 5,000 files is not noticeable; the re-open cache is not built) |
 | P-08 | Grid first pass without dropped frames | P-01 | todo |
 | P-09 | Zero idle CPU in Loupe | P-01 | done (criterion met in Grid, 0.006%; in Loupe 0.014% against 0.01%: the rest is AppKit's own wake-ups; see the story) |
 | P-10 | RAW develop and extraction on real files | P-01 | todo |
@@ -2345,6 +2345,12 @@ The code changes the M-26 diagnosis in two places, found while planning this pha
 
 **Open questions**
 1. Cache size limit? *Proposed:* the same rule as V-15/Q3: 90 days or 500 folders.
+
+**Result (decisions)**
+- **Closed, won't fix, accepted by you on 4 Oct 2026.** The `scan-5000` miss (3.7 s against 3 s) stays as a known miss. The reason: it costs 0.7 s once, on a folder of 5,000 files, and a user is unlikely to notice it. Same rule as P-05.
+- Nothing is built: no `Containers` reader for the capture time, no capture-time cache, no `ScanBench` tuning. Q1 (cache size limit) is moot.
+- **Not checked:** whether Grid waits for the capture times before it shows photos. If it does, the delay is a blank screen and not only a late re-sort. Open this story again if that is true, or if users ask for a faster re-open of a large folder.
+- P-11 records the `scan-5000` row as a recorded decision, not a pass.
 
 ### P-08 · Grid first pass without dropped frames
 
