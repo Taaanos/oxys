@@ -20,10 +20,8 @@ public enum GlassLens {
     }
 
     /// `image` is fitted inside an `edge` × `edge` square over `background` (gray 0 to 1) and then bent. `overlay` draws
-    /// marks into a transparent bitmap of `edge` × `edge` pixels (origin bottom left). The marks lie on the glass: the
-    /// rim does not bend them, because it would smear a mark near the edge along the bend, but the rim's light and shade
-    /// fall on them with the rest. Returns nil when the bitmap cannot be made. Pixels outside the rounded square are
-    /// transparent.
+    /// into the square first (a bitmap context of `edge` × `edge` pixels, origin bottom left) and is bent as well. Returns nil
+    /// when the bitmap cannot be made. Pixels outside the rounded square are transparent.
     public static func apply(to image: CGImage, edge: Int, background: Double, style: Style = Style(),
                              overlay: ((CGContext) -> Void)? = nil) -> CGImage? {
         guard edge >= 8, image.width > 0, image.height > 0 else { return nil }
@@ -37,23 +35,12 @@ public enum GlassLens {
         let w = Double(image.width) * scale, h = Double(image.height) * scale
         ctx.interpolationQuality = .high
         ctx.draw(image, in: CGRect(x: (Double(edge) - w) / 2, y: (Double(edge) - h) / 2, width: w, height: h))
+        // Marks drawn here sit under the glass: the rim bends them with the picture.
+        overlay?(ctx)
         guard let source = ctx.data?.assumingMemoryBound(to: UInt8.self),
               let out = CGContext(data: nil, width: edge, height: edge, bitsPerComponent: 8, bytesPerRow: edge * 4,
                                   space: space, bitmapInfo: info),
               let dest = out.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
-
-        // The marks, in their own bitmap so the bend can leave them where they are.
-        var marksContext: CGContext?
-        var marks: UnsafeMutablePointer<UInt8>?
-        if let overlay {
-            marksContext = CGContext(data: nil, width: edge, height: edge, bitsPerComponent: 8, bytesPerRow: edge * 4,
-                                     space: space, bitmapInfo: info)
-            if let marksContext {
-                overlay(marksContext)
-                marks = marksContext.data?.assumingMemoryBound(to: UInt8.self)
-            }
-        }
-        defer { withExtendedLifetime(marksContext) {} }
 
         let n = Double(edge)
         let half = n / 2
@@ -91,15 +78,6 @@ public enum GlassLens {
                 let syp = (py - gy * bend) + half - 0.5
                 var r = 0.0, g = 0.0, b = 0.0
                 sample(source, edge, sxp, syp, &r, &g, &b)
-                // A mark goes over the bent picture where it was drawn (premultiplied, source over).
-                if let marks {
-                    let cover = Double(marks[o + 3]) / 255
-                    if cover > 0 {
-                        r = Double(marks[o]) / 255 + (1 - cover) * r
-                        g = Double(marks[o + 1]) / 255 + (1 - cover) * g
-                        b = Double(marks[o + 2]) / 255 + (1 - cover) * b
-                    }
-                }
                 // Light on the lit side of the rim, shade on the other, and a fine bright line at the very edge.
                 let facing = gx * lx + gy * ly
                 let lit = t * t * t * max(facing, 0) * style.highlight

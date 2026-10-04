@@ -56,18 +56,13 @@ private func pixel(_ image: CGImage, _ x: Int, _ y: Int) -> (r: Int, g: Int, b: 
     #expect(pixel(lens, 40, 80).g > 100)    // beside the mark the picture is untouched
 }
 
-@Test func overlayNearTheEdgeIsNotBentByTheRim() throws {
-    // A stripe 6 to 16 px from the bottom edge (rows 144 to 153 of 160), over a picture of another color.
+@Test func overlayNearTheEdgeIsBentByTheRim() throws {
     let marked = try #require(GlassLens.apply(to: solid(160, 160, gray: 0.5), edge: 160, background: 0.2) { ctx in
         ctx.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
-        ctx.fill(CGRect(x: 0, y: 6, width: 160, height: 10))
+        ctx.fill(CGRect(x: 0, y: 6, width: 160, height: 10))   // a stripe 6 to 16 px from the bottom edge, rows 144 to 153
     })
-    let plain = try #require(GlassLens.apply(to: solid(160, 160, gray: 0.5), edge: 160, background: 0.2))
-    // The stripe stays where it was drawn, solid, with no smear below it; only the rim's shade falls on it.
-    let on = pixel(marked, 80, 148)
-    #expect(on.r > 200 && on.g < 40)
-    let below = pixel(marked, 80, 157), reference = pixel(plain, 80, 157)
-    #expect(abs(below.r - reference.r) <= 2 && abs(below.g - reference.g) <= 2)
-    // The shade is there: the stripe is a little darker than the pure red it was drawn in.
-    #expect(on.r < 255)
+    // On a flat picture row 150 would be solid red. The rim samples from further in, so the stripe is pushed out
+    // toward the edge and the pixel is no longer solid red.
+    let there = pixel(marked, 80, 150)
+    #expect(!(there.r > 240 && there.g < 20))
 }

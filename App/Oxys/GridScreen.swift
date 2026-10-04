@@ -540,7 +540,7 @@ final class GridBadgeView: NSView {
     }
 
     /// The badges in `strip` (a rectangle in a flipped coordinate system, `height` tall). Also drawn into the film
-    /// strip's lens bitmap, where the rim lights and shades them but does not bend them.
+    /// strip's lens bitmap, so the glass bends them with the picture.
     static func drawBadges(decision: Decision, isPair: Bool, in strip: NSRect, plate: Bool) {
         guard !decision.isUndecided || isPair else { return }
         if !plate {

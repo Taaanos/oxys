@@ -325,7 +325,7 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
         cell.configure(content) { [weak self] url, _, _ in self?.folder.setCurrent(url) }
     }
 
-    /// The thumbnail through the glass lens, with the decision on the glass (lit and shaded by the rim, not bent), or the plain thumbnail while it
+    /// The thumbnail through the glass lens, with the decision under the glass (the rim bends it with the picture), or the plain thumbnail while it
     /// has not loaded. Made on the first draw of the active cell (about a millisecond) and again when its decision
     /// changes; kept until another photo is active.
     private func lens(for key: GridThumbnailLoader.Key, photo: Photo) -> CGImage? {
@@ -341,10 +341,10 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
     }
 
     /// Space between the bottom of the cell and the bottom of the badge strip (22 pt, the 20 pt capsule centered in it), so
-    /// the capsule's bottom edge is 6 pt above the cell's bottom edge. One height for every cell, whatever the shape of its
-    /// picture, and the same on the active cell, so nothing moves when a cell becomes the active one. The lens rim bends
-    /// less than 2 pt that deep.
-    private static let badgeLift: CGFloat = 5
+    /// the capsule's bottom edge is 3 pt above the cell's bottom edge. One height for every cell, whatever the shape of its
+    /// picture, and the same on the active cell, so nothing moves when a cell becomes the active one. On the active cell
+    /// the lens rim bends the capsule's lower edge; that is accepted (user decision).
+    private static let badgeLift: CGFloat = 2
 
     /// Draws the badges (and, for a reject, the veil that dims the picture) into the lens bitmap, in cell points.
     private static func drawDecision(_ decision: Decision, isPair: Bool, lift: CGFloat, into ctx: CGContext, edge: Int) {
