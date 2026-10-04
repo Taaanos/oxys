@@ -100,7 +100,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-16 | Interop guidance | M-22, F-04 | done (documentation only, no in-app guidance; ART preference wording and the Lightroom and RawTherapee results stay open with F-04 and M-25) |
 | V-17 | Distribution | G-2 | in progress (license, audit, bundle ID, changelog and cask script done; waiting for you: release key, tap repository, screenshots, clean-Mac test, next release) |
 | V-19 | Optional lens correction for RAW | V-02, M-22 | todo (spike done: `docs/spikes/lens-correction.md`) |
-| V-20 | Film strip in Loupe | M-12, M-13, M-04 | in progress |
+| V-20 | Film strip in Loupe | M-12, M-13, M-04 | built, checked in the live app (open: idle CPU row, which fails with the strip off too, see P-09; VoiceOver not checked by decision) |
 | V-21 | Export developed JPEG and HEIC | V-13, V-02 | done (checked on six brands and 20 drone files with the bench tool; live panel used by you on 4 Oct 2026) |
 | V-22 | Remove location and serial numbers on export | V-13, V-21 | todo (design open; from audit S-7) |
 | V-23 | Clear the thumbnail cache | M-22, P-02 | done (unit test and build pass; live click-through pending) |
@@ -1917,20 +1917,20 @@ None. Support is read from `isLensCorrectionSupported` when each file is develop
 - Not in this story: Compare, Grid, multi-row strips, a vertical strip, drag to reorder, selection from the strip, a size setting.
 
 **Acceptance criteria**
-- [ ] `view.filmstrip` is in the command table with the proposed key, in the View menu and in the cheat sheet. It toggles the strip, and the state persists.
-- [ ] The active cell is centered, or at the start or end of the list when there are not enough neighbors. The ring is always on the active photo.
-- [ ] A rating, label or reject key press changes the badge on the active cell in the same frame as the Loupe badge.
-- [ ] A click on a cell opens that photo in Loupe. Arrow keys still move the image after the click.
+- [x] `view.filmstrip` is in the command table with the proposed key, in the View menu and in the cheat sheet. It toggles the strip, and the state persists.
+- [x] The active cell is centered, or at the start or end of the list when there are not enough neighbors. The ring is always on the active photo.
+- [x] A rating, label or reject key press changes the badge on the active cell in the same frame as the Loupe badge.
+- [x] A click on a cell opens that photo in Loupe. Arrow keys still move the image after the click.
 - [x] With the strip on, `make perf-gate FOLDER=TestData/bench/24mp-1000` for `nav-cold` and `nav-warm` is not worse than with the strip off (same limits as P-03 and P-05). Thumbnail loads are cancelled when the active photo changes.
-- [ ] A signpost covers a strip refresh (the want-list change to the first cell drawn).
+- [x] A signpost covers a strip refresh (the want-list change to the first cell drawn).
 - [ ] Idle CPU is zero with the strip on (P-09).
-- [ ] With the strip on, no pixel of the photo is under the strip: the picture area ends at the strip's top edge, and Fit shows the whole photo in that area. Turning the strip on or off while at Fit refits at once. At 1:1 or another zoom, the point at the center of the picture area stays at the center, and no key press is needed.
-- [ ] The info plate, badges and histogram are never under the strip, at every window size down to the minimum.
-- [ ] `⇥` hides and restores the strip. Hiding the strip leaves the picture size correct.
+- [x] With the strip on, no pixel of the photo is under the strip: the picture area ends at the strip's top edge, and Fit shows the whole photo in that area. Turning the strip on or off while at Fit refits at once. At 1:1 or another zoom, the point at the center of the picture area stays at the center, and no key press is needed.
+- [x] The info plate, badges and histogram are never under the strip, at every window size down to the minimum.
+- [x] `⇥` hides and restores the strip. Hiding the strip leaves the picture size correct.
 - [ ] Each cell has a VoiceOver label with the Grid phrase ("name, 3 stars, red label"), the active cell says so, and the strip is one container labeled "Film strip".
-- [ ] Reduce Motion needs no special case, because the strip never animates.
-- [ ] A folder with one photo, with a filter that hides all but one photo, and a folder that is still loading all show a correct strip (no crash, no empty gap).
-- [ ] Nothing is written into the photo folders.
+- [x] Reduce Motion needs no special case, because the strip never animates.
+- [x] A folder with one photo, with a filter that hides all but one photo, and a folder that is still loading all show a correct strip (no crash, no empty gap).
+- [x] Nothing is written into the photo folders.
 
 **Open questions**
 1. Default on or off? *Proposed:* off. The PRD says "content first" and a bright strip beside the photo can bias exposure judgments.
@@ -1964,7 +1964,7 @@ None. Support is read from `isLensCorrectionSupported` when each file is develop
 - **Checked on screen (own test instance, bench clones, OXYS_SESSION_DIR)**: the strip, the lens and the capsules; idle CPU 0.0% over 10 s in Loupe with the strip on. Not yet: the perf gate, Fit refit and zoom center, click then arrow keys, VoiceOver (not checked by decision).
 - **Perf gate (4 Oct 2026, `BENCH_FILMSTRIP=1 make perf-gate`, `PERF_GATE_ONLY="nav-prefetched nav-cold nav-held nav-held-slow idle"`, 24mp-1000, 3 runs, warm)**: strip off / on, median. `nav-prefetched` p95 40.9 / 42.9 ms (limit 50); `nav-cold` p95 90.5 / 85.5 ms (limit 100); stale frames 0 / 0 in `nav-held` and in `nav-held-slow`; frames shown 408 / 407. The strip costs nothing measurable, so the "pause loads while keys repeat" rule is enough and no further step is needed. `scripts/perf-bench.sh` now pins `-showFilmStrip` (NO by default, YES with `BENCH_FILMSTRIP=1`), so no run depends on the user's own setting.
 - **Idle CPU in Loupe is not met, with the strip off as well**: `idle-cpu-percent-loupe` medians 0.04, 0.09, 0.02 (strip off) and 0.08, 0.09, 0.06 (strip on) against 0.02, with single runs up to 0.49. The values overlap, so the strip adds no idle wake-ups that I can measure, but the gate row fails on this Mac at the moment either way. P-09 owns that; the criterion stays open until the baseline passes. The earlier on-screen reading was 0.0% over 10 s.
-- **Not clicked yet**: Fit refit and zoom center when the strip is turned on or off, and click then arrow keys. By code: `LoupeView` redraws at every size change and keeps its zoom center in image coordinates; the strip and its scroll view and collection view all refuse first responder.
+- **Checked in the live app (reported by you, 4 Oct 2026: "everything works")**: Fit refit and zoom center when the strip is turned on or off, click then arrow keys, and the other criteria that need eyes. VoiceOver is not checked, by your decision. By code: `LoupeView` redraws at every size change and keeps its zoom center in image coordinates; the strip and its scroll view and collection view all refuse first responder.
 
 ### V-21 · Export developed JPEG and HEIC
 
