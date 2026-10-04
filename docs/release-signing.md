@@ -28,7 +28,10 @@ If the private key is lost or stolen: make a new key, publish the new fingerprin
 ```sh
 export OXYS_SIGNING_KEY=~/.ssh/oxys-release
 scripts/release.sh 1.0.1          # builds, signs, verifies the signature, uploads Oxys.zip, .sha256 and .sig
+scripts/release.sh 1.0.1 --tap ../homebrew-tap   # the same, then writes the Homebrew cask, shows it, asks, and pushes the tap
 ```
+
+Without `--tap`, Homebrew users stay on the old version until you run `scripts/make-cask.sh 1.0.1 ../homebrew-tap` and push the tap.
 
 `scripts/sign-release.sh` checks the signature against `docs/release-signers` before the upload, so a wrong key stops the release. `--unsigned` skips the signature (test releases only).
 

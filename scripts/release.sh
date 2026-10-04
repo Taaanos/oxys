@@ -1,20 +1,23 @@
 #!/bin/sh
 # Publishes a release: builds main, packs it, tags it and uploads it to GitHub Releases.
-# Usage: scripts/release.sh <version> [--notes <file>] [--dry-run] [--yes]     e.g. scripts/release.sh 1.0.1
+# Usage: scripts/release.sh <version> [--notes <file>] [--tap <dir>] [--dry-run] [--yes]     e.g. scripts/release.sh 1.0.1
 #   <version>  X.Y.Z; the tag is v<version>. Becomes the app's version (About, Finder).
 #   --dry-run  checks, builds, packs and prints the notes; creates no tag and uploads nothing.
 #   --notes    a Markdown file that replaces the commit list under "Changes". The install steps still follow it.
+#   --tap      a checkout of the Homebrew tap (Taaanos/homebrew-tap). After the upload, writes the cask (scripts/make-cask.sh),
+#              shows the change, asks, then commits and pushes the tap. With --yes the tap question is still asked.
 #   --yes      skips the question before the tag and upload.
 #   The zip is signed with OXYS_SIGNING_KEY (scripts/sign-release.sh) and the signature is uploaded with it.
 #   --unsigned skips the signature (a dry run, or a test release); the notes then say nothing about verifying.
 # Without --notes, the changes are the commit subjects since the previous tag.
 set -eu
 
-version="" dry=0 yes=0 unsigned=0 custom=""
+version="" dry=0 yes=0 unsigned=0 custom="" tap=""
 while [ $# -gt 0 ]; do
 	arg=$1; shift
 	case "$arg" in
 		--notes) [ $# -gt 0 ] || { echo "--notes needs a file" >&2; exit 2; }; custom=$1; shift ;;
+		--tap) [ $# -gt 0 ] || { echo "--tap needs a directory" >&2; exit 2; }; tap=$1; shift ;;
 		--dry-run) dry=1 ;;
 		--yes) yes=1 ;;
 		--unsigned) unsigned=1 ;;
@@ -32,6 +35,12 @@ if [ -n "$custom" ]; then
 	custom_abs=$(cd "$(dirname "$custom")" && pwd)/$(basename "$custom")
 fi
 
+tap_abs=""
+if [ -n "$tap" ]; then
+	[ -d "$tap/.git" ] || { echo "--tap is not a git checkout: $tap" >&2; exit 2; }
+	tap_abs=$(cd "$tap" && pwd)
+fi
+
 cd "$(git rev-parse --show-toplevel)"
 fail() { echo "$1" >&2; exit 1; }
 
@@ -41,6 +50,10 @@ git fetch --quiet origin main --tags
 [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || fail "main differs from origin/main: push or pull first, so the release is what GitHub has"
 git rev-parse -q --verify "refs/tags/$tag" >/dev/null && fail "tag $tag already exists"
 [ "$unsigned" = 1 ] || [ -n "${OXYS_SIGNING_KEY:-}" ] || fail "set OXYS_SIGNING_KEY to the release signing key (docs/release-signing.md), or pass --unsigned"
+if [ -n "$tap_abs" ]; then
+	[ -z "$(git -C "$tap_abs" status --porcelain)" ] || fail "the tap working tree is not clean: $tap_abs"
+	git -C "$tap_abs" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1 || fail "the tap branch has no upstream: push it once with git push -u origin HEAD"
+fi
 gh auth status >/dev/null 2>&1 || fail "gh is not logged in: run gh auth login"
 
 previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)
@@ -79,7 +92,11 @@ if [ "$unsigned" != 1 ]; then scripts/sign-release.sh; assets="$assets dist/Oxys
 echo
 echo "Release $tag from $(git rev-parse --short HEAD), previous ${previous:-none}"
 cat "$notes"
-if [ "$dry" = 1 ]; then echo; echo "dry run: no tag, no upload"; exit 0; fi
+if [ "$dry" = 1 ]; then
+	echo; echo "dry run: no tag, no upload"
+	[ -z "$tap_abs" ] || echo "with --tap, the cask for $version would be written into $tap_abs after the upload (you would be asked before the push)"
+	exit 0
+fi
 
 if [ "$yes" != 1 ]; then
 	printf 'Tag %s and publish on GitHub? [y/N] ' "$tag"
@@ -92,3 +109,21 @@ gh release create "$tag" $assets \
 	--target "$(git rev-parse HEAD)" --title "Oxys $version" --notes-file "$notes"
 git fetch --quiet origin --tags
 echo "published: $(gh release view "$tag" --json url -q .url)"
+
+if [ -n "$tap_abs" ]; then
+	scripts/make-cask.sh "$version" "$tap_abs"
+	echo
+	git -C "$tap_abs" diff --stat
+	git -C "$tap_abs" diff
+	printf 'Commit and push the tap (%s) for oxys %s? [y/N] ' "$tap_abs" "$version"
+	read -r answer
+	if [ "$answer" = "y" ]; then
+		git -C "$tap_abs" add Casks/oxys.rb
+		git -C "$tap_abs" commit -q -m "oxys $version"
+		git -C "$tap_abs" push
+		echo "tap pushed"
+	else
+		echo "tap not pushed. The cask file is in $tap_abs; push it yourself, or Homebrew users stay on the old version." >&2
+		exit 1
+	fi
+fi
