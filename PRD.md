@@ -62,7 +62,7 @@ In the Note column, **LR** = same key in [Lightroom Classic](https://helpx.adobe
 - **Don't hijack macOS.** Apple says not to repurpose standard shortcuts unless the action makes no sense in the app. We override one, a text-editing action this app has no use for: ⌘E (use selection for find) becomes Edit in external editor, as in Lightroom.
 - **Physical key positions.** Bare-key shortcuts bind to key position, not character, so they still work when a non-Latin input source (Greek, Cyrillic, Japanese) is active. Acceptance test: full cull loop on at least one non-Latin layout.
 - **No function keys in defaults.** Apple reserves ⌃F1–⌃F7 for system keyboard navigation, and Mac laptops need fn for F-keys by default. FastRawViewer's F2–F8 panel toggles are therefore replaced with letter keys.
-- **Discoverable and remappable.** Every command sits in the menu bar with its key shown, is findable through Help-menu search (⌘?), and is listed in an in-app cheat sheet (?). Settings ⌘, has full remapping with conflict detection and presets: Default (Lightroom-style), FastRawViewer, Photo Mechanic.
+- **Discoverable and remappable.** Every command sits in the menu bar with its key shown, is findable through Help-menu search (⌘?), and is listed in an in-app cheat sheet (?). Settings ⌘, has full remapping with conflict detection and presets: Default (Lightroom-style) and Photo Mechanic. A FastRawViewer preset was dropped on 4 Oct 2026: the Default keys already match it for the cull loop.
 - **Full Keyboard Access.** Every control is reachable without a pointer, as Apple recommends.
 - **Safe.** Bare keys are ignored while a text field has focus; Esc returns focus to the image. ⌘Z undoes rating, label and flag changes, including the XMP write.
 
@@ -415,7 +415,7 @@ Your answers are recorded below, and anything you didn't answer keeps my default
 
 | Topic | Decision |
 | --- | --- |
-| Default keymap | Lightroom-style; FastRawViewer and Photo Mechanic presets ship too |
+| Default keymap | Lightroom-style; a Photo Mechanic preset ships too (a FastRawViewer preset was dropped, 4 Oct 2026) |
 | Purple label | Menu-only until remapped |
 | Focus peaking key | Bare `F`; `P` is unassigned |
 | `⇥` in Compare | Switches the active side there; hides panels elsewhere |

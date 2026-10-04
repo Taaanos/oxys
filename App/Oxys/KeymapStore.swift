@@ -112,6 +112,11 @@ final class KeymapStore {
         edit { $0.resetAll(); return .ok }
     }
 
+    /// Uses a preset, or the Default keys for nil. Your own changes are removed; the pane asks first.
+    func selectPreset(_ id: String?) {
+        edit { $0.selectPreset(id); return .ok }
+    }
+
     @discardableResult
     private func edit(_ body: (inout KeymapEditor) -> KeyCheck) -> KeyCheck? {
         let changedOnDisk = reload()

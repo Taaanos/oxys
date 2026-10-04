@@ -29,6 +29,11 @@ final class CommandCenter {
     /// Set while Settings → Keys records a key (V-14). It gets every key-down, `⌘` chords and `Esc` included, and
     /// the monitor consumes the key-up too, so nothing reaches the menus or the photo.
     @ObservationIgnored var keyCapture: ((KeyInput) -> Void)?
+    #if OXYS_DEV_HOOKS
+    /// `KeysSelfTest` sends key events while another app may be in front, and macOS will not always give Oxys the
+    /// focus. With this on, the monitor takes any window an event names as the key window. Bench build only.
+    @ObservationIgnored var selfTestTakesAnyWindowAsKey = false
+    #endif
     /// The Settings window. It is no place for cull keys, so the monitor does not route its keys (V-14).
     @ObservationIgnored weak var settingsWindow: NSWindow?
     /// Bumped when the input source changes, so menus re-read the key labels.
@@ -181,7 +186,7 @@ final class CommandCenter {
 
     private func route(_ event: NSEvent) -> Bool {
         // Panels (Open, alerts) own their keys; so does anything while the window is not key.
-        guard let window = event.window, window.isKeyWindow, !(window is NSPanel), window.sheetParent == nil,
+        guard let window = event.window, isKey(window), !(window is NSPanel), window.sheetParent == nil,
               let input = KeyInput(event: event, layout: KeyLayout.asciiCapable())
         else { return false }
         // Settings → Keys is recording: it takes every key and nothing else sees it. The key-up of the Space that
@@ -220,6 +225,13 @@ final class CommandCenter {
         let result = router.handle(input, mode: mode, focus: focus)
         apply(result.actions)
         return result.consumed
+    }
+
+    private func isKey(_ window: NSWindow) -> Bool {
+        #if OXYS_DEV_HOOKS
+        if selfTestTakesAnyWindowAsKey { return true }
+        #endif
+        return window.isKeyWindow
     }
 
     private func apply(_ actions: [RoutedAction]) {

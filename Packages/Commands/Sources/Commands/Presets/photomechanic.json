@@ -1,0 +1,197 @@
+{
+  "bindings": {
+    "compare.enter": [
+      {
+        "position": "v"
+      },
+      {
+        "position": "c"
+      }
+    ],
+    "cull.rate.0": [
+      {
+        "modifiers": [
+          "control"
+        ],
+        "position": "digit0"
+      },
+      {
+        "position": "digit0"
+      },
+      {
+        "position": "keypad0"
+      }
+    ],
+    "cull.rate.1": [
+      {
+        "modifiers": [
+          "control"
+        ],
+        "position": "digit1"
+      },
+      {
+        "position": "digit1"
+      },
+      {
+        "position": "keypad1"
+      }
+    ],
+    "cull.rate.2": [
+      {
+        "modifiers": [
+          "control"
+        ],
+        "position": "digit2"
+      },
+      {
+        "position": "digit2"
+      },
+      {
+        "position": "keypad2"
+      }
+    ],
+    "cull.rate.3": [
+      {
+        "modifiers": [
+          "control"
+        ],
+        "position": "digit3"
+      },
+      {
+        "position": "digit3"
+      },
+      {
+        "position": "keypad3"
+      }
+    ],
+    "cull.rate.4": [
+      {
+        "modifiers": [
+          "control"
+        ],
+        "position": "digit4"
+      },
+      {
+        "position": "digit4"
+      },
+      {
+        "position": "keypad4"
+      }
+    ],
+    "cull.rate.5": [
+      {
+        "modifiers": [
+          "control"
+        ],
+        "position": "digit5"
+      },
+      {
+        "position": "digit5"
+      },
+      {
+        "position": "keypad5"
+      }
+    ],
+    "file.reload": [
+      {
+        "position": "f5"
+      },
+      {
+        "modifiers": [
+          "option",
+          "command"
+        ],
+        "position": "r"
+      }
+    ],
+    "overlay.highlights": [
+      {
+        "position": "b"
+      },
+      {
+        "position": "h"
+      }
+    ],
+    "overlay.shadows": [
+      {
+        "position": "n"
+      },
+      {
+        "position": "s"
+      }
+    ],
+    "select.deselectActive": [
+      {
+        "position": "slash"
+      },
+      {
+        "position": "d"
+      }
+    ],
+    "select.invert": [
+      {
+        "modifiers": [
+          "shift",
+          "command"
+        ],
+        "position": "o"
+      },
+      {
+        "modifiers": [
+          "shift",
+          "command"
+        ],
+        "position": "i"
+      }
+    ],
+    "select.none": [
+      {
+        "modifiers": [
+          "command"
+        ],
+        "position": "d"
+      },
+      {
+        "modifiers": [
+          "shift",
+          "command"
+        ],
+        "position": "a"
+      }
+    ],
+    "zoom.in": [
+      {
+        "character": "+"
+      },
+      {
+        "character": "="
+      },
+      {
+        "modifiers": [
+          "command"
+        ],
+        "position": "equal"
+      },
+      {
+        "modifiers": [
+          "shift",
+          "command"
+        ],
+        "position": "equal"
+      }
+    ],
+    "zoom.link": [
+      {
+        "position": "l"
+      },
+      {
+        "modifiers": [
+          "shift"
+        ],
+        "position": "z"
+      }
+    ]
+  },
+  "name": "Photo Mechanic",
+  "version": 1
+}

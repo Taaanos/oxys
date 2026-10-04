@@ -95,7 +95,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-11 | Auto-advance | M-06 | done |
 | V-12 | External editors | M-19, M-22 | built, needs a live check (ART first; RawTherapee and Lightroom Classic untested) |
 | V-13 | Extract embedded JPEGs | M-02, M-19 | built, needs a live check (the ⇧⌘E panel and plate not clicked through; cold-cache time over the limit) |
-| V-14 | Key remapping and presets | M-22, M-23 | in progress (4 Oct 2026; two commits. Part 1, remapping, is built; the live checks are yours. Part 2, the two presets, waits for your review of the key tables) |
+| V-14 | Key remapping and presets | M-22, M-23 | built in two commits (4 Oct 2026; remapping, then the Photo Mechanic key set; no FastRawViewer preset by your decision; the live checks are yours and not yet reported) |
 | V-15 | Session resume | M-20 | built (checked in the live app on a read-only disk image; filter and selection restore not clicked through) |
 | V-16 | Interop guidance | M-22, F-04 | done (documentation only, no in-app guidance; ART preference wording and the Lightroom and RawTherapee results stay open with F-04 and M-25) |
 | V-17 | Distribution | G-2 | in progress (license, audit, bundle ID, changelog and cask script done; waiting for you: release key, tap repository, screenshots, clean-Mac test, next release) |
@@ -1748,12 +1748,12 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 
 **Depends on:** M-22, M-23
 
-> As a photographer coming from another tool, I want to remap any key or pick a FastRawViewer or Photo Mechanic preset, so that my muscle memory still works.
+> As a photographer coming from another tool, I want to remap any key or pick a Photo Mechanic preset, so that my muscle memory still works.
 
 **Scope**
 - Settings → Keys: a searchable command list; record a shortcut by pressing it; clear; reset.
 - Conflict detection across modes that overlap, with an offer to reassign.
-- Presets as data files: Default (Lightroom-style), FastRawViewer, Photo Mechanic.
+- Presets as data files: Default (Lightroom-style) and Photo Mechanic. The FastRawViewer preset was dropped (see the status).
 - Menus and the cheat sheet update immediately.
 - Purple can be given a key.
 
@@ -1761,10 +1761,10 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - [ ] Remapping needs no code change; switching presets changes the menu shortcuts live.
 - [ ] Every conflict is reported before it is saved.
 
-**Status:** in progress. It moved to v1.x as B-19 on 4 Oct 2026, and you asked to build it the same day, in **two commits**. **Part 1 (remapping) is built.** **Part 2 (the FastRawViewer and Photo Mechanic presets) waits for your review of the key tables** (Q1). The preset file format and the loader are in part 1; no preset ships yet.
+**Status:** built, in two commits (the live checks are yours). It moved to v1.x as B-19 on 4 Oct 2026, and you asked to build it the same day, in **two commits**. **Part 1 (remapping) and part 2 (the Photo Mechanic key set) are built.** You approved the key table on 4 Oct 2026 (`docs/keymap-presets.md`, decisions D1 to D7 as proposed). **Decided by you (4 Oct 2026):** no FastRawViewer preset. The Default keys already match FastRawViewer for the cull loop (ratings, labels, `X`, `Z`, `G`, 1:1, Fit), so a preset adds little; and one third-party name is less to explain than two. The review page keeps no FastRawViewer table. The preset file format and the loader came with part 1.
 
 **Open questions**
-1. The FastRawViewer and Photo Mechanic presets need research: their default keys for each of our commands. *Proposed:* I compile both tables from their documentation for you to review before we build. **Part 2.** The tables go in `docs/keymap-presets.md` with a source for each row, "not in that app" where it fits, and "not verified" where I cannot confirm. You review that file before any data file exists.
+1. The Photo Mechanic preset needs research: its default keys for each of our commands. *Proposed:* I compile the table from its documentation for you to review before we build. **Decided** as proposed. The table is in `docs/keymap-presets.md` with a source for each row, "not in that app" where it fits, and "not verified" where I cannot confirm. You reviewed that file before the data file was written.
 2. Import and export keymap files? **Decided** as proposed: yes, the same JSON file.
 3. Can `Esc` be recorded? *Proposed:* **Decided** as proposed. A bare `Esc` stops recording, so it cannot be a new key. `⌫` can. To take `Esc` away from a command (it is on Show Grid and Cancel Selection), use Remove Key.
 4. A key that another command has in the same modes: *Proposed:* **Decided** as proposed. Oxys reports it before it saves. Reassign writes both commands, so the file says what happened. A clash with the `⇧` twin of a cull key is not offered: the twin comes from that command's own key, so the user changes that key first.
@@ -1773,7 +1773,8 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 7. The Keys pane scrolls (110 rows cannot fit; `EditorsPane` already breaks the no-scroll rule of M-22). A row names its modes only when the command works in some modes.
 8. Keys the table could not name. *Proposed:* **Decided** as proposed. `PhysicalKey` gained `F1` to `F12`, `Page Up`, `Page Down` and forward delete. The keypad digits now print as "Keypad 3", so they differ from the digit row in menus, the cheat sheet and this pane.
 9. Hints that name keys (tooltips, the new-files banner, the empty state, Settings notes, the cheat sheet header). *Proposed:* **Decided** as proposed. They read the live keymap (`CommandCenter.keyText`, `hint`, `keyPhrase`). A command with no key shows where to find it in the menus.
-10. Switching a preset removes your own changes after a confirmation that shows the count and offers Export first. *Proposed*, for part 2. To confirm then.
+10. Switching a key set removes your own changes after a confirmation that shows the count and offers Export first. **Decided** as proposed (D5 of the review page). The key set stays when you choose Reset All; only your own changes go.
+11. The naming. **Decided** as proposed (D7). The picker says "Photo Mechanic" in plain text. The guide has one line: Photo Mechanic is a trademark of Camera Bits, Inc., and Oxys is not affiliated with Camera Bits. No logo and no text of theirs is copied; the file holds only command names and keys.
 
 **Built, part 1 (decisions and results)**
 - `Commands`: `KeymapFile` writes (`encoded()` with sorted keys, `Entry(_ shortcut:)`, `Entry.shortcut()`, optional `preset` and `name`; the version stays 1). `Keymap.resolve(table:userFile:presets:)` and `resolve(table:file:presets:)` layer Default, then the named preset, then the file; old calls work. `KeymapPreset` loads `Presets/*.json` from the package resources (the folder holds only `.gitkeep` until part 2). `KeymapEditor` is a value type: `assign`, `remove`, `reset`, `resetAll`, `check`. The file holds only commands that differ from the layer below, and entries the editor does not know survive an edit. `KeyConflict` and `KeyCheck` carry the other command, the modes both answer in, and whether the clash is a `⇧` twin. `Shortcut.capture(_:)` turns a key-down into the stored form: position for letters, digits, arrows and the rest; the typed character for bare punctuation; position for punctuation with `⌘ ⌃ ⌥`. `ReservedShortcuts`. `USLayout.press(of:)` compares keys by the press they match, so `.character("/")` and `.position(.slash)` clash. `Keymap.command(for:mode:)`.
@@ -1782,16 +1783,25 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - The cheat sheet closes on `Esc` or the key bound to Keyboard Shortcuts (it was a fixed `?`). `CommandCenter.keyEquivalent` builds the menu key for F-keys, `Page Up`, `Page Down` and forward delete; a label longer than one character ("Keypad 3") no longer makes a wrong menu key.
 - `OXYS_KEYMAP=<file>` (Bench only, through `DevHooks`) moves the keymap file.
 
+**Built, part 2 (the Photo Mechanic key set)**
+- `Presets/photomechanic.json` in the `Commands` package (the `.gitkeep` is gone). It lists 15 commands, keys from Photo Mechanic's macOS page first and the Default keys after them (stars `⌃0`–`⌃5` then the bare digits; `+` for Zoom In; `B` and `N` for the overlays; `V` for Compare; `L` for Link Zoom; `D` for Deselect Active; `⌘D` and `⇧⌘O` for Select None and Invert; `F5` for Reload). No Default key moves away, and the draft ran through the real keymap code with no problems and no clashes. Not mapped: color classes (their numbers and colors are not documented), `Delete`, tags, `F`, and others; the review page says why.
+- `KeymapEditor.selectPreset(_:)` sets the key set and removes the user's changes; `resetAll` keeps the key set. The Keys tab has a "Key set" picker above the search field (Default, Photo Mechanic). With changes in the file it asks first, with the count. `KeymapStore.selectPreset` writes the file with `"preset"`; a file with a key set and no changes is kept, a file with neither is removed.
+- Tests: 123 `Commands` tests in all. The new ones check that every bundled preset uses known commands and keys, puts no two commands on one press (`.character` and `.position` of one key count as one press), takes no reserved key and leaves every command it does not list on its Default keys; that `⌃3` and `3` both rate, with the `⇧` twins; that `+` zooms in; that choosing a key set removes your changes, keeps the key set on Reset All, and survives a relaunch; and that a key the preset took is a conflict like any other.
+- `make keys-selftest` has 6 more checks: the key set is in the app bundle, the file names it, `⌃3` rates through the real monitor, `3` still rates, and nil gives back the Default keys and removes the file. 43 checks in all.
+- **Self-test and focus:** the test failed at random when other apps had the focus (other sessions open their apps on this Mac), because the monitor ignores a window that is not key and macOS does not give a background app the focus. In the Bench build only, `CommandCenter.selfTestTakesAnyWindowAsKey` lets the monitor take the window an event names as the key window. It passed 3 of 3 runs after that. In Release the property does not exist.
+
 **Checked**
-- `make test`: 109 `Commands` tests (66 before; the 34 older keymap tests pass unchanged), all other packages pass. `make build`: no warnings; `make check-arch`: `arm64`. The resource bundle is in the Release app.
-- `make keys-selftest` (new): the Bench app builds key events in code and sends them through `NSApp.sendEvent`, so the real monitor sees them; it needs no Accessibility permission. 37 checks pass: the Default `X` rejects; a remap reaches the keymap, the file and the menu (SwiftUI fills a menu in when it opens, so the check asks the menu to update first); the old key does nothing; the recorder gets every key including `⌘Z` and `Esc`, and nothing runs; the Settings window opens and its keys change nothing; through the pane's own model: change a key, `⌘Q` is refused and the app keeps running, `Esc` stops, `⇧W` is named as a twin, `E` is offered for reassignment and moves; Reset All removes the file; a hand edit is read when the app becomes active; an unreadable file blocks editing and is not touched; Start Over keeps a `.bak`. With the Settings gate switched off the self-test fails (a bare key rated the photo), so the check is real.
+- `make test` after part 1: 109 `Commands` tests (66 before; the 34 older keymap tests pass unchanged), all other packages pass. `make build`: no warnings; `make check-arch`: `arm64`. The resource bundle is in the Release app.
+- `make keys-selftest` (new): the Bench app builds key events in code and sends them through `NSApp.sendEvent`, so the real monitor sees them; it needs no Accessibility permission. 37 checks passed in part 1: the Default `X` rejects; a remap reaches the keymap, the file and the menu (SwiftUI fills a menu in when it opens, so the check asks the menu to update first); the old key does nothing; the recorder gets every key including `⌘Z` and `Esc`, and nothing runs; the Settings window opens and its keys change nothing; through the pane's own model: change a key, `⌘Q` is refused and the app keeps running, `Esc` stops, `⇧W` is named as a twin, `E` is offered for reassignment and moves; Reset All removes the file; a hand edit is read when the app becomes active; an unreadable file blocks editing and is not touched; Start Over keeps a `.bak`. With the Settings gate switched off the self-test fails (a bare key rated the photo), so the check is real.
 - A picture of the pane was made in-process (no screen capture): the search, a row with a conflict note and its Reassign and Cancel buttons render as intended.
 
 **Not checked**
-- **By you, in the live app** (keys and eyes): press bare `X` and `3` with Settings focused; record `Q` for Reject; record `E` (Reassign); record `⇧X` (twin note); record `⌘Q` (reserved note); `Esc` while recording; open Settings with the cheat sheet up; Reset, Reset All, Export, edit, Import, relaunch; a Greek or Russian layout; the `Space` that starts recording does not leave a key behind.
+- **Confirmed by you (4 Oct 2026):** bare `X` and `3` with Settings → Keys open do not change the photo. You check the rest by using the app, and will report what you find.
+- **By you, in the live app** (keys and eyes), not yet reported: press bare `X` and `3` with Settings focused; record `Q` for Reject; record `E` (Reassign); record `⇧X` (twin note); record `⌘Q` (reserved note); `Esc` while recording; open Settings with the cheat sheet up; Reset, Reset All, Export, edit, Import, relaunch; a Greek or Russian layout; the `Space` that starts recording does not leave a key behind.
 - Whether a bare-key menu equivalent can fire before the Keys search field sees a typed letter (the M-05 risk). The self-test cannot type into a field editor.
 - F-keys as the first key of a command in the menu bar (SwiftUI may not draw them; the cheat sheet and this pane do).
 - Import and Export panels (the self-test calls the store, not the panels).
+- The Key set picker and its confirmation dialog: the self-test calls the store, and the picture shows the picker with the Default set; the dialog was not seen. `F5` (Reload Folder under Photo Mechanic) may not be drawn in the menu bar.
 - Recording on a Greek or Russian layout: unit-tested (the same shortcut as ABC), not tried live.
 - VoiceOver: not checked, by decision. Each row is a container with a label and each key is a menu button with a label and a hint.
 

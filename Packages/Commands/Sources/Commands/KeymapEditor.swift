@@ -53,6 +53,20 @@ public struct KeymapEditor: Sendable {
 
     public var customizedCount: Int { file.bindings.count }
 
+    /// The preset in use, or nil for the Default keys.
+    public var presetID: String? { file.preset }
+
+    /// Uses another preset (nil: the Default keys). The user's own changes go, because they were made on top of the old
+    /// keys; the app asks first. False when no bundled preset has that id.
+    @discardableResult
+    public mutating func selectPreset(_ id: String?) -> Bool {
+        if let id, !presets.contains(where: { $0.id == id }) { return false }
+        file.preset = id
+        file.bindings = [:]
+        refresh()
+        return true
+    }
+
     // MARK: checking
 
     /// What would happen if `shortcut` became a key of `id`. `replacing` is the key it would take the place of.
@@ -118,6 +132,7 @@ public struct KeymapEditor: Sendable {
         refresh()
     }
 
+    /// Back to the preset's keys (the Default keys when no preset is in use). The preset stays.
     public mutating func resetAll() {
         file.bindings = [:]
         refresh()

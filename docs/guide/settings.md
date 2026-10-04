@@ -13,12 +13,17 @@ The Keys tab lists every command with its keys. Use it to change the keys, add m
 
 | To do this | Do this |
 | --- | --- |
+| Use another key set | Choose it in **Key set**: Default (Lightroom style) or Photo Mechanic. See below. |
 | Find a command | Type a command name, a mode, or a key in the search field. |
 | Change a key | Click the key. Choose **Change Key…**. Press the new key. |
 | Add a key | Click `+` next to the command. Press the key. A command can have more than one key. |
 | Remove a key | Click the key. Choose **Remove Key**. The command stays in the menu. |
 | Stop recording | Press `Esc` while Oxys waits for a key. |
-| Go back to the Default keys | Click the arrow next to a changed command. For all commands, choose **Reset All…** in the **Keymap file** menu. |
+| Go back to the keys of the key set | Click the arrow next to a changed command. For all commands, choose **Reset All…** in the **Keymap file** menu. |
+
+**Key set.** The Default keys follow Lightroom Classic. The **Photo Mechanic** key set changes about 15 commands. Stars go on `⌃0` to `⌃5` (the bare digits still work), and `B` and `N` show highlight and shadow clipping. `V` opens Compare and `L` links the zoom of the two sides. `D` takes the active photo out of the selection, `⌘D` selects none, `⇧⌘O` inverts the selection, `F5` reloads the folder, and `+` zooms in. Photo Mechanic's color classes and its `Delete` key are not mapped. Your own changes sit on top of the key set. When you choose another key set, Oxys removes your own changes. It first shows how many, and you can cancel. Export the keys first to keep them. If you turn on "Switch to Desktop" shortcuts for `⌃1` to `⌃5` in System Settings, macOS takes those keys. The bare digits still rate.
+
+Photo Mechanic is a trademark of Camera Bits, Inc. Oxys is not affiliated with Camera Bits. The key set uses the keys that Photo Mechanic documents for macOS. See `docs/keymap-presets.md` for the full list.
 
 A command that works in some modes only shows them under its name. The same key can do different things in different modes. For example, `↑` moves up a row in Grid, and walks the EXIF values in Loupe.
 
@@ -35,7 +40,7 @@ A command that works in some modes only shows them under its name. The same key 
 
 **Function keys.** You can use `F1` to `F12`, `Page Up`, `Page Down`, and forward delete. On a MacBook, hold `fn` with an `F` key, unless you changed this in System Settings.
 
-**The keymap file.** Oxys saves your changes in `~/Library/Application Support/Oxys/Keymap.json`. The file lists only the commands that you changed. If you did not change any, the file does not exist. The **Keymap file** menu has these items:
+**The keymap file.** Oxys saves your changes in `~/Library/Application Support/Oxys/Keymap.json`. The file lists only the commands that you changed, and the key set that you chose (`"preset": "photomechanic"`). If you did not change anything, the file does not exist. The **Keymap file** menu has these items:
 
 - **Export…** saves a copy of your keys.
 - **Import…** uses the keys of another file. Oxys shows how many of your changes it replaces, and which entries of the file it ignores. Then you choose **Import** or **Cancel**.
@@ -54,8 +59,6 @@ You can also edit the file in a text editor. Oxys reads it again when you come b
 ```
 
 A command that is in the file gets exactly the keys that the file lists. An empty list (`[]`) removes all keys of the command. `position` names a key by where it sits, so it works with any input source. `character` names a punctuation key by the character that it types. `modifiers` are `shift`, `control`, `option` and `command`.
-
-FastRawViewer and Photo Mechanic key presets are planned.
 
 ## RAW
 

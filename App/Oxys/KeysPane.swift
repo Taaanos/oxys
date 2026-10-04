@@ -129,6 +129,10 @@ struct KeysPane: View {
     @State private var askResetAll = false
     @State private var importRequest: ImportRequest?
     @State private var importError: String?
+    @State private var presetChoice: PresetChoice?
+
+    /// A preset the user picked while own changes exist: waits for the confirmation. `id` nil is the Default keys.
+    private struct PresetChoice { var id: String?; var name: String }
 
     private struct ImportRequest {
         var name: String
@@ -140,6 +144,7 @@ struct KeysPane: View {
     var body: some View {
         let store = keys.store
         VStack(alignment: .leading, spacing: 10) {
+            presetPicker
             HStack {
                 TextField("Search commands and keys", text: $keys.search)
                     .textFieldStyle(.roundedBorder)
@@ -167,7 +172,7 @@ struct KeysPane: View {
                 .disabled(store.isBlocked)
             }
         }
-        .frame(height: 440)
+        .frame(height: 470)
         .onDisappear { keys.stopRecording() }
         .alert("Import \(importRequest?.name ?? "keys")?", isPresented: Binding(get: { importRequest != nil }, set: { if !$0 { importRequest = nil } }),
                presenting: importRequest) { request in
@@ -184,11 +189,47 @@ struct KeysPane: View {
         .confirmationDialog("Reset all keys?", isPresented: $askResetAll) {
             Button("Reset All", role: .destructive) { store.resetAll() }
         } message: {
-            Text("\(store.editor.customizedCount.formatted()) changed commands go back to the Default keys. Export the keys first to keep them.")
+            Text("\(store.editor.customizedCount.formatted()) changed commands go back to the \(store.editor.presetID == nil ? "Default" : "preset") keys. Export the keys first to keep them.")
+        }
+        .confirmationDialog("Use \(presetChoice?.name ?? "this key set")?", isPresented: Binding(get: { presetChoice != nil }, set: { if !$0 { presetChoice = nil } }),
+                            presenting: presetChoice) { choice in
+            Button("Use \(choice.name)", role: .destructive) { store.selectPreset(choice.id) }
+        } message: { _ in
+            Text("Your \(store.editor.customizedCount.formatted()) changed commands are removed. Export the keys first to keep them.")
         }
     }
 
     // MARK: pieces
+
+    /// The key set under your changes: the Default keys, or a bundled preset.
+    private var presetPicker: some View {
+        let store = keys.store
+        let names = Dictionary(uniqueKeysWithValues: store.editor.presets.map { ($0.id, $0.name) })
+        return HStack {
+            Text("Key set")
+            Picker("Key set", selection: Binding(
+                get: { store.editor.presetID ?? "" },
+                set: { choose($0.isEmpty ? nil : $0, names: names) })) {
+                Text("Default (Lightroom style)").tag("")
+                ForEach(store.editor.presets) { Text($0.name).tag($0.id) }
+            }
+            .labelsHidden()
+            .fixedSize()
+            .accessibilityLabel("Key set")
+            Spacer()
+        }
+        .disabled(store.isBlocked)
+    }
+
+    private func choose(_ id: String?, names: [String: String]) {
+        let store = keys.store
+        guard id != store.editor.presetID else { return }
+        if store.editor.customizedCount == 0 {
+            store.selectPreset(id)
+        } else {
+            presetChoice = PresetChoice(id: id, name: id.flatMap { names[$0] } ?? "the Default keys")
+        }
+    }
 
     private var fileMenu: some View {
         let store = keys.store

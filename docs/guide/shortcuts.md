@@ -2,7 +2,7 @@
 
 Press `?` in the app to see the keys for the current view.
 
-This page lists the Default keys. You can change any key in Settings > Keys. The `?` list and the menus always show your keys. See [Settings](settings.md#keys).
+This page lists the Default keys. You can change any key, or use the Photo Mechanic key set, in Settings > Keys. The `?` list and the menus always show your keys. See [Settings](settings.md#keys).
 
 - Bare keys use key position. They work with any input source.
 - Bare keys do nothing while you type in a text field.
