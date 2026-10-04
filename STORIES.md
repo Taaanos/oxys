@@ -60,13 +60,13 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-03 | Loupe canvas | M-02 | built, needs visual check |
 | M-04 | Image pipeline: prefetch, cancellation, caches | M-03, F-02 | done |
 | M-05 | Command table, keymap and menu bar | F-05 | done (menu bar and live key checks pending, see the story) |
-| M-06 | Cull decisions and feedback | M-03, M-05 | done (VoiceOver speech, badge timing as a number and the text-field menu-equivalent check pending) |
+| M-06 | Cull decisions and feedback | M-03, M-05 | done (badge timing as a number and the text-field menu-equivalent check pending) |
 | M-07 | Read existing sidecars | M-01, F-04 | done (ART and hand-written fixtures; no Lightroom or RawTherapee fixtures until M-25; live UI check pending) |
 | M-08 | Write sidecars safely | M-06, M-07 | done (Lightroom and RawTherapee walking-skeleton check pending) |
 | M-09 | Undo and redo | M-08 | done (live ⌘Z click-through pending) |
 | M-10 | React to outside sidecar changes | M-08 | done |
 | M-11 | Write failures and read-only folders | M-08 | done (live locked-card and eject checks pending) |
-| M-12 | Grid view | M-04, M-06 | done (60 fps scroll in Instruments, badge-in-one-frame as a number and VoiceOver pending) |
+| M-12 | Grid view | M-04, M-06 | done (60 fps scroll in Instruments, badge-in-one-frame as a number pending) |
 | M-13 | Modes and window chrome | M-12 | built (keys, toolbar and `⇥` not checked in the running app) |
 | M-14 | Zoom: Fit and 1:1 | M-03, F-05 | built, needs visual check |
 | M-15 | Zoom steps, panning and sticky zoom | M-14 | done |
@@ -78,7 +78,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | M-21 | Reveal in Finder | M-19 | built (live Finder check pending) |
 | M-22 | Settings window | M-05 | done (keyboard walk-through and live naming switch not checked in the running app) |
 | M-23 | Cheat sheet and menu audit | M-05 and all MVP commands | done |
-| M-24 | Keyboard-only and accessibility pass | all MVP UI | built; VoiceOver and Full Keyboard Access not checked |
+| M-24 | Keyboard-only and accessibility pass | all MVP UI | built; Full Keyboard Access not checked; VoiceOver skipped by decision |
 | M-25 | MVP gate: interoperability and data safety | M-07 to M-11 | in progress (automated parts done; the Lightroom Classic, RawTherapee and ART matrix waits for you: `docs/m25-interop-matrix.md`) |
 | M-26 | MVP gate: performance | all MVP | done (gate not met: 6 misses) |
 | **Phase 2** | **v1.0** | | |
@@ -90,7 +90,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-06 | Focus peaking | M-15 | done |
 | V-07 | Highlight and shadow clipping | M-17 | done |
 | V-08 | Compare: layout and culling | M-13, M-19 | done |
-| V-09 | Compare: linked zoom and EXIF differences | V-08, M-15, M-16 | done (screen not looked at, VoiceOver and pointer drags unchecked) |
+| V-09 | Compare: linked zoom and EXIF differences | V-08, M-15, M-16 | done (screen not looked at, pointer drags unchecked) |
 | V-10 | RAW+JPEG pairs | M-08, M-21 | built, needs visual check (pairs shown in a live window, Lightroom reading the rating) |
 | V-11 | Auto-advance | M-06 | done |
 | V-12 | External editors | M-19, M-22 | built, needs a live check (ART first; RawTherapee and Lightroom Classic untested) |
@@ -103,7 +103,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-20 | Film strip in Loupe | M-12, M-13, M-04 | todo |
 | V-21 | Export developed JPEG and HEIC | V-13, V-02 | done (checked on six brands and 20 drone files with the bench tool; live panel used by you on 4 Oct 2026) |
 | V-22 | Remove location and serial numbers on export | V-13, V-21 | todo (design open; from audit S-7) |
-| V-23 | Clear the thumbnail cache | M-22, P-02 | done (unit test and build pass; live click-through and VoiceOver check pending) |
+| V-23 | Clear the thumbnail cache | M-22, P-02 | done (unit test and build pass; live click-through pending) |
 | V-18 | v1.0 gate | all v1.0, P-11 | todo |
 | **Phase 2b** | **Performance** (build before V-18) | | |
 | P-01 | Performance gate tool and a real shoot | M-26 | done (criterion 1 not met: the M-26 table does not reproduce; cold rows run warm, no `purge`) |
@@ -626,7 +626,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - New signpost `cull-feedback`: begins at the key handler and ends on the first display-link tick after the badge state is set. This is the next display frame, not a measured present, so treat it as a lower bound.
 - Checked: unit tests for every rule above, the `⇧` twins, keypad, auto-repeat, Grid exclusion, and decisions surviving the re-sort (`Library` 26, `Commands` 37); Release build with no warnings.
 - **Checked live (by the user):** the badge appears at once, `⇧3` rates and shows the next frame, the label reads by its letter, the menu items show their keys, and `⇧X` rejects once and advances (no double fire from the bare-key menu equivalent, because the key monitor consumes the event first).
-- **Not checked:** VoiceOver speech; the badge timing as a number (the signpost ends at the next display tick, a lower bound); the bare-key menu equivalent with a text field focused (M-13 adds the first field; AppKit tries menu equivalents before the field editor, so `3` or `X` typed there could rate or reject the photo underneath).
+- **Not checked:** VoiceOver speech; the badge timing as a number (the signpost ends at the next display tick, a lower bound); the bare-key menu equivalent with a text field focused (M-13 adds the first field; AppKit tries menu equivalents before the field editor, so `3` or `X` typed there could rate or reject the photo underneath). (VoiceOver: not checked, by decision 4 Oct 2026)
 - **Changed later (rating cue):** the plate in the middle of the photo is gone. A cull key now bounces the rating glyphs where they are already drawn: the filled stars one after another, 30 ms apart (a new star morphs from outline to filled with Magic Replace, and flashes; only the last filled star bounces, once, so `1`→`5` is one wave and one bounce, not five; stars that did not change and a plain change of photo stay still), the reject mark with `bounce`, the label chip with a short swell (the plain fade when Reduce Motion is on). Loupe and Compare pulse the info strip. With the strip off (`I`), `⌥I` ("Always Show Rating", `info.rating`, saved) keeps a small rating capsule (Liquid Glass, tinted dark for contrast) at the bottom-left; with it off too there is no visual cue, for slideshow use, and VoiceOver still hears the phrase. After `⇧`+rating the strip already shows the next frame, so its glyphs bounce for the frame just left. Grid shows no extra cue: its cells already update. `cull-feedback` still ends at the next display tick.
 
 ### M-07 · Read existing sidecars
@@ -848,7 +848,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 **Checked**
 - Unit tests: `Library` 70, `Imaging` 28, `Commands` 38.
 - 1,000-file folder, Release, via xctrace: `grid-first-screen` 116 ms with a cold disk cache and 122 ms warm (scan included); `grid-thumbnail` p50 5 ms cold, 1 ms warm. Thumbnails render upright with the active ring on the sample corpus.
-- Not yet done: 60 fps scrolling through 10,000 files in Instruments, keys and clicks in the running app, badge timing as a number, VoiceOver.
+- Not yet done: 60 fps scrolling through 10,000 files in Instruments, keys and clicks in the running app, badge timing as a number, VoiceOver. (VoiceOver: not checked, by decision 4 Oct 2026)
 
 ### M-13 · Modes and window chrome
 
@@ -993,7 +993,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Unit tests: `Metadata` 19 (formatting, parsing a property dictionary with every field and GPS signs, field order, cache bounds), `Commands` 44 (new: `I`, `↑`, `⌘C` in Loupe only; Loupe's `↓` is now an EXIF key). Release build clean, arm64.
 - `ExifCheck` (new tool in `Packages/Metadata`): with `PREVIEW_ORACLE=<path to a reference extractor>` it compares 10 fields per file after running the oracle's numbers through the same formatters. The 13 camera files in `TestData/` that ImageIO reads: 106 values compared, 0 differ (metering is compared against the EXIF tag; a Canon maker note carries a second, differently numbered code).
 - **Known gap:** ImageIO returns no EXIF for the Pentax K10D file (a PEF), although the reference tool reads exposure, aperture, ISO and capture time from it. That frame shows no values, and its capture time is missing in M-01's sort too. Fixing it needs our own TIFF/EXIF walker in `Containers` (F-03 already parses the container); parked until a story picks it up (likely V-01).
-- **Not checked** (this session cannot send keys or see the window): the panel's look over bright photos, `I`, `↑`/`↓`, click and `⌘C` in the live app (including whether the menu's `⌘C` item and the standard Copy item coexist), VoiceOver, and the one-frame criterion for a prefetched image (no signpost for it yet).
+- **Not checked** (this session cannot send keys or see the window): the panel's look over bright photos, `I`, `↑`/`↓`, click and `⌘C` in the live app (including whether the menu's `⌘C` item and the standard Copy item coexist), VoiceOver, and the one-frame criterion for a prefetched image (no signpost for it yet). (VoiceOver: not checked, by decision 4 Oct 2026)
 
 ### M-17 · Histogram
 
@@ -1056,7 +1056,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 
 **Checked**
 - Unit tests: `Commands` (new: `⌥⌘I` and `⌃⌘I` in Grid and Loupe; `I` now cycles). All packages pass. Release build clean, arm64.
-- **Not checked** (this session cannot send keys or see the window): the cycle and the inspector in the live app, `⇥` and `Esc` between the inspector and the image, `⌘C` from an inspector row, Full Keyboard Access and VoiceOver, and the contrast on real bright and dark photos (computed, not measured).
+- **Not checked** (this session cannot send keys or see the window): the cycle and the inspector in the live app, `⇥` and `Esc` between the inspector and the image, `⌘C` from an inspector row, Full Keyboard Access and VoiceOver, and the contrast on real bright and dark photos (computed, not measured). (VoiceOver: not checked, by decision 4 Oct 2026)
 
 ### M-19 · Selection
 
@@ -1232,7 +1232,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 **Checked**
 - Unit tests pass (Commands: 50). Release build clean.
 - `make ui-walk` passed on the user's machine (ratings 3, -1 and 5 in three sidecars).
-- **Not checked**: Tab movement with Full Keyboard Access on; a VoiceOver pass; the focused-control rule on SwiftUI buttons (it assumes a hosted button is an `NSControl`); the contrast numbers are computed, not measured on screen.
+- **Not checked**: Tab movement with Full Keyboard Access on; a VoiceOver pass; the focused-control rule on SwiftUI buttons (it assumes a hosted button is an `NSControl`); the contrast numbers are computed, not measured on screen. (VoiceOver: not checked, by decision 4 Oct 2026)
 
 ### M-25 · MVP gate: interoperability and data safety
 
@@ -1390,7 +1390,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - **`⇧R`** (`zoom.rawAlways`, "Always Show RAW" in View): the session is Always, and again returns to On demand. It is not saved. In Always mode `R` sends the photo on screen back to its preview and `R` again develops it.
 - **Neighbors**: they start only after the photo on screen has finished (the cache runs one decode at a time) and stop when the cursor moves, so the previews never wait on them. Imaging has `RawMode` and `RawPolicy` (pure rules, 5 tests).
 - **Measured** (`develop-always` on `hires-1000`, all DNG, release build): 300 held steps at 33 ms: `key-to-frame` p50 11 ms, p95 41 ms, max 71 ms, so previews keep up while neighbors develop (324 `raw-develop` marks, p50 29 ms, p95 287 ms). After a step with a pause, the RAW is on screen in p50 0.7 ms (`raw-ready`, 20 steps, none timed out): the neighbor ahead was ready. Footprint peak 3.9 GB, above the 2.7 GB seen in V-02's bench because two caches each hold their own budget; recorded, not fixed here.
-- **Not checked**: `make ui-walk` (no Accessibility permission here); the live `⇧R` and 1:1 behavior by eye; Settings with VoiceOver.
+- **Not checked**: `make ui-walk` (no Accessibility permission here); the live `⇧R` and 1:1 behavior by eye; Settings with VoiceOver. (VoiceOver: not checked, by decision 4 Oct 2026)
 - **Bench**: scenario `develop-always` (`⇧R`, 300 held steps at 33 ms, then 20 steps with a pause; `raw-ready` is step to RAW on screen).
 
 
@@ -1448,7 +1448,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 
 - A warning has a triangle icon and words; a plain state has a seal icon. VoiceOver reads "warning, …" before the text, and the info strip's spoken label includes the badge.
 - **Compare:** V-08 does not exist yet. `TruthBadgeView` takes a `TruthBadge` value, so each pane can own one.
-- **Not checked:** the badge by eye in the running app; VoiceOver; `make ui-walk` (no Accessibility permission here).
+- **Not checked:** the badge by eye in the running app; VoiceOver; `make ui-walk` (no Accessibility permission here). (VoiceOver: not checked, by decision 4 Oct 2026)
 
 ### V-06 · Focus peaking
 
@@ -1597,7 +1597,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 **Checked** (V-09)
 - Unit tests: `Canvas` 67, `Metadata` 51, `Commands` 54 (new: Compare takes the zoom, pan, RAW and overlay keys; `⇧Z` is Compare's alone). Release build clean, arm64.
 - `make perf-bench SCENARIO=compare-link FOLDER=TestData/bench/24mp-1000`: 14 checks pass in the real app (`Z` puts both at 1:1 at the same relative point; linked pan and zoom move both; unlinked pans alone; relinking keeps the offset; the candidate leads as well as the select; peaking and clipping on both and off). On `raw-mix`, `R` develops both panes in 0.4 s and goes back; its pan and same-point checks fail there only because its previews are smaller than the view and come from different cameras.
-- **Not checked:** how the screen looks (highlighted values, labels, the popover anchor); VoiceOver; pointer drags and pinch on a pane (the code path is the one that calls `onViewChange`, as the keys do); two photos of different pixel sizes at once with one side developed (their scales differ, so the link then shows different magnifications); `make ui-walk-compare`.
+- **Not checked:** how the screen looks (highlighted values, labels, the popover anchor); VoiceOver; pointer drags and pinch on a pane (the code path is the one that calls `onViewChange`, as the keys do); two photos of different pixel sizes at once with one side developed (their scales differ, so the link then shows different magnifications); `make ui-walk-compare`. (VoiceOver: not checked, by decision 4 Oct 2026)
 
 ### V-10 · RAW+JPEG pairs
 
@@ -1634,7 +1634,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 
 **Checked**
 - Unit tests: `Library` 129 (new: pair rules and case, HEIC, JPEG over HEIC, unclear cases, pairing off, `name.xmp` and `name.ext.xmp` writes, undo removing both, Reveal list, JPEG vanishing), `Imaging` 58 (new: Camera JPEG badge). Release build clean, arm64.
-- **Not checked:** a pair in a live window (Grid chip, Loupe mark, which image shows); VoiceOver wording; the rating in Lightroom Classic (needs you, G-10); a real RAW+JPEG shoot; the Settings toggle reloading the open folder; `ui-walk`.
+- **Not checked:** a pair in a live window (Grid chip, Loupe mark, which image shows); VoiceOver wording; the rating in Lightroom Classic (needs you, G-10); a real RAW+JPEG shoot; the Settings toggle reloading the open folder; `ui-walk`. (VoiceOver: not checked, by decision 4 Oct 2026)
 
 ### V-11 · Auto-advance
 
@@ -1662,7 +1662,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 
 **Checked**
 - Unit tests: `Commands` (new: `A` toggles in Grid, Loupe and Compare; `⇧A` is no twin). Release build clean, arm64.
-- **Not checked:** the toggle and the plate in a live window; Settings switch and `A` staying in step; VoiceOver wording; `⇧` inversion in Grid, Loupe and Compare by hand; `ui-walk`.
+- **Not checked:** the toggle and the plate in a live window; Settings switch and `A` staying in step; VoiceOver wording; `⇧` inversion in Grid, Loupe and Compare by hand; `ui-walk`. (VoiceOver: not checked, by decision 4 Oct 2026)
 
 ### V-12 · External editors
 
@@ -2018,7 +2018,7 @@ From security audit S-8. `DiskThumbnailCache` keeps up to 2 GB of small JPEGs in
 - [ ] The button removes every thumbnail file and the size reads 0; the grid still works and fills the cache again.
 - [ ] Clearing while a folder is open does not crash or leave a blank thumbnail.
 - [ ] Nothing outside the cache folder is touched (test with a decoy file beside it).
-- [ ] Keyboard and VoiceOver; unit test for the clear.
+- [ ] Keyboard and VoiceOver; unit test for the clear. (VoiceOver: not checked, by decision 4 Oct 2026)
 
 **Open questions**
 1. Does the button also clear the per-folder session state in Application Support? *Proposed:* no, that is state the photographer wants. A separate "Forget recent folders" is a different story if it is asked for.
@@ -2031,7 +2031,7 @@ Open questions 1 to 3 took the proposals: no session state cleared, no age limit
 - `DiskThumbnailCache.clear()` deletes only `.jpg` files directly in the cache folder and returns the bytes freed. A read of a removed file is a miss, so an open grid or loupe builds the thumbnail again; nothing is held open.
 - Settings → Memory has a "Thumbnail cache" section: size (measured off the main thread when the pane appears), the "Clear Thumbnail Cache" button (disabled at 0, a normal tab stop), and a VoiceOver announcement when done.
 - Unit test `diskCacheClearRemovesOnlyThumbnailsAndKeepsWorking`: size reads 0, a decoy `.jpg` beside the folder stays, the cache fills again, clearing a missing folder is harmless.
-- Not checked yet: clearing with a folder open in the live app, and VoiceOver reading.
+- Not checked yet: clearing with a folder open in the live app, and VoiceOver reading. (VoiceOver: not checked, by decision 4 Oct 2026)
 
 
 ### V-18 · v1.0 gate
@@ -2485,7 +2485,7 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 - [ ] The cheat sheet and chooser text keeps 4.5:1 in light and dark appearance: over Grid thumbnails, and over the white and checker frames in Loupe.
 - [ ] With Reduce Motion on, the panels appear and disappear with a cut.
 - [ ] With Reduce Transparency on, the panels are opaque (the system does this; check it).
-- [ ] VoiceOver: the panels are still modal containers with the same labels.
+- [ ] VoiceOver: the panels are still modal containers with the same labels. (VoiceOver: not checked, by decision 4 Oct 2026)
 
 **Open questions**
 1. Keep the dim backdrop? Apple's popovers do not dim. *Proposed:* yes. These panels take all the keys, so the screen must show that the photo is not active.
@@ -2497,7 +2497,7 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 - `CheatSheetView` and `EditorChooserView`: `.glassEffect(.regular, in: .rect(cornerRadius: 12))` inside a `GlassEffectContainer`; `.shadow(radius: 24)` removed. The key routing is not touched.
 - Transition: `.materialize`, or `.identity` with Reduce Motion on. `FolderView` animates the three show flags with `.smooth(duration: 0.25)`, or with no animation under Reduce Motion, because a glass transition runs only inside an animation.
 - Checked: `make build` has no warnings; `make test` passes, except `aFolderThatVanishesMidSessionKeepsEveryDecisionInMemory` (the known timing flake from D-02; it passes alone).
-- Not checked yet (quick run only): the opening and closing on screen, `make contrast` for the three panels in light and dark, Reduce Motion, Reduce Transparency and VoiceOver.
+- Not checked yet (quick run only): the opening and closing on screen, `make contrast` for the three panels in light and dark, Reduce Motion, Reduce Transparency and VoiceOver. (VoiceOver: not checked, by decision 4 Oct 2026)
 
 ### D-04 · The write banner as a floating glass notice
 
@@ -2518,7 +2518,7 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 - [ ] Each case (read-only folder, write failed, saved copy) shows the new panel with the correct buttons.
 - [ ] The panel never covers the toolbar or the subtitle (the photo count).
 - [ ] With the chrome hidden (`⇥`), the panel sits at the top edge with the same inset.
-- [ ] VoiceOver announces the message as before.
+- [ ] VoiceOver announces the message as before. (VoiceOver: not checked, by decision 4 Oct 2026)
 - [ ] The text keeps 4.5:1 in light and dark appearance, over Grid thumbnails and over the white frame in Loupe.
 
 **Open questions**
@@ -2531,7 +2531,7 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 - The warning triangle is palette-rendered: black mark on `Plate.warning` (yellow). The saved-copy check mark stays.
 - Transition: `.materialize`, or `.identity` with Reduce Motion on. `FolderView` animates on `banner != nil` with `.smooth(duration: 0.25)`, or with no animation under Reduce Motion.
 - The VoiceOver label, the announcement and the focus behavior are not changed.
-- Checked: `make build` has no warnings. Not checked yet: the three cases on screen, the position with `⇥`, `make contrast` for the panel, Reduce Motion and VoiceOver.
+- Checked: `make build` has no warnings. Not checked yet: the three cases on screen, the position with `⇥`, `make contrast` for the panel, Reduce Motion and VoiceOver. (VoiceOver: not checked, by decision 4 Oct 2026)
 
 ### D-05 · The toolbar on macOS 27
 
@@ -2550,7 +2550,7 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 
 **Acceptance criteria**
 - [ ] Each glass group holds one idea: mode, filter, inspector.
-- [ ] The filter-bar and inspector toggles show the on state the system way, and VoiceOver reads it.
+- [ ] The filter-bar and inspector toggles show the on state the system way, and VoiceOver reads it. (VoiceOver: not checked, by decision 4 Oct 2026)
 - [ ] Toolbar customization (Customize Toolbar…) still works, and the default set does not change.
 - [ ] `⇥` hides and shows the toolbar with no gap or flash, in a window and in full screen.
 
@@ -2564,7 +2564,7 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 - Order is now: mode picker, `ToolbarSpacer(.fixed)`, filter toggle, `ToolbarSpacer(.flexible)`, inspector toggle. Each glass group holds one idea. The default set of items does not change.
 - The filter and inspector items are `Toggle`s with `.toggleStyle(.button)`. `isOn` reads `model.showFilterBar` and `model.showInspector`; the setter runs `model.commands.perform`, so the menus and keys are unchanged. The filter symbol still fills when the filter narrows. The manual `accessibilityValue` is removed, because the toggle gives the on/off value itself.
 - `WindowToolbarCollapser` and `toolbarVisibility` are not changed.
-- Checked: `make build` has no warnings. Not checked yet: the groups on screen (light, dark, full screen), the on state, VoiceOver, Customize Toolbar…, and `⇥` with no gap or flash.
+- Checked: `make build` has no warnings. Not checked yet: the groups on screen (light, dark, full screen), the on state, VoiceOver, Customize Toolbar…, and `⇥` with no gap or flash. (VoiceOver: not checked, by decision 4 Oct 2026)
 
 ### D-06 · The filter bar under the toolbar
 
@@ -2583,7 +2583,7 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 **Acceptance criteria**
 - [ ] In Grid, the thumbnails scroll under the bar with a soft edge, in light and dark appearance.
 - [ ] In Loupe and Compare at Fit, no pixel of the photo is under the bar.
-- [ ] The search field, the toggles and the pickers keep their keyboard and VoiceOver behavior (M-20).
+- [ ] The search field, the toggles and the pickers keep their keyboard and VoiceOver behavior (M-20). (VoiceOver: not checked, by decision 4 Oct 2026)
 - [ ] `\` and `⇥` still hide and show the bar. With the chrome hidden, an open bar still keeps the titlebar strip (the `FolderView` comment).
 - [ ] The `grid` scenario is not slower.
 
@@ -2598,7 +2598,7 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 - Side fix: the Grid's right section inset is 18 pt (was 8), so the scroller knob does not sit on the last column.
 - Checked on screen: Grid looks right with the bar and the new inset. Q1 (fallback) is not needed.
 - `perf-bench grid` on 24mp-1000: `grid-frame-ms` p50 16.67, p95 16.67, max 34.3 (one frame). No before run was made, so this is not a comparison; the full `perf-gate` is still to run.
-- Not checked yet: Compare, light vs dark edge, VoiceOver and keys in the bar, `\` and `⇥` with the chrome hidden.
+- Not checked yet: Compare, light vs dark edge, VoiceOver and keys in the bar, `\` and `⇥` with the chrome hidden. (VoiceOver: not checked, by decision 4 Oct 2026)
 
 ### D-07 · Glass for the EXIF panel and the histogram
 
@@ -2708,7 +2708,7 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 - [ ] Every command with a symbol shows it in its menu. The others show none. No item loses its key equivalent.
 - [ ] A unit test checks that every symbol name in the table exists (`NSImage(systemSymbolName:accessibilityDescription:)` is not nil).
 - [ ] The cheat sheet does not change (text only).
-- [ ] VoiceOver reads the menu items as before.
+- [ ] VoiceOver reads the menu items as before. (VoiceOver: not checked, by decision 4 Oct 2026)
 
 **Open questions**
 1. Which items get a symbol? *Proposed:* only items whose symbol already shows on the screen or in the toolbar. A symbol on every row is noise.
@@ -2718,7 +2718,7 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 - `Command.symbol` is an optional field. `TableItems` shows it through `MenuTitle` (a `Label`, or plain text when nil). The toolbar Filter Bar and Inspector items read it from the table; the filled Filter Bar symbol (a filter is narrowing) is the table symbol plus `.fill`.
 - Eight commands have a symbol: Reject and Clear Filter (`xmark.circle`), Focus Peaking (`scope`), Highlight and Shadow Clipping (`sun.max.fill`, `moon.fill`), Show Inspector (`sidebar.trailing`), Show Filter Bar (`line.3.horizontal.decrease.circle`), Auto-Advance (`forward.end.fill`). Open question 1: as proposed. Open question 2: the rating items get none (a test checks this).
 - Tests: every symbol name resolves to an SF Symbol. The cheat sheet reads titles only, so it is unchanged.
-- Not checked by eye: how the menu draws a symbol on a toggle item next to its checkmark, and VoiceOver on the menu. Check both on the next UI pass.
+- Not checked by eye: how the menu draws a symbol on a toggle item next to its checkmark, and VoiceOver on the menu. Check both on the next UI pass. (VoiceOver: not checked, by decision 4 Oct 2026)
 
 
 ### D-11 · Spike: the info strip as a floating glass bar
