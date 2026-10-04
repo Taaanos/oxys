@@ -130,7 +130,7 @@ import Testing
         return folder
     }
 
-    @Test func currentFilterSortAndSelectionComeBack() async throws {
+    @Test func sortAndSelectionComeBackButTheFilterDoesNot() async throws {
         let folder = try fourPhotos(); defer { folder.remove() }
         let first = await open(folder.url)
         for (i, stars) in [4, 2, 5, 1].enumerated() { first.setCurrent(index: i); first.apply(.setRating(stars)) }
@@ -142,8 +142,9 @@ import Testing
         #expect(saved.currentName == "a.ARW" && saved.selected == ["c.ARW"])
 
         let second = await open(folder.url, restoring: saved)
-        #expect(second.filter.stars == [4, 5] && second.filter.sortKey == .filename && !second.filter.ascending)
-        #expect(second.visible.map(\.name) == ["c.ARW", "a.ARW"])
+        #expect(second.filter.stars.isEmpty && !second.filter.hasCriteria)
+        #expect(second.filter.sortKey == .filename && !second.filter.ascending)
+        #expect(second.visible.map(\.name) == ["d.ARW", "c.ARW", "b.ARW", "a.ARW"])
         #expect(second.currentPhoto?.name == "a.ARW")
         #expect(second.selection.urls.map(\.lastPathComponent) == ["c.ARW"])
     }
@@ -159,13 +160,13 @@ import Testing
         #expect(model.selection.anchor == nil)
     }
 
-    @Test func aSelectionTheFilterHidesIsNotRestored() async throws {
+    @Test func aSavedFilterIsDroppedOnReopen() async throws {
         let folder = try fourPhotos(); defer { folder.remove() }
         var filter = PhotoFilter(); filter.search = "b"
         let state = SessionState(identity: FolderIdentity(folder.url), filter: filter, selected: ["a.ARW", "b.ARW"])
         let model = await open(folder.url, restoring: state)
-        #expect(model.visible.map(\.name) == ["b.ARW"])
-        #expect(model.selection.urls.map(\.lastPathComponent) == ["b.ARW"])
+        #expect(model.visible.count == 4)
+        #expect(model.selection.urls.map(\.lastPathComponent).sorted() == ["a.ARW", "b.ARW"])
     }
 
     @Test func unsavedDecisionsAreWrittenOnReopen() async throws {

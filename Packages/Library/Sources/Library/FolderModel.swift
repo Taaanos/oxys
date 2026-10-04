@@ -283,7 +283,8 @@ public final class FolderModel {
 
     private func restoreLate(_ session: SessionState) {
         pendingSession = nil
-        updateFilter { $0 = session.filter }
+        // Only the sort comes back. A filter that hid every photo on reopen would look like an empty folder.
+        updateFilter { $0.sortKey = session.filter.sortKey; $0.ascending = session.filter.ascending }
         let byName = Dictionary(photos.map { ($0.name, $0.url) }, uniquingKeysWith: { first, _ in first })
         let urls = Set(session.selected.compactMap { byName[$0] })
         let shown = Set(visible.map(\.url))

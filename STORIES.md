@@ -1817,7 +1817,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Reopen the last folder at launch.
 
 **Acceptance criteria**
-- [ ] Quit mid-session, relaunch: the same photo, filter and selection come back.
+- [ ] Quit mid-session, relaunch: the same photo, sort and selection come back (the filter does not: see Decisions).
 
 **Open questions**
 1. How do we recognize "the same folder" after a card is reinserted or a folder is moved? *Proposed:* volume UUID plus path, falling back to the path alone.
@@ -1838,6 +1838,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Reload (the new-files banner) keeps the current photo and selection.
 - Live check: a read-only `hdiutil` image with a session holding one unsaved decision. The app reopened in Loupe on the saved photo, the write failed, the decision stayed unsaved, and the 15 s save kept it in the session file. Quitting showed the M-11 alert; choosing "Save Decisions To…" wrote the sidecar elsewhere and emptied the list, as designed.
 - Not restored: zoom, Compare pair, scroll position in Grid.
+- **Decided by you (4 Oct 2026):** the filter is not restored. A saved filter could hide every photo, and an empty folder on reopen confuses the user. Only the sort key and direction come back; the filter starts clear on every open. The scope line and criterion above say "filter": read them without it. `FolderModel.restoreLate` applies the sort alone. A selection the filter hid is no longer dropped on reopen, because no filter is active then.
 
 ### V-16 · Interop guidance
 

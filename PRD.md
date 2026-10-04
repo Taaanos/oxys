@@ -46,7 +46,7 @@ A session is five steps, and steps 2 to 4 repeat as many passes as the shoot nee
 4. **Narrow.** `⌥⌘3` shows only frames with 3 stars or more, then a second pass raises the bar (`⌥⌘4`, `⌥⌘5`). Nothing is exported yet; every decision is already saved in the sidecar.
 5. **Hand off.** `⌘A` selects everything in the filtered view. `⌘R` reveals those files in Finder, `⌘E` opens them in the external editor, `⇧⌘E` extracts their embedded JPEGs.
 
-Quitting mid-session loses nothing, and reopening the folder restores the last position and filter (proposed).
+Quitting mid-session loses nothing, and reopening the folder restores the last position, sort and selection; the filter always starts clear.
 
 ## Keyboard shortcuts
 
@@ -274,7 +274,7 @@ Seven small additions belong in v1 because the cull loop feels incomplete withou
 | "Preview vs RAW" truth badge | Shows the preview's pixel size and whether a 1:1 view is real; the app's main honesty feature | v1 | FRV's RAW-first philosophy |
 | Auto-advance option | Some people want every rating to advance without holding ⇧ | v1 | PM (Preferences → Preview) |
 | Cheat sheet and remappable keys | Shortcuts are the primary interface | v1 | FRV, PM |
-| Session resume | Reopening a folder returns to the last frame, filter and selection | v1 | new |
+| Session resume | Reopening a folder returns to the last frame, sort and selection (the filter starts clear) | v1 | new |
 | Burst and similar-shot stacks | Groups by capture-time gap and sequence number (no AI needed); rate a stack once, expand to pick the best; brackets and panorama sequences group the same way | v1.x | PhotoCuller stacks and similar scenes |
 | Focus-point overlay | Draw the camera's AF point from the maker note: shows whether focus landed on the subject, decisive for sports and wildlife | v1.x | new |
 | Lights out (`L`) | Dims the surroundings so exposure judgments aren't skewed by the UI | v1.x | Lightroom |

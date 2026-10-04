@@ -40,6 +40,12 @@ struct FilterBar: View {
                 .frame(width: 170)
                 .focused($searchFocused)
                 .onSubmit { NSApp.keyWindow?.makeFirstResponder(nil) }
+                // `\` is the bar's own key, as in Finder: with the field focused it hides the bar instead of typing a backslash.
+                .onKeyPress(characters: CharacterSet(charactersIn: "\\"), phases: .down) { press in
+                    guard press.modifiers.isEmpty else { return .ignored }
+                    model.commands.perform("filter.bar")
+                    return .handled
+                }
                 .accessibilityLabel("Find by filename")
             Button("Clear", systemImage: "xmark.circle") { model.commands.perform("filter.clear") }
                 .labelStyle(.iconOnly).buttonStyle(.borderless)
