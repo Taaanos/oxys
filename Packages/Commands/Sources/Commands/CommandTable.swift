@@ -238,7 +238,7 @@ public struct CommandTable: Sendable {
         Command("view.filmstrip", "Show Film Strip", menu: .init(.view, group: 2), modes: loupe, requires: .photos,
                 kind: .toggle, keys: [Shortcut(.position(.f), [.command, .option])]),
         Command("view.fullscreen", "Enter Full Screen", menu: .init(.view, group: 2),
-                keys: [Shortcut(.position(.f), [.command, .shift])]),
+                keys: [Shortcut(.position(.f), [.control, .command])]),
 
         // Cull (M-06). Each has a ⇧ twin that also moves to the next photo. Keypad digits mirror the digit row.
         Command("cull.rate.0", "Clear Rating", menu: .init(.photo, group: 1), modes: cull, requires: .photos, shiftAdvances: true,
