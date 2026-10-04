@@ -98,7 +98,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-14 | Key remapping and presets | M-22, M-23 | moved to v1.x (B-19): built when users ask for it |
 | V-15 | Session resume | M-20 | built (checked in the live app on a read-only disk image; filter and selection restore not clicked through) |
 | V-16 | Interop guidance | M-22, F-04 | done (documentation only, no in-app guidance; ART preference wording and the Lightroom and RawTherapee results stay open with F-04 and M-25) |
-| V-17 | Distribution | G-2 | todo |
+| V-17 | Distribution | G-2 | in progress (license, audit, bundle ID, changelog and cask script done; waiting for you: release key, tap repository, screenshots, clean-Mac test, next release) |
 | V-19 | Optional lens correction for RAW | V-02, M-22 | todo (spike done: `docs/spikes/lens-correction.md`) |
 | V-20 | Film strip in Loupe | M-12, M-13, M-04 | todo |
 | V-21 | Export developed JPEG and HEIC | V-13, V-02 | done (checked on six brands and 20 drone files with the bench tool; live panel used by you on 4 Oct 2026) |
@@ -176,8 +176,8 @@ These are questions, plus gaps I found in the PRD while splitting it, that affec
 
 | ID | Question | Proposed default | Affects |
 | --- | --- | --- | --- |
-| G-1 | Is "Oxys" the product name? It sets the bundle ID, the Application Support folder and the Homebrew cask name. | **Decided:** product name Oxys, bundle ID `dev.oxys.Oxys` as a placeholder. Set the real ID (with the GitHub org) before V-17; changing it later resets users' settings and cache. | F-01, V-17 |
-| G-2 | License (deferred in the PRD). It decides whether LibRaw or GPL code is usable, and it has to be settled before the first third-party code lands. F-06 found LibRaw is not needed for v1.0. | Decide right after F-03 and F-06, since those two spikes show which libraries we need. | F-03, V-04, V-17 |
+| G-1 | Is "Oxys" the product name? It sets the bundle ID, the Application Support folder and the Homebrew cask name. | **Decided:** product name Oxys. Bundle ID `com.thanosam.Oxys`, from the owner's own domain (decided in V-17, 2026-10-04; it replaced the placeholder `dev.oxys.Oxys` that 0.1.0 shipped with, so 0.1.0 users start with default settings once). Do not change it again: it resets users' settings and cache. | F-01, V-17 |
+| G-2 | License (deferred in the PRD). It decides whether LibRaw or GPL code is usable, and it has to be settled before the first third-party code lands. F-06 found LibRaw is not needed for v1.0. | **Decided (V-17, 2026-10-04): GPL-3.0-or-later.** Free for anyone to use and change; a changed version must stay open under the GPL, which also stops a closed copy on the Mac App Store. The name and icon are not licensed for reuse. The owner keeps the right to sell on the App Store later, so: no GPL-only, AGPL or LGPL dependency without the owner's decision, and a Contributor License Agreement (not only a DCO) before the first outside contribution is merged. Audit: `docs/license-audit.md` (no third-party code). | F-03, V-04, V-17 |
 | G-3 | What is the slowest supported Mac? Every performance target is measured on it. | **Decided:** the reference Mac is the development Mac (Apple M4, 24 GB, internal SSD). No other Mac is available, so every target is measured on it. The PRD's "slowest supported Mac" stays unmeasured, and the v1.0 gate (V-18, P-11) says so. | F-02, M-04, M-26, P-01, P-11 |
 | G-4 | Scan subfolders? Cards use `DCIM/100XXXXX/`. | Not recursive in the MVP; show a hint when the folder holds no photos but its subfolders do. | M-01 |
 | G-5 | In Grid with several photos selected, do cull keys apply to all of them or only to the active one? | All selected in Grid (as in Lightroom's Grid), only the active photo in Loupe and Compare. One undo step for the group. | M-06, M-09, M-19 |
@@ -1839,7 +1839,20 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 
 **Open questions**
 1. An update mechanism? (Sparkle signs updates with its own key and doesn't need Apple signing.) *Proposed:* not in v1.0; Homebrew handles upgrades.
-2. The GitHub organization and repository name (see G-1).
+2. The GitHub organization and repository name (see G-1). **Decided:** stay on `Taaanos/oxys`; bundle ID `com.thanosam.Oxys`.
+
+**Result so far (2026-10-04)**
+- License: GPL-3.0-or-later (G-2). `LICENSE`, README section with the name and icon rule, and `docs/license-audit.md` (no third-party code; rules for new dependencies).
+- Bundle ID `com.thanosam.Oxys` in the Xcode project, signpost subsystem, queue labels, cache folder, scripts and guide. Build, arm64 check and all package tests pass.
+- Already done in earlier commits: release script, signing, install guide, 0.1.0 on GitHub Releases.
+- `CHANGELOG.md` (Keep a Changelog, Semantic Versioning). Open question 1: as proposed, no update mechanism in v1.0; Homebrew upgrades.
+- `scripts/make-cask.sh <version> <tap-checkout>` writes `Casks/oxys.rb` (sha256 from the release, macOS 27 and arm64 only, removes the quarantine mark in `postflight`).
+
+**Waiting for you**
+- [ ] Make the release key and commit `docs/release-signers` (steps in `docs/release-signing.md`); publish its fingerprint in the README and two places outside the repository. Until then no signed release is possible.
+- [ ] Create the public repository `Taaanos/homebrew-oxys`; then run `scripts/make-cask.sh` into it and push.
+- [ ] Screenshots of System Settings → Privacy & Security → Open Anyway for `docs/guide/install.md`.
+- [ ] Publish the next release (it carries the new bundle ID), then the two acceptance checks: install on a clean Mac from the notes, and `brew install --cask taaanos/oxys/oxys`.
 
 ### V-19 · Optional lens correction for RAW
 

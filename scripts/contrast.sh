@@ -19,7 +19,7 @@ listing() { find $frames -type f -exec stat -f '%N %z %m' {} + | sort }
 before=$(listing)
 
 # The probe changes view settings the app remembers; put the user's back when the script ends, even when it is stopped.
-domain=dev.oxys.Oxys
+domain=com.thanosam.Oxys
 keys=(infoLevel showHistogram ratingCorner autoAdvance showInspector)
 typeset -A saved
 for key in $keys; do saved[$key]=$(defaults read $domain $key 2>/dev/null || true); done

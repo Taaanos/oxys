@@ -117,7 +117,7 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
         let chosen = url.resolvingSymlinksInPath().standardizedFileURL
         let holds = sources.contains { $0.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL == chosen }
         if holds {
-            throw NSError(domain: "dev.oxys.export", code: 1, userInfo: [
+            throw NSError(domain: "com.thanosam.oxys.export", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: "Choose another folder.",
                 NSLocalizedRecoverySuggestionErrorKey: "This folder holds the photos. Oxys writes only sidecars into a photo folder.",
             ])

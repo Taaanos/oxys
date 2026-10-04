@@ -19,7 +19,7 @@ if [ "$scenario" = cull ] || [ "$scenario" = compare ]; then
   cp -c -R "$folder" "$work"
 fi
 if [ "${BENCH_CLEAR_THUMBS:-}" = 1 ]; then
-  rm -rf ~/Library/Caches/dev.oxys.Oxys/thumbnails
+  rm -rf ~/Library/Caches/com.thanosam.Oxys/thumbnails
 fi
 (cd Packages/Diagnostics && swift build -c release >/dev/null)
 pkill -x Oxys 2>/dev/null || true

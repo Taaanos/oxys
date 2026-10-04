@@ -67,7 +67,7 @@ import Testing
     /// Shape copied from a real export: repeated names and subsystems come back as `ref` elements.
     static let xml = """
     <?xml version="1.0"?><trace-query-result><node xpath='x'><schema name="OSSignpostIntervals"></schema>
-    <row><start-time id="1">1</start-time><duration id="2" fmt="5.02 ms">5021416</duration><signpost-name id="4">key-to-frame</signpost-name><category id="5">Performance</category><subsystem id="6">dev.oxys.Oxys</subsystem></row>
+    <row><start-time id="1">1</start-time><duration id="2" fmt="5.02 ms">5021416</duration><signpost-name id="4">key-to-frame</signpost-name><category id="5">Performance</category><subsystem id="6">com.thanosam.Oxys</subsystem></row>
     <row><start-time>9</start-time><duration id="20">1500000</duration><signpost-name id="21">decode</signpost-name><subsystem ref="6"/></row>
     <row><start-time>12</start-time><duration ref="2"/><signpost-name ref="4"/><subsystem ref="6"/></row>
     <row><start-time>13</start-time><duration id="30">7</duration><signpost-name id="31">other</signpost-name><subsystem id="32">com.apple.foo</subsystem></row>
@@ -77,8 +77,8 @@ import Testing
     @Test func resolvesRefsAndFiltersBySubsystem() throws {
         let all = try SignpostIntervalXML.parse(Data(Self.xml.utf8))
         #expect(all.count == 4)
-        #expect(all[2] == SignpostInterval(name: "key-to-frame", subsystem: "dev.oxys.Oxys", durationNanoseconds: 5_021_416))
-        let ours = all.durations(subsystem: "dev.oxys.Oxys")
+        #expect(all[2] == SignpostInterval(name: "key-to-frame", subsystem: "com.thanosam.Oxys", durationNanoseconds: 5_021_416))
+        let ours = all.durations(subsystem: "com.thanosam.Oxys")
         #expect(ours["key-to-frame"]?.count == 2)
         #expect(ours["decode"] == [1.5])
         #expect(ours["other"] == nil)

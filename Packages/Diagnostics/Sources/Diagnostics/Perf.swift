@@ -83,7 +83,7 @@ public enum PerfInterval: String, CaseIterable, Sendable {
 }
 
 public enum Perf {
-    public static let subsystem = "dev.oxys.Oxys"
+    public static let subsystem = "com.thanosam.Oxys"
     public static let category = "Performance"
 
     public static let signposter = OSSignposter(subsystem: subsystem, category: category)

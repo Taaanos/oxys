@@ -26,12 +26,20 @@ See [Install Oxys](docs/guide/install.md) for the System Settings way and for ot
 ## Build from source
 
 ```sh
-git clone <repo-url> oxys && cd oxys
+git clone https://github.com/Taaanos/oxys.git && cd oxys
 make build        # Release build into ./build
 make check-arch   # prints the app's architectures; must be just "arm64"
 ```
 
 The app is signed ad hoc ("Sign to Run Locally"), so no Apple developer account is needed. You can also open `App/Oxys.xcodeproj` in Xcode and press Run.
+
+## Install with Homebrew
+
+```sh
+brew install --cask taaanos/oxys/oxys
+```
+
+The tap is a separate repository, [Taaanos/homebrew-oxys](https://github.com/Taaanos/homebrew-oxys). The cask checks the SHA-256 of the download. It does not check the release signature: for that, use the steps in [Check the download](docs/guide/install.md#check-the-download).
 
 ## Tests
 
@@ -47,3 +55,11 @@ make test         # runs the unit tests of every package under Packages/
 | `Packages/` | One local Swift package per module: Commands, Library, Containers, Imaging, Canvas, Sidecar, Metadata, Diagnostics |
 | `scripts/` | Developer scripts |
 | `docs/` | Spike write-ups and performance reports (added as stories land) |
+
+## License
+
+Oxys is free software under the [GNU General Public License, version 3 or any later version](LICENSE). You can use, change and share it. If you share a changed version, you must share its source under the same license. [docs/license-audit.md](docs/license-audit.md) lists what the app contains: it has no third-party code.
+
+The name "Oxys" and the app icon are not licensed for reuse. A changed version that you distribute, on the Mac App Store or anywhere else, must use another name and another icon.
+
+Copyright (C) 2026 Thanos Amoutzias.

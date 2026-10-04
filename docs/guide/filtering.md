@@ -80,14 +80,14 @@ About an embedded JPEG:
 - It is the largest JPEG inside the RAW. Oxys does not decode it or compress it again.
 - If it has its own XMP, Oxys keeps it. If it has its own EXIF, the RAW's EXIF replaces it. Oxys keeps the orientation of the embedded JPEG.
 - If a maker note cannot be moved safely into the JPEG, Oxys leaves that one note out and lists the file in the summary. Oxys also lists a file whose attributes it could not copy.
-- To get exactly the embedded bytes, with no EXIF or XMP from the RAW, quit Oxys and run `defaults write dev.oxys.Oxys extractExactBytes -bool YES`. This has no switch in Settings. The file attributes are still copied.
+- To get exactly the embedded bytes, with no EXIF or XMP from the RAW, quit Oxys and run `defaults write com.thanosam.Oxys extractExactBytes -bool YES`. This has no switch in Settings. The file attributes are still copied.
 
 About a developed file:
 
 - Oxys uses the decoder of macOS with its default settings: the white balance of the camera, the default tone, and the normal sharpening, noise reduction and lens correction. Oxys makes no other changes. This is not the neutral picture that `R` shows in the viewer.
 - The work takes about half a second for a 48 MP photo on an Apple silicon Mac. A big job uses a lot of memory and processor time.
 - GPS in a HEIC can move by about 10 cm, because the format stores it as degrees, minutes and seconds.
-- To change the quality, quit Oxys and run `defaults write dev.oxys.Oxys exportJPEGQuality -float 0.9` (or `exportHEICQuality`). The value is between 0.05 and 1. The defaults are 0.92 for JPEG and 0.8 for HEIC.
+- To change the quality, quit Oxys and run `defaults write com.thanosam.Oxys exportJPEGQuality -float 0.9` (or `exportHEICQuality`). The value is between 0.05 and 1. The defaults are 0.92 for JPEG and 0.8 for HEIC.
 
 ## Reload the folder
 

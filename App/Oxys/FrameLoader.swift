@@ -53,7 +53,7 @@ nonisolated enum FrameLoader {
 
     /// One disk cache for Loupe's stand-ins and Grid's thumbnails, so a photo is decoded for them once.
     static let sharedThumbnails = DiskThumbnailCache(
-        directory: DiskThumbnailCache.standardDirectory(bundleID: Bundle.main.bundleIdentifier ?? "dev.oxys.Oxys"))
+        directory: DiskThumbnailCache.standardDirectory(bundleID: Bundle.main.bundleIdentifier ?? "com.thanosam.Oxys"))
 
     static func key(for photo: Photo) -> FrameKey {
         FrameKey(url: photo.shownURL, fileSize: photo.shownFileSize, modified: photo.shownModificationDate, isRaw: photo.showsRaw)

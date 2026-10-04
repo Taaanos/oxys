@@ -291,7 +291,7 @@ private func solidImage(_ width: Int, _ height: Int) -> CGImage {
                 modified: .now, longEdge: 16)
     #expect(try FileManager.default.contentsOfDirectory(atPath: photos.path) == before)
     #expect(!cache.directory.path.hasPrefix(photos.path))
-    #expect(DiskThumbnailCache.standardDirectory(bundleID: "dev.oxys.Oxys").path.contains("/Library/Caches/dev.oxys.Oxys/"))
+    #expect(DiskThumbnailCache.standardDirectory(bundleID: "com.thanosam.Oxys").path.contains("/Library/Caches/com.thanosam.Oxys/"))
 }
 
 @Test func loadsInFlightTakeTheirWorkingMemoryOutOfTheCache() async throws {

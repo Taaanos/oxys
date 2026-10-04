@@ -39,7 +39,7 @@ make ui-walk       # drive the built app with key events only, then check the si
 scripts/perf-record.sh <Oxys.app> [seconds]   # record signposts, print p50/p95 per interval
 ```
 
-Package manifests use `swift-tools-version: 6.4` (`.macOS(.v27)` needs it). Bundle ID is the placeholder `dev.oxys.Oxys` (G-1); set the real one before V-17.
+Package manifests use `swift-tools-version: 6.4` (`.macOS(.v27)` needs it). Bundle ID is `com.thanosam.Oxys` (G-1). License is GPL-3.0-or-later (G-2): add no third-party code without recording it in `docs/license-audit.md`, and no GPL-only, AGPL or LGPL dependency without the owner's decision (the owner may sell on the Mac App Store later).
 
 ## Gotchas
 

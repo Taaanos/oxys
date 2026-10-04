@@ -36,7 +36,7 @@ final class CommandCenter {
     @ObservationIgnored private var titles: [CommandID: @MainActor () -> String] = [:]
     @ObservationIgnored private var monitor: Any?
     @ObservationIgnored private var observers: [Any] = []
-    @ObservationIgnored private static let log = Logger(subsystem: "dev.oxys.Oxys", category: "commands")
+    @ObservationIgnored private static let log = Logger(subsystem: "com.thanosam.Oxys", category: "commands")
 
     /// `~/Library/Application Support/Oxys/Keymap.json` (M-05/Q1).
     static var userKeymapURL: URL {

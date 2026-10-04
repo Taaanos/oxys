@@ -24,7 +24,7 @@ public final class SidecarWriteQueue: Sendable {
     private let failed = Mutex<[URL: Job]>([:])
     /// Sidecars whose latest write was refused (cannot be patched safely). Not retried; counted as unsaved.
     private let refused = Mutex<Set<URL>>([])
-    private let queue = DispatchQueue(label: "dev.oxys.sidecar-write", qos: .utility)
+    private let queue = DispatchQueue(label: "com.thanosam.oxys.sidecar-write", qos: .utility)
     private let onOutcome: @Sendable (SidecarWriteOutcome) -> Void
     private let now: @Sendable () -> Date
 

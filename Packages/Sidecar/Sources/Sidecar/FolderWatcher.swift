@@ -6,7 +6,7 @@ import Foundation
 public final class FolderWatcher: @unchecked Sendable {
     private let folderPath: String
     private let handler: @Sendable ([String]) -> Void
-    private let queue = DispatchQueue(label: "dev.oxys.folder-watcher", qos: .utility)
+    private let queue = DispatchQueue(label: "com.thanosam.oxys.folder-watcher", qos: .utility)
     private let queueKey = DispatchSpecificKey<Void>()
     private let lock = NSLock()
     private var stream: FSEventStreamRef?
