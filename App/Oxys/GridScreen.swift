@@ -43,6 +43,8 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     private let folder: FolderModel
     private let loupe: LoupeController
     private let loader = GridThumbnailLoader(store: FrameLoader.sharedThumbnails)
+    /// The active cell's glass lens (D-13).
+    private let glass = GlassCellLens()
 
     private var scrollView: NSScrollView?
     private var collectionView: NSCollectionView?
@@ -323,15 +325,25 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         for item in visibleItems { item.cell.configure(from: self, index: item.index) }
     }
 
-    /// What a cell shows for the photo at `index`: its thumbnail (or one of the other size while that loads).
+    /// What a cell shows for the photo at `index`: its thumbnail (or one of the other size while that loads). The
+    /// active photo's cell shows it through the glass lens, with its marks under the glass (D-13).
     fileprivate func presentation(at index: Int) -> GridCellView.Content {
         let photo = photos[index]
         let primary = key(for: photo, edge: edge)
         let other = key(for: photo, edge: edge == 512 ? 1024 : 512)
-        return .init(url: photo.url, image: loader.image(for: primary) ?? loader.image(for: other),
-                     failed: loader.isFailed(primary), decision: photo.decision,
-                     isCurrent: photo.url == folder.currentURL, isSelected: folder.selection.contains(photo.url),
-                     label: label(for: photo), isPair: photo.isPair)
+        let shownKey = loader.image(for: primary) != nil ? primary : loader.image(for: other) != nil ? other : nil
+        let plain = shownKey.flatMap { loader.image(for: $0) }
+        let failed = loader.isFailed(primary)
+        let isCurrent = photo.url == folder.currentURL
+        let look = GlassCellLens.Look.bevel
+        // A photo without a preview keeps "No preview" in the badge view, so its lens carries no marks.
+        let lens = isCurrent ? glass.image(
+            plain: plain, imageKey: shownKey, decision: failed ? .none : photo.decision, isPair: !failed && photo.isPair,
+            isSelected: folder.selection.contains(photo.url), points: size, scale: scrollView?.window?.backingScaleFactor ?? 2,
+            tile: GridCellView.tileGray, look: look, signpost: .glassLens) : nil
+        return .init(url: photo.url, image: lens ?? plain, failed: failed, decision: photo.decision,
+                     isCurrent: isCurrent, isSelected: folder.selection.contains(photo.url),
+                     label: label(for: photo), isPair: photo.isPair, glass: lens != nil, corner: lens != nil ? look.corner : 3)
     }
 
     private func label(for photo: Photo) -> String { photo.cellLabel }
@@ -388,8 +400,9 @@ final class GridItem: NSCollectionViewItem {
     override func loadView() { view = GridCellView() }
 }
 
-/// One thumbnail: a gray tile, the image fitted inside it, a ring when it is the active photo, and a strip of
-/// badges along the bottom (stars, label letter, reject mark) that never relies on color alone.
+/// One thumbnail: a gray tile, the image fitted inside it, and a small capsule of marks near the bottom (stars, label
+/// letter, reject mark, "R+J") that never relies on color alone. The active photo's cell is a glass lens instead of a
+/// tile (D-13), with the marks drawn into it, under the glass.
 @MainActor
 final class GridCellView: NSView {
     struct Content {
@@ -401,42 +414,39 @@ final class GridCellView: NSView {
         let isSelected: Bool
         let label: String
         let isPair: Bool
-        /// The film strip marks the active cell with a glass plate behind it (V-20), so the cell draws no ring over
-        /// the thumbnail, and its tile is clear so the plate shows through the bars of a portrait frame.
-        var showsRing = true
-        /// The film strip draws no plate behind the badges, and the active cell's badges are inside its lens image.
-        var badgePlate = true
-        var badgesInImage = false
-        /// Space under the badge view (the film strip lifts its capsule past the lens rim, on every cell alike).
-        var badgeLift: CGFloat = 0
+        /// The image is the glass lens of the active cell (V-20, D-13): the marks and a reject's veil are already in
+        /// it, the tile is clear, and the corners follow the glass.
+        var glass = false
+        /// The corner radius of the cell: the glass's when it wears the lens, so a selection tint follows its shape.
+        var corner: CGFloat = 3
     }
 
+    /// The tile behind a thumbnail, as a gray from 0 to 1.
+    static let tileGray: Double = 0.2
+    /// How much of the accent color a selected cell is tinted with.
+    static let selectionTint: CGFloat = 0.28
+
     private let imageLayer = CALayer()
-    private let ringLayer = CALayer()
     private let tintLayer = CALayer()
     private let checkLayer = CATextLayer()
     private let badges = GridBadgeView()
     private(set) var url: URL?
-    private var badgeLift: CGFloat = 0
     /// What a click does: the file, whether it was a double-click, and the modifier keys.
     private var onClick: ((URL, Bool, NSEvent.ModifierFlags) -> Void)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.backgroundColor = NSColor(white: 0.2, alpha: 1).cgColor
+        layer?.backgroundColor = NSColor(white: Self.tileGray, alpha: 1).cgColor
         layer?.cornerRadius = 3
         layer?.masksToBounds = true
         imageLayer.contentsGravity = .resizeAspect
         imageLayer.magnificationFilter = .trilinear
         imageLayer.minificationFilter = .trilinear
         layer?.addSublayer(imageLayer)
-        tintLayer.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.28).cgColor
+        tintLayer.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(Self.selectionTint).cgColor
         tintLayer.isHidden = true
         layer?.addSublayer(tintLayer)
-        ringLayer.borderColor = NSColor.controlAccentColor.cgColor
-        ringLayer.cornerRadius = 3
-        layer?.addSublayer(ringLayer)
         // A checkmark as well as the tint, so selection never relies on color alone.
         checkLayer.string = "✓"
         checkLayer.fontSize = 13
@@ -458,12 +468,11 @@ final class GridCellView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         imageLayer.frame = bounds
-        ringLayer.frame = bounds
         tintLayer.frame = bounds
         checkLayer.frame = NSRect(x: bounds.width - 24, y: bounds.height - 24, width: 18, height: 18)
         checkLayer.contentsScale = window?.backingScaleFactor ?? 2
         CATransaction.commit()
-        badges.frame = NSRect(x: 0, y: badgeLift, width: bounds.width, height: GridBadgeView.height)
+        badges.frame = NSRect(x: 0, y: GridBadgeView.lift, width: bounds.width, height: GridBadgeView.height)
     }
 
     override func viewDidChangeBackingProperties() {
@@ -484,19 +493,15 @@ final class GridCellView: NSView {
         CATransaction.setDisableActions(true)
         imageLayer.contents = content.image
         imageLayer.contentsScale = window?.backingScaleFactor ?? 2
-        // A reject is dimmed; in the film strip the lens bitmap carries the dimming with the badges.
-        imageLayer.opacity = content.decision.isReject && !content.badgesInImage ? 0.35 : 1
-        ringLayer.borderWidth = content.isCurrent && content.showsRing ? 3 : 0
-        layer?.backgroundColor = content.isCurrent && !content.showsRing ? nil : NSColor(white: 0.2, alpha: 1).cgColor
-        tintLayer.isHidden = !content.isSelected
+        // A reject is dimmed; on the lens the bitmap carries the dimming with the marks.
+        imageLayer.opacity = content.decision.isReject && !content.glass ? 0.35 : 1
+        layer?.backgroundColor = content.glass ? nil : NSColor(white: Self.tileGray, alpha: 1).cgColor
+        layer?.cornerRadius = content.corner
+        // On the lens the tint is in the bitmap, under the glass.
+        tintLayer.isHidden = !content.isSelected || content.glass
         checkLayer.isHidden = !content.isSelected
         CATransaction.commit()
-        if badgeLift != content.badgeLift {
-            badgeLift = content.badgeLift
-            needsLayout = true
-        }
-        badges.plate = content.badgePlate
-        badges.isHidden = content.badgesInImage && content.image != nil
+        badges.isHidden = content.glass && !content.failed
         badges.decision = content.failed ? nil : content.decision
         badges.failed = content.failed
         badges.isPair = content.isPair
@@ -516,9 +521,19 @@ final class GridCellView: NSView {
     }
 }
 
-/// The badge strip. Draws nothing for an undecided photo.
+/// The marks of a decision: one small dark capsule near the bottom of the cell. Draws nothing for an undecided photo.
 final class GridBadgeView: NSView {
     static let height: CGFloat = 22
+    /// Space between the bottom of the cell and the bottom of the strip (22 pt, with the 20 pt capsule centered in it),
+    /// so the capsule's bottom edge is 3 pt above the cell's bottom edge: one height on every cell, whatever the shape
+    /// of its picture, and the same on the active cell, so nothing moves when a cell becomes the active one. On the lens
+    /// the rim bends the capsule's lower edge; that is accepted (user decision, V-20).
+    static let lift: CGFloat = 2
+
+    /// The strip inside a cell of `cellWidth` × `height` points, in a flipped coordinate system (top-left origin).
+    static func strip(cellWidth: CGFloat, height cellHeight: CGFloat) -> NSRect {
+        NSRect(x: 0, y: cellHeight - Self.height - lift, width: cellWidth, height: Self.height)
+    }
 
     var decision: Decision? { didSet { if decision != oldValue { needsDisplay = true } } }
     var failed = false { didSet { if failed != oldValue { needsDisplay = true } } }
@@ -528,62 +543,21 @@ final class GridBadgeView: NSView {
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    /// The film strip has no full-width plate behind its badges (V-20): its marks sit in one small capsule.
-    var plate = true { didSet { if plate != oldValue { needsDisplay = true } } }
-
     override func draw(_ dirtyRect: NSRect) {
         if failed {
             Self.draw("No preview", at: NSPoint(x: 6, y: 4), color: .white, font: .systemFont(ofSize: 11))
             return
         }
-        Self.drawBadges(decision: decision ?? .none, isPair: isPair, in: bounds, plate: plate)
+        Self.drawBadges(decision: decision ?? .none, isPair: isPair, in: bounds)
     }
 
-    /// The badges in `strip` (a rectangle in a flipped coordinate system, `height` tall). Also drawn into the film
-    /// strip's lens bitmap, so the glass bends them with the picture.
-    static func drawBadges(decision: Decision, isPair: Bool, in strip: NSRect, plate: Bool) {
+    /// All the marks in one dark capsule with a faint light edge, centered in `strip` (a rectangle in a flipped
+    /// coordinate system, `height` tall; V-20, D-13). Also drawn into the lens bitmap of the active cell, so the glass
+    /// bends them with the picture. When the marks do not fit in the strip the stars and chips shrink in two steps,
+    /// so a rating always reads as a pattern of stars; only the stars of a rating with both chips left over turn into
+    /// a star and a number.
+    static func drawBadges(decision: Decision, isPair: Bool, in strip: NSRect) {
         guard !decision.isUndecided || isPair else { return }
-        if !plate {
-            drawCompact(decision: decision, isPair: isPair, in: strip)
-            return
-        }
-        if plate {
-            NSColor.black.withAlphaComponent(Plate.opacity).setFill()
-            strip.fill()
-        }
-        let top = strip.minY + 3
-        var x = strip.minX + 6
-        if decision.isReject {
-            let mark = NSRect(x: x, y: top, width: 16, height: 16)
-            NSColor(srgbRed: 0.78, green: 0.06, blue: 0.12, alpha: 1).setFill() // white ✕ at 5.9:1
-            NSBezierPath(roundedRect: mark, xRadius: 4, yRadius: 4).fill()
-            draw("✕", in: mark, color: .white, font: .systemFont(ofSize: 11, weight: .bold))
-            x += 22
-        } else if decision.stars > 0 {
-            let text = String(repeating: "★", count: decision.stars)
-            x += draw(text, at: NSPoint(x: x, y: top), color: .systemYellow, font: .systemFont(ofSize: 13)) + 6
-        }
-        var right = strip.maxX - 6
-        if isPair {
-            let chip = NSRect(x: right - 32, y: top, width: 32, height: 16)
-            NSColor.white.withAlphaComponent(0.85).setFill()
-            NSBezierPath(roundedRect: chip, xRadius: 4, yRadius: 4).fill()
-            draw("R+J", in: chip, color: .black, font: .monospacedSystemFont(ofSize: 10, weight: .bold))
-            right -= 38
-        }
-        if let label = decision.label {
-            let chip = NSRect(x: right - 16, y: top, width: 16, height: 16)
-            label.nsColor.setFill()
-            NSBezierPath(roundedRect: chip, xRadius: 4, yRadius: 4).fill()
-            draw(String(label.letter), in: chip, color: .black,
-                 font: .monospacedSystemFont(ofSize: 11, weight: .bold))
-        }
-    }
-
-    /// The film strip's badges (V-20): all the marks in one dark capsule with a faint light edge, centered in `strip`.
-    /// When the marks do not fit in 72 pt the stars and chips shrink in two steps, so a rating always reads as a
-    /// pattern of stars; only the stars of a rating with both chips left over turn into a star and a number.
-    private static func drawCompact(decision: Decision, isPair: Bool, in strip: NSRect) {
         struct Level { let star: CGFloat, chip: CGFloat, gap: CGFloat, padding: CGFloat }
         let levels = [Level(star: 12, chip: 16, gap: 6, padding: 7), Level(star: 10.5, chip: 15, gap: 5, padding: 6),
                       Level(star: 9, chip: 14, gap: 4, padding: 5)]

@@ -33,6 +33,8 @@ public enum PerfInterval: String, CaseIterable, Sendable {
     case gridFirstScreen = "grid-first-screen"
     /// The film strip's want list changes → its first cell is drawn (V-20).
     case filmstripRefresh = "filmstrip-refresh"
+    /// Making the glass lens of the active cell in Grid or the strip, on the main thread (D-13; 0.2 ms at 80 pt, 2 ms at 480 pt).
+    case glassLens = "glass-lens"
     /// A zoom command → the zoomed frame is on screen (M-14; one display frame, 16 ms at 60 Hz).
     case zoom = "zoom"
     /// Computing one frame's histogram (M-17), inside the frame load.
@@ -71,6 +73,7 @@ public enum PerfInterval: String, CaseIterable, Sendable {
         case .gridThumbnail: "grid-thumbnail"
         case .gridFirstScreen: "grid-first-screen"
         case .filmstripRefresh: "filmstrip-refresh"
+        case .glassLens: "glass-lens"
         case .zoom: "zoom"
         case .histogram: "histogram"
         case .rawDevelop: "raw-develop"

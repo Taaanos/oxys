@@ -66,3 +66,48 @@ private func pixel(_ image: CGImage, _ x: Int, _ y: Int) -> (r: Int, g: Int, b: 
     let there = pixel(marked, 80, 150)
     #expect(!(there.r > 240 && there.g < 20))
 }
+
+@Test func lensWithoutAPictureIsTheBackgroundUnderGlass() throws {
+    // A cell whose thumbnail has not loaded still shows its lens (D-13): flat background, clear corners, lit rim.
+    let lens = try #require(GlassLens.apply(to: nil, edge: 160, background: 0.5))
+    let flat = pixel(lens, 80, 80)
+    #expect(flat.r == pixel(lens, 40, 80).r && flat.a == 255)
+    #expect(pixel(lens, 0, 0).a == 0)
+    #expect(pixel(lens, 40, 8).r > flat.r + 5)
+}
+
+@Test func theSameSizeGivesTheSameLensEveryTime() throws {
+    // The second call uses the kept plan; it must not differ from the first.
+    var style = GlassLens.Style(); style.rimWidth = 0.1
+    let picture = solid(300, 200, gray: 0.4)
+    let first = try #require(GlassLens.apply(to: picture, edge: 200, background: 0.2, style: style))
+    let second = try #require(GlassLens.apply(to: picture, edge: 200, background: 0.2, style: style))
+    for (x, y) in [(5, 100), (100, 4), (195, 100), (100, 196), (12, 12), (100, 100)] {
+        #expect(pixel(first, x, y) == pixel(second, x, y))
+    }
+}
+
+@Test func theBevelKeepsItsWidthInPointsWhenTheShareIsScaled() throws {
+    // D-13: a 480 pt cell has the same 12 pt bevel as an 80 pt one, so the shares are worked out from points.
+    // Rim 12 pt at 2x is 24 px: 6 px in is inside the rim and lit, 40 px in is flat, on both sizes.
+    for points in [80.0, 480.0] {
+        let edge = Int(points * 2)
+        var style = GlassLens.Style()
+        style.rimWidth = 12 / points; style.strength = 7.2 / points; style.cornerRadius = 12.8 / points
+        let lens = try #require(GlassLens.apply(to: solid(edge, edge, gray: 0.5), edge: edge, background: 0.5, style: style))
+        let flat = pixel(lens, edge / 2, edge / 2).r
+        #expect(pixel(lens, edge / 2, 6).r > flat + 5)
+        #expect(pixel(lens, edge / 2, 40).r == flat)
+    }
+}
+
+@Test func aLargeLensIsMadeAcrossSeveralChunks() throws {
+    // 960 px has more rim pixels than one chunk of work; the join of the chunks must show no seam.
+    var style = GlassLens.Style()
+    style.rimWidth = 0.05; style.strength = 0.03; style.cornerRadius = 0.05
+    let lens = try #require(GlassLens.apply(to: solid(960, 960, gray: 0.5), edge: 960, background: 0.5, style: style))
+    #expect(lens.width == 960 && lens.height == 960)
+    // A column down the lit left rim is lit all the way, with no row left as it was copied.
+    let flat = pixel(lens, 480, 480).r
+    for y in stride(from: 120, to: 840, by: 60) { #expect(pixel(lens, 10, y).r > flat) }
+}

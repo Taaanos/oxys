@@ -70,6 +70,8 @@ private final class FilmStripItem: NSCollectionViewItem {
 final class FilmStripController: NSObject, NSCollectionViewDataSource {
     /// The thumbnail edge in pixels: an 80 pt cell at 2x.
     static let edge = 160
+    /// Pixels per point of the strip's bitmaps, 2x whatever the display.
+    private static let edgeScale = CGFloat(edge) / FilmStripGeometry.cellSize
     /// How long after the last key press the strip's loads may start again.
     private static let resumeDelay: Duration = .milliseconds(100)
 
@@ -93,19 +95,7 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
     private var resumeTask: Task<Void, Never>?
     private var refreshToken: Perf.Token?
     /// The active cell's thumbnail seen through the glass lens, made once per photo that becomes active (V-20).
-    private var lensed: (key: LensKey, image: CGImage)?
-
-    private struct LensKey: Equatable {
-        let thumbnail: GridThumbnailLoader.Key
-        let decision: Decision
-        let isPair: Bool
-    }
-    private static let lensStyle: GlassLens.Style = {
-        var style = GlassLens.Style()
-        style.strength = 0.09
-        style.rimWidth = 0.15
-        return style
-    }()
+    private let glass = GlassCellLens()
 
     init(folder: FolderModel) {
         self.folder = folder
@@ -316,54 +306,19 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
         let photo = photos[index]
         let key = key(for: photo)
         let isCurrent = photo.url == folder.currentURL
+        let failed = loader.isFailed(key)
+        // A photo without a preview keeps "No preview" in the badge view, so its lens carries no marks.
+        let lens = isCurrent ? glass.image(
+            plain: loader.image(for: key), imageKey: key, decision: failed ? .none : photo.decision, isPair: !failed && photo.isPair,
+            points: FilmStripGeometry.cellSize, scale: Self.edgeScale, tile: LoupeView.canvasGray, look: .bevel,
+            signpost: .glassLens) : nil
         let content = GridCellView.Content(
-            url: photo.url, image: isCurrent ? lens(for: key, photo: photo) : loader.image(for: key), failed: loader.isFailed(key),
+            url: photo.url, image: lens ?? loader.image(for: key), failed: failed,
             decision: photo.decision,
             isCurrent: isCurrent, isSelected: false,
-            label: isCurrent ? "\(photo.cellLabel), current photo" : photo.cellLabel, isPair: photo.isPair, showsRing: false,
-            badgePlate: false, badgesInImage: isCurrent, badgeLift: Self.badgeLift)
+            label: isCurrent ? "\(photo.cellLabel), current photo" : photo.cellLabel, isPair: photo.isPair,
+            glass: lens != nil)
         cell.configure(content) { [weak self] url, _, _ in self?.folder.setCurrent(url) }
-    }
-
-    /// The thumbnail through the glass lens, with the decision under the glass (the rim bends it with the picture), or the plain thumbnail while it
-    /// has not loaded. Made on the first draw of the active cell (about a millisecond) and again when its decision
-    /// changes; kept until another photo is active.
-    private func lens(for key: GridThumbnailLoader.Key, photo: Photo) -> CGImage? {
-        guard let plain = loader.image(for: key) else { return nil }
-        let lensKey = LensKey(thumbnail: key, decision: photo.decision, isPair: photo.isPair)
-        if let lensed, lensed.key == lensKey { return lensed.image }
-        let edge = Self.edge
-        let image = GlassLens.apply(to: plain, edge: edge, background: LoupeView.canvasGray, style: Self.lensStyle) { ctx in
-            Self.drawDecision(photo.decision, isPair: photo.isPair, lift: Self.badgeLift, into: ctx, edge: edge)
-        }
-        lensed = image.map { (lensKey, $0) }
-        return image ?? plain
-    }
-
-    /// Space between the bottom of the cell and the bottom of the badge strip (22 pt, the 20 pt capsule centered in it), so
-    /// the capsule's bottom edge is 3 pt above the cell's bottom edge. One height for every cell, whatever the shape of its
-    /// picture, and the same on the active cell, so nothing moves when a cell becomes the active one. On the active cell
-    /// the lens rim bends the capsule's lower edge; that is accepted (user decision).
-    private static let badgeLift: CGFloat = 2
-
-    /// Draws the badges (and, for a reject, the veil that dims the picture) into the lens bitmap, in cell points.
-    private static func drawDecision(_ decision: Decision, isPair: Bool, lift: CGFloat, into ctx: CGContext, edge: Int) {
-        let cell = FilmStripGeometry.cellSize
-        ctx.saveGState()
-        defer { ctx.restoreGState() }
-        // Points, top-left origin, like the cell's own badge view.
-        ctx.translateBy(x: 0, y: CGFloat(edge))
-        ctx.scaleBy(x: CGFloat(edge) / cell, y: -CGFloat(edge) / cell)
-        NSGraphicsContext.saveGraphicsState()
-        defer { NSGraphicsContext.restoreGraphicsState() }
-        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
-        if decision.isReject {
-            NSColor(white: LoupeView.canvasGray, alpha: 0.65).setFill()
-            NSRect(x: 0, y: 0, width: cell, height: cell).fill()
-        }
-        GridBadgeView.drawBadges(decision: decision, isPair: isPair,
-                                 in: NSRect(x: 0, y: cell - GridBadgeView.height - lift, width: cell, height: GridBadgeView.height),
-                                 plate: false)
     }
 
     // MARK: NSCollectionViewDataSource

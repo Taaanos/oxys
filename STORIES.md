@@ -130,6 +130,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | D-10 | Symbols in the menus | M-05, M-23 | done |
 | D-11 | Spike: the info strip as a floating glass bar | D-01, D-02 | done (glass kept; `⇧I` toggle 9 ms slower, full `make contrast`, the morph and the 20-frame comparison not done) |
 | D-12 | Spike: a glass HUD for commands with no visible result | D-02 | built; gate open (nothing run or seen on screen yet: contrast, Reduce Motion, idle CPU, one-session decision) |
+| D-13 | Glass lens and capsule marks in Grid | V-20, M-12, M-19 | done (checked on screen at all five sizes; you used the arrow keys, no lag; contrast on pure white accepted by you; the R+J chip, a 10,000-photo folder and VoiceOver not checked) |
 
 ### Dependency map (foundations and MVP)
 
@@ -844,6 +845,7 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Pure logic is in `Library.GridGeometry` (columns, visible range, arrow moves, prefetch order, tested). `Imaging.CGImage.upright(_:)` applies EXIF orientation (all eight tested), because Grid draws plain layers. `GridThumbnailLoader` keeps a 256 MB memory cache, four loads at once, the newest wish list wins and cancels the rest; Loupe and Grid share one disk cache (512 px, or 1024 px when a cell is wider than 512 device pixels).
 - The folder model stays the source of truth: `GridController` observes `photos` and `currentURL` and redraws only cells whose decision changed. The active photo is `currentURL` (a ring); selection is M-19. New commands: `nav.up`/`nav.down` (Grid), `view.loupe` (`Return`, `Space`), `view.grid` (`G`), `grid.smaller`/`grid.larger` (`−`/`=`). `G` is only the way back until M-13 adds `E`, `Esc` and the mode picker. Cull keys now work in Grid on the active photo; G-5's whole-selection rule waits for M-19.
 - Opening a folder (⌘O, drop, `OXYS_OPEN`) lands in Grid. New signposts: `grid-thumbnail`, `grid-first-screen` (open to every first-screen thumbnail drawn).
+- **Changed later (D-13):** the active cell is a glass lens, not a 3 pt ring, and the full-width black badge bar is one small capsule on every cell.
 
 **Checked**
 - Unit tests: `Library` 70, `Imaging` 28, `Commands` 38.
@@ -2818,6 +2820,51 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 - `HUD.swift`: one shared `HUD` state and `HUDView`, an overlay on `FolderView`. A glass capsule at the top center, 1.2 s, appears with a cut, fades out in 0.3 s (cut with Reduce Motion), hit testing off, hidden from VoiceOver (it already hears the phrase). One timer task, cancelled by a new phrase, so nothing runs after it ends.
 - Q2 list as built: `⌘C` copy ("Copied", Loupe EXIF and inspector), filter on, off and clear, the three sort commands, zoom steps when the info strip is off (`LoupeController.sayZoom`; the phrase is also announced, because zoom had none), Compare's linked zoom. The HUD shows the filter phrase `announceFilter` already speaks.
 - Open: the five gate items. The contrast probe has a `hud` label (`make contrast-quick` not run).
+
+### D-13 · Glass lens and capsule marks in Grid
+
+**Depends on:** V-20, M-12, M-19
+
+> As a photographer who moves through Grid with the arrow keys, I want the active photo to look like a piece of glass on the thumbnail, so that I see where I am and no ring covers the picture.
+
+**Why:** V-20 gave the film strip a glass lens on the active cell and one small capsule for the decision marks. The same look is wanted in Grid, so that Grid and the strip are one language.
+
+**Scope**
+- The active cell in Grid is a glass lens (`GlassLens`, V-20) and not a 3 pt accent ring. There is no ring at all.
+- The marks (stars, label, reject, "R+J") are one small dark capsule at the bottom of every cell. The full-width black bar is gone. On the active cell the capsule is drawn into the lens bitmap, under the glass, as in the strip.
+- A selected cell keeps its accent tint and its check mark (M-19, it never relies on color alone). On the active cell the tint is drawn under the glass.
+- All five cell sizes (120, 160, 240, 320, 480 pt). The lens bitmap has the pixel size of the cell.
+- Not in this story: a lens on selected cells or on every cell (decided no), Compare, a setting.
+
+**Acceptance criteria**
+- [x] At every cell size the active cell is a lens with its marks under the glass, and no other cell is. (Checked on screen at all five sizes.)
+- [x] The marks look the same on a cell before and after it becomes active: one height, one capsule, nothing moves. (Checked: the strip and Grid use one drawing and one lift.)
+- [x] Scroll stays at 60 fps: `make perf-bench SCENARIO=grid` on `24mp-1000`, 609 frames, p95 16.67 ms against the 25 ms limit. (Not on `grid-10000`.)
+- [x] Idle CPU in Grid is 0.01%, limit 0.02% (P-09). The lens is a bitmap, so nothing runs when nothing changes.
+- [x] A lens costs under 5 ms at every size, the first one at a new size included, with a signpost (`glass-lens`).
+- [x] The lens follows the arrow keys with no visible lag. (Checked by you by hand, 4 Oct 2026. This session cannot send keys.)
+- [x] D-01 contrast for the capsule on bright pictures. (Measured by hand, see the notes: 2.8:1 on pure white. **Accepted by you, 4 Oct 2026**: the capsule stays at 50% black.)
+- [ ] VoiceOver. (Not checked, by decision 4 Oct 2026.)
+
+**Decisions (design interview)**
+- Which cells: the **active cell only**. Selected cells and every cell were offered and not chosen: a selection of 500 photos would be hundreds of bitmaps, and the whole Grid as glass is a bitmap for each new cell while you scroll 10,000 photos.
+- Marks: **one capsule on every cell**, 20 pt at every cell size (a capsule that grows with the cell was offered and not chosen). The black bar is removed from `GridBadgeView`, with its `plate` switch.
+- Active cue: **glass only**, no ring. At 120 pt the lens is still easy to find among the other cells (checked on screen).
+
+**Decisions (found while building)**
+- **The lens engine is faster.** The bend and the light of a pixel depend on the size and the style, not on the picture. `GlassLens` now works them out once per size (the plan, kept for 8 sizes), copies the flat middle in one go and spreads the pixels of the rim over the cores. Same pixels as before (largest difference 1 of 255 against the old code at six sizes). A 960 px lens (480 pt at 2x) took 161 ms before and takes 2.1 ms now, 0.2 ms at 160 px. The first lens at a new size also builds its plan: 4.3 ms at 960 px. In the app the signpost reads 0.93 ms median. So the lens runs on the main thread at every size and there is no flash between a plain cell and a lens.
+- **The bevel is 12 pt on every cell size** (rim 12 pt, pull 7.2 pt, corner 12.8 pt, the strip's look). A rim that grows with the cell (15 pt at 240 pt) sank the capsule deeper into the bend and melted the stars on screen. A bigger cell gets a wider flat middle, like a bigger pane of the same glass.
+- **The tint of a selected active cell is in the bitmap**, under the glass and under the marks. On top of the glass it hid the light edge and turned the red reject chip purple.
+- A cell whose thumbnail has not loaded shows the lens over its tile, so the active cell is marked from the first frame. A photo with no preview keeps "No preview" in the badge view, and its lens has no marks.
+- Grid and the strip share one `GlassCellLens` (App/Oxys/GlassCell.swift): the cache of the one lens, the veil of a reject, the tint and the marks. In the strip the picture did not change on screen. One change: an active strip cell without a thumbnail shows the glass over the canvas gray and not a plain tile.
+- Not handled: a window moved between a 1x and a 2x screen keeps the old lens bitmap until the cell is next refreshed (it is scaled, a little soft).
+
+**Checked**
+- Unit tests: `Imaging` 108 (new: a lens without a picture, the same size twice gives the same lens, the bevel keeps its width in points at 80 and 480 pt, a lens made in several chunks has no seam). All packages pass. Release and Bench builds clean.
+- On screen, own Bench instance on a cloned folder (RAW, DNG, TIFF, portrait and landscape, ratings 1 to 5, labels, rejects, white, yellow and gray frames, a selection): all five cell sizes, an active reject that is selected, the film strip after the change.
+- A test instance takes the cell size from `-gridThumbnailStep "<integer>N</integer>"` without touching the saved setting (the plain `-gridThumbnailStep 3` is a string and the app reads an integer).
+- **Contrast, by hand:** the capsule is 50% black. On a pure white picture the stars (255, 214, 0) are 2.8:1 against it (3:1 is the least for a graphic), on the yellow frame 3.7:1. The old black bar at 70% gave 6:1 on white. Raising the capsule to 60% black gives 4.1:1 on white. You chose 50% by eye in the strip and accepted this for Grid (4 Oct 2026), so it stays.
+- Not checked: `key-to-frame` in Grid, the "R+J" chip on a lens, a folder of 10,000 photos, the Reduce Transparency and Increase Contrast settings (a bitmap, so no change expected), VoiceOver.
 
 ---
 
