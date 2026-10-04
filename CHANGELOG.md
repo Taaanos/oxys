@@ -9,7 +9,7 @@ All notable changes to Oxys. The format follows [Keep a Changelog](https://keepa
 
 ### Added
 - License: GPL-3.0-or-later (`LICENSE`), and a license audit (`docs/license-audit.md`).
-- Install with Homebrew from the `taaanos/oxys` tap.
+- Install with Homebrew from the `taaanos/tap` tap.
 
 ## [0.1.0] - 2026-10-03
 

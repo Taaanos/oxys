@@ -1,6 +1,6 @@
 #!/bin/sh
-# Writes the Homebrew cask for a release into a checkout of the tap (Taaanos/homebrew-oxys).
-# Usage: scripts/make-cask.sh <version> <tap-checkout>     e.g. scripts/make-cask.sh 0.2.0 ../homebrew-oxys
+# Writes the Homebrew cask for a release into a checkout of the tap (Taaanos/homebrew-tap).
+# Usage: scripts/make-cask.sh <version> <tap-checkout>     e.g. scripts/make-cask.sh 0.2.0 ../homebrew-tap
 # Run it after scripts/release.sh <version>, from the same checkout: it reads dist/Oxys.zip.sha256.
 # It writes <tap-checkout>/Casks/oxys.rb and nothing else; you review, commit and push the tap yourself.
 set -eu

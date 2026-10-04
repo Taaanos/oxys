@@ -1850,9 +1850,9 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 
 **Waiting for you**
 - [ ] Make the release key and commit `docs/release-signers` (steps in `docs/release-signing.md`); publish its fingerprint in the README and two places outside the repository. Until then no signed release is possible.
-- [ ] Create the public repository `Taaanos/homebrew-oxys`; then run `scripts/make-cask.sh` into it and push.
+- [ ] Create the public repository `Taaanos/homebrew-tap`; then run `scripts/make-cask.sh` into it and push.
 - [ ] Screenshots of System Settings → Privacy & Security → Open Anyway for `docs/guide/install.md`.
-- [ ] Publish the next release (it carries the new bundle ID), then the two acceptance checks: install on a clean Mac from the notes, and `brew install --cask taaanos/oxys/oxys`.
+- [ ] Publish the next release (it carries the new bundle ID), then the two acceptance checks: install on a clean Mac from the notes, and `brew install --cask taaanos/tap/oxys`.
 
 ### V-19 · Optional lens correction for RAW
 

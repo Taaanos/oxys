@@ -36,10 +36,10 @@ The app is signed ad hoc ("Sign to Run Locally"), so no Apple developer account 
 ## Install with Homebrew
 
 ```sh
-brew install --cask taaanos/oxys/oxys
+brew install --cask taaanos/tap/oxys
 ```
 
-The tap is a separate repository, [Taaanos/homebrew-oxys](https://github.com/Taaanos/homebrew-oxys). The cask checks the SHA-256 of the download. It does not check the release signature: for that, use the steps in [Check the download](docs/guide/install.md#check-the-download).
+The tap is a separate repository, [Taaanos/homebrew-tap](https://github.com/Taaanos/homebrew-tap). The cask checks the SHA-256 of the download. It does not check the release signature: for that, use the steps in [Check the download](docs/guide/install.md#check-the-download).
 
 ## Tests
 
