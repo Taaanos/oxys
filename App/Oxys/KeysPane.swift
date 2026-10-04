@@ -210,7 +210,7 @@ struct KeysPane: View {
             Picker("Key set", selection: Binding(
                 get: { store.editor.presetID ?? "" },
                 set: { choose($0.isEmpty ? nil : $0, names: names) })) {
-                Text("Default (Lightroom style)").tag("")
+                Text("Default").tag("")
                 ForEach(store.editor.presets) { Text($0.name).tag($0.id) }
             }
             .labelsHidden()

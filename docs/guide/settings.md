@@ -13,7 +13,7 @@ The Keys tab lists every command with its keys. Use it to change the keys, add m
 
 | To do this | Do this |
 | --- | --- |
-| Use another key set | Choose it in **Key set**: Default (Lightroom style) or Photo Mechanic. See below. |
+| Use another key set | Choose it in **Key set**: Default or Photo Mechanic. See below. |
 | Find a command | Type a command name, a mode, or a key in the search field. |
 | Change a key | Click the key. Choose **Change Key…**. Press the new key. |
 | Add a key | Click `+` next to the command. Press the key. A command can have more than one key. |
@@ -21,7 +21,7 @@ The Keys tab lists every command with its keys. Use it to change the keys, add m
 | Stop recording | Press `Esc` while Oxys waits for a key. |
 | Go back to the keys of the key set | Click the arrow next to a changed command. For all commands, choose **Reset All…** in the **Keymap file** menu. |
 
-**Key set.** The Default keys follow Lightroom Classic. The **Photo Mechanic** key set changes about 15 commands. Stars go on `⌃0` to `⌃5` (the bare digits still work), and `B` and `N` show highlight and shadow clipping. `V` opens Compare and `L` links the zoom of the two sides. `D` takes the active photo out of the selection, `⌘D` selects none, `⇧⌘O` inverts the selection, `F5` reloads the folder, and `+` zooms in. Photo Mechanic's color classes and its `Delete` key are not mapped. Your own changes sit on top of the key set. When you choose another key set, Oxys removes your own changes. It first shows how many, and you can cancel. Export the keys first to keep them. If you turn on "Switch to Desktop" shortcuts for `⌃1` to `⌃5` in System Settings, macOS takes those keys. The bare digits still rate.
+**Key set.** The Default keys follow Lightroom Classic for rating, labels and rejecting; the overlays and many other keys are Oxys's own. The **Photo Mechanic** key set changes about 15 commands. Stars go on `⌃0` to `⌃5` (the bare digits still work), and `B` and `N` show highlight and shadow clipping. `V` opens Compare and `L` links the zoom of the two sides. `D` takes the active photo out of the selection, `⌘D` selects none, `⇧⌘O` inverts the selection, `F5` reloads the folder, and `+` zooms in. Photo Mechanic's color classes and its `Delete` key are not mapped. Your own changes sit on top of the key set. When you choose another key set, Oxys removes your own changes. It first shows how many, and you can cancel. Export the keys first to keep them. If you turn on "Switch to Desktop" shortcuts for `⌃1` to `⌃5` in System Settings, macOS takes those keys. The bare digits still rate.
 
 Photo Mechanic is a trademark of Camera Bits, Inc. Oxys is not affiliated with Camera Bits. The key set uses the keys that Photo Mechanic documents for macOS. See `docs/keymap-presets.md` for the full list.
 
