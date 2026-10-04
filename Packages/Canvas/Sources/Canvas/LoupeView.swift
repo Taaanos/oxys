@@ -16,6 +16,7 @@ public final class LoupeView: NSView {
     private var image: PreparedImage?
     private var pendingToken: Perf.Token?
     private var lastDrawableSize = CGSize.zero
+    private var cachedOneToOne: CGFloat?
 
     /// Fit or a scale, and the image point (0...1) at the middle of the view while zoomed in.
     public private(set) var zoom = ZoomLevel.fit
@@ -339,13 +340,23 @@ public final class LoupeView: NSView {
         pan(byPixels: CGPoint(x: dx, y: dy))
     }
 
-    /// Drawable pixels per image pixel at 1:1 on the display the window is on.
+    /// Drawable pixels per image pixel at 1:1 on the display the window is on. The display-mode queries cost several
+    /// milliseconds each and a zoom asks 3 to 5 times, so the answer is kept until the screen or its mode changes (P-05).
     private var oneToOneScale: CGFloat {
+        if let cachedOneToOne { return cachedOneToOne }
         guard let screen = window?.screen ?? NSScreen.main,
               let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
               let mode = CGDisplayCopyDisplayMode(number)
         else { return 1 }
-        return ZoomGeometry.oneToOneScale(modePixelWidth: mode.pixelWidth, nativePixelWidth: Self.nativePixelWidth(of: number) ?? mode.pixelWidth)
+        let scale = ZoomGeometry.oneToOneScale(modePixelWidth: mode.pixelWidth, nativePixelWidth: Self.nativePixelWidth(of: number) ?? mode.pixelWidth)
+        cachedOneToOne = scale
+        return scale
+    }
+
+    /// Forgets the kept 1:1 scale. Runs when the window changes screen and when the display configuration changes.
+    @objc private func displayChanged(_ note: Notification) {
+        cachedOneToOne = nil
+        render()
     }
 
     /// The panel's own pixel width: the display's mode flagged native (`kDisplayModeNativeFlag`).
@@ -426,6 +437,12 @@ public final class LoupeView: NSView {
 
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        NotificationCenter.default.removeObserver(self)
+        cachedOneToOne = nil
+        if let window {
+            NotificationCenter.default.addObserver(self, selector: #selector(displayChanged), name: NSWindow.didChangeScreenNotification, object: window)
+            NotificationCenter.default.addObserver(self, selector: #selector(displayChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        }
         window?.makeFirstResponder(self)
         render()
         // A view that SwiftUI adds while the screen changes (Compare's panes, the first time) can be drawn before its
