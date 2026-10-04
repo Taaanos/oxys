@@ -36,7 +36,7 @@ struct GridScreen: NSViewRepresentable {
     }
 }
 
-/// Grid (M-12): an AppKit collection view with a flow layout. The folder model stays the source of truth;
+/// Grid (M-12): an AppKit collection view with its own layout (`GridLayout`). The folder model stays the source of truth;
 /// this watches it and redraws only the cells whose decision changed.
 @MainActor
 final class GridController: NSObject, NSCollectionViewDataSource {
@@ -48,12 +48,13 @@ final class GridController: NSObject, NSCollectionViewDataSource {
 
     private var scrollView: NSScrollView?
     private var collectionView: NSCollectionView?
-    private var layout: NSCollectionViewFlowLayout?
+    private var layout: GridLayout?
     private var boundsObserver: Any?
 
     private var photos: [Photo] = []
     private var indexByURL: [URL: Int] = [:]
-    /// The same positions by the file whose pixels the cell shows (the JPEG of a RAW+JPEG pair, V-10).
+    /// The positions of the pairs by the file whose pixels the cell shows (the JPEG of a RAW+JPEG pair, V-10);
+    /// any other photo shows its own file, so `index(ofShown:)` falls back to `indexByURL`.
     private var indexByShownURL: [URL: Int] = [:]
     private var shownCurrent: URL?
     private var wantedRange: Range<Int> = 0..<0
@@ -63,6 +64,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     private var firstScreenToken: Perf.Token?
     private var isObserving = false
     private var shownSelection = Set<URL>()
+    private var shownRevision = -1
 
     /// 0 to 4, into `GridGeometry.itemSizes`; remembered between launches.
     private(set) var step: Int = {
@@ -83,12 +85,9 @@ final class GridController: NSObject, NSCollectionViewDataSource {
 
     func makeView() -> NSScrollView {
         detach()
-        let layout = NSCollectionViewFlowLayout()
-        layout.minimumInteritemSpacing = 6
-        layout.minimumLineSpacing = 6
         // The right side leaves room for the scroller, so its knob does not sit on the last column.
-        layout.sectionInset = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 18)
-        layout.itemSize = NSSize(width: size, height: size)
+        let layout = GridLayout()
+        layout.itemSize = size
 
         let collection = NSCollectionView()
         collection.collectionViewLayout = layout
@@ -112,9 +111,11 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         self.layout = layout
         collectionView = collection
         scrollView = scroll
+        loader.batchHost = scroll
         loupe.fallbackHost = scroll
 
         photos = folder.visible
+        shownRevision = currentRevision
         reindex()
         shownCurrent = folder.currentURL
         shownSelection = folder.selection.urls
@@ -132,6 +133,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         isObserving = false
         if let boundsObserver { NotificationCenter.default.removeObserver(boundsObserver) }
         boundsObserver = nil
+        loader.batchHost = nil
         scrollView = nil
         collectionView = nil
         layout = nil
@@ -148,6 +150,11 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     }
 
     // MARK: bench (M-26)
+
+    /// What the bench logs at the start of a pass: the columns, the document height and the clip width in points.
+    var layoutSummary: (columns: Int, documentHeight: Double, clipWidth: Double) {
+        (geometry.columns, Double(collectionView?.frame.height ?? 0), Double(scrollView?.contentView.bounds.width ?? 0))
+    }
 
     func scrollToTop() {
         guard let scrollView else { return }
@@ -168,7 +175,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     private var size: CGFloat { GridGeometry.itemSizes[step] }
 
     private var geometry: GridGeometry {
-        GridGeometry(itemSize: size, width: scrollView?.contentView.bounds.width ?? 800)
+        .grid(itemSize: size, width: scrollView?.contentView.bounds.width ?? 800)
     }
 
     private var edge: Int {
@@ -200,8 +207,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         guard next != step else { return }
         step = next
         UserDefaults.standard.set(step, forKey: "gridThumbnailStep")
-        layout?.itemSize = NSSize(width: size, height: size)
-        layout?.invalidateLayout()
+        layout?.itemSize = size
         scrollToCurrent()
         viewportChanged(force: true)
         refreshAllVisible()
@@ -227,15 +233,24 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         defer { observe() }
         let new = folder.visible
         let old = photos
-        let sameList = new.count == old.count && zip(new, old).allSatisfy { $0.url == $1.url }
+        let revision = currentRevision
+        let sameList = new.count == old.count && ((revision >= 0 && revision == shownRevision) || zip(new, old).allSatisfy { $0.url == $1.url })
+        shownRevision = revision
         photos = new
         if !sameList {
+            // The photographer scrolled away from the active photo and the list came back in another order (the capture
+            // times arriving during a scroll): the view stays where it is. Before, it jumped to the active photo's new
+            // place in the middle of the flick.
+            let currentWasOnScreen = shownCurrent.flatMap { indexByURL[$0] }.map { wantedRange.contains($0) } ?? true
+            let keepsPlace = new.count == old.count && !currentWasOnScreen
             reindex()
-            collectionView?.reloadData()
+            // The same number of photos in another order (the capture times arriving): the cells on screen stay and
+            // show their new photos. A reload would drop them and make about a hundred new ones, 30 ms (P-08).
+            if new.count == old.count { refreshAllVisible() } else { collectionView?.reloadData() }
             wantedRange = 0..<0
             shownCurrent = folder.currentURL
             shownSelection = folder.selection.urls
-            scrollToCurrent()
+            if !keepsPlace { scrollToCurrent() }
             viewportChanged(force: true)
             return
         }
@@ -258,10 +273,25 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         }
     }
 
-    private func reindex() {
-        indexByURL = Dictionary(uniqueKeysWithValues: photos.enumerated().map { ($1.url, $0) })
-        indexByShownURL = Dictionary(uniqueKeysWithValues: photos.enumerated().map { ($1.shownURL, $0) })
+    /// `folder.listRevision` while the list shown is all of the photos in their own order, else -1 (a filter or a sort
+    /// makes `visible` a different list, so only a comparison can tell).
+    private var currentRevision: Int {
+        folder.filter.isNarrowing || !folder.filter.isDefaultSort ? -1 : folder.listRevision
     }
+
+    private func reindex() {
+        // One pass, sized at once: hashing a URL is the cost (about 4 ms per 10,000), so a photo whose shown file is
+        // its own is left out of the second table.
+        indexByURL = [:]
+        indexByURL.reserveCapacity(photos.count)
+        indexByShownURL = [:]
+        for (i, photo) in photos.enumerated() {
+            indexByURL[photo.url] = i
+            if let companion = photo.companion { indexByShownURL[companion.url] = i }
+        }
+    }
+
+    private func index(ofShown url: URL) -> Int? { indexByShownURL[url] ?? indexByURL[url] }
 
     private func scrollToCurrent() {
         guard let collectionView, let index = folder.currentIndex else { return }
@@ -293,7 +323,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     }
 
     private func resolved(_ key: GridThumbnailLoader.Key) {
-        if let index = indexByShownURL[key.frame.url] { refresh(index: index) }
+        if let index = index(ofShown: key.frame.url) { refresh(index: index) }
         checkFirstScreen()
     }
 

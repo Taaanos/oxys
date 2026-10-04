@@ -43,3 +43,37 @@ private func reds(_ image: CGImage) -> [[Int]] {
         #expect(reds(image) == rows, "orientation \(orientation.rawValue)")
     }
 }
+
+@Test func displayReadyImagesHaveTheLayoutCoreAnimationTakesAsIs() throws {
+    // A 3-byte-per-pixel image is converted; the result is BGRA, premultiplied, rows a multiple of 64 bytes.
+    let space = CGColorSpace(name: CGColorSpace.sRGB)!
+    let context = try #require(CGContext(data: nil, width: 70, height: 5, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                         bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+    context.setFillColor(CGColor(red: 0.2, green: 0.6, blue: 0.9, alpha: 1))
+    context.fill(CGRect(x: 0, y: 0, width: 70, height: 5))
+    let source = try #require(context.makeImage())
+    #expect(!source.isDisplayReady())
+    let ready = try #require(source.displayReady())
+    #expect(ready.isDisplayReady())
+    #expect(ready.width == 70 && ready.height == 5)
+    // Already in that layout and upright: the same image comes back, with no copy.
+    #expect(ready.displayReady() === ready)
+    // Rotation still lands in that layout, with the axes swapped.
+    let turned = try #require(ready.displayReady(.right))
+    #expect(turned.isDisplayReady() && turned.width == 5 && turned.height == 70)
+}
+
+@Test func displayReadyConvertsIntoTheWindowsColorSpaceOffTheMainThread() throws {
+    let p3 = try #require(CGColorSpace(name: CGColorSpace.displayP3))
+    let srgb = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+    let source = marker()   // sRGB
+    let ready = try #require(source.displayReady(.up, in: p3))
+    let readySpace = try #require(ready.colorSpace)
+    #expect(CFEqual(readySpace, p3))
+    #expect(ready.isDisplayReady(in: p3) && !ready.isDisplayReady(in: srgb))
+    // Already in the target space: no copy. In another space: converted again.
+    #expect(ready.displayReady(.up, in: p3) === ready)
+    let back = try #require(ready.displayReady(.up, in: srgb))
+    let backSpace = try #require(back.colorSpace)
+    #expect(back !== ready && CFEqual(backSpace, srgb))
+}

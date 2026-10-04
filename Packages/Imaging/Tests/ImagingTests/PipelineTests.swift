@@ -247,8 +247,10 @@ private func solidImage(_ width: Int, _ height: Int) -> CGImage {
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: Double(n - 10))], ofItemAtPath: file.path)
     }
     #expect(cache.totalBytes > 0)
-    // Touch the oldest by reading it, then trim to one file's worth.
-    _ = cache.thumbnail(path: "/p/0.arw", size: 0, modified: date, longEdge: 32)
+    // Touch the oldest by reading it in a later session (a file stored in this session counts as used already),
+    // then trim to one file's worth.
+    let later = DiskThumbnailCache(directory: cache.directory)
+    _ = later.thumbnail(path: "/p/0.arw", size: 0, modified: date, longEdge: 32)
     let one = try #require(try FileManager.default.attributesOfItem(
         atPath: cache.fileURL(path: "/p/0.arw", size: 0, modified: date, longEdge: 32).path)[.size] as? Int)
     let capped = DiskThumbnailCache(directory: cache.directory, byteCap: one + one / 2)
@@ -256,6 +258,41 @@ private func solidImage(_ width: Int, _ height: Int) -> CGImage {
     #expect(capped.thumbnail(path: "/p/0.arw", size: 0, modified: date, longEdge: 32) != nil)   // recently used
     #expect(capped.thumbnail(path: "/p/1.arw", size: 1, modified: date, longEdge: 32) == nil)
     #expect(capped.thumbnail(path: "/p/2.arw", size: 2, modified: date, longEdge: 32) == nil)
+}
+
+@Test func aHitSetsTheUseDateOncePerSession() throws {
+    let dir = tempDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let date = Date(timeIntervalSince1970: 1_000)
+    DiskThumbnailCache(directory: dir.appendingPathComponent("t"))
+        .store(solidImage(32, 32), orientation: .up, path: "/p/a.arw", size: 1, modified: date, longEdge: 32)
+    let cache = DiskThumbnailCache(directory: dir.appendingPathComponent("t"))
+    let file = cache.fileURL(path: "/p/a.arw", size: 1, modified: date, longEdge: 32)
+    func modified() throws -> Date { try #require(try FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate] as? Date) }
+    let old = Date(timeIntervalSince1970: 5_000)
+    try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: file.path)
+    _ = cache.thumbnail(path: "/p/a.arw", size: 1, modified: date, longEdge: 32)
+    let first = try modified()
+    #expect(first > old)
+    // The second hit in the same session leaves the date alone, until `clear` starts the session over.
+    try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: file.path)
+    _ = cache.thumbnail(path: "/p/a.arw", size: 1, modified: date, longEdge: 32)
+    #expect(try modified() == old)
+}
+
+@Test func theTrimRunsOnItsOwnQueueAfterEvery64Writes() throws {
+    let dir = tempDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let cache = DiskThumbnailCache(directory: dir.appendingPathComponent("t"), byteCap: 1)
+    let date = Date(timeIntervalSince1970: 1_000)
+    for n in 0..<63 {
+        cache.store(solidImage(16, 16), orientation: .up, path: "/p/\(n).arw", size: n, modified: date, longEdge: 16)
+    }
+    cache.waitForTrim()
+    #expect(try FileManager.default.contentsOfDirectory(atPath: cache.directory.path).count == 63)
+    cache.store(solidImage(16, 16), orientation: .up, path: "/p/63.arw", size: 63, modified: date, longEdge: 16)
+    cache.waitForTrim()
+    #expect(try FileManager.default.contentsOfDirectory(atPath: cache.directory.path).isEmpty)
 }
 
 @Test func diskCacheClearRemovesOnlyThumbnailsAndKeepsWorking() throws {

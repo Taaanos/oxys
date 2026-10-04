@@ -17,6 +17,11 @@ public final class DiskThumbnailCache: @unchecked Sendable {
     public let byteCap: Int
     private let lock = NSLock()
     private var writesSinceTrim = 0
+    private var isTrimScheduled = false
+    /// Files whose use date was set in this session. A hit sets it once: reading the same file again in an hour
+    /// changes nothing the eviction can use, and each write is a file-system call in a loader slot (P-08).
+    private var touched: Set<String> = []
+    private let trimQueue = DispatchQueue(label: "com.thanosam.Oxys.thumbnail-trim", qos: .utility)
 
     /// `directory` is created on demand. `byteCap` defaults to 2 GB (M-04 open question 2).
     public init(directory: URL, byteCap: Int = 2 << 30) {
@@ -46,8 +51,15 @@ public final class DiskThumbnailCache: @unchecked Sendable {
         else { return nil }
         let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
         let raw = props?[kCGImagePropertyOrientation] as? UInt32
-        try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
+        touchOnce(file)
         return Thumbnail(image: image, orientation: raw.flatMap(CGImagePropertyOrientation.init(rawValue:)) ?? .up)
+    }
+
+    private func touchOnce(_ file: URL) {
+        lock.lock()
+        let first = touched.insert(file.path).inserted
+        lock.unlock()
+        if first { try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path) }
     }
 
     /// Stores `image` (stored unrotated, with the orientation still to apply). Failures are silent: the cache
@@ -65,12 +77,31 @@ public final class DiskThumbnailCache: @unchecked Sendable {
         guard CGImageDestinationFinalize(destination) else { return }
         try? (data as Data).write(to: file, options: .atomic)
         lock.lock()
+        // A new file carries today's date, so it counts as used in this session.
+        touched.insert(file.path)
         writesSinceTrim += 1
-        let due = writesSinceTrim >= 64
-        if due { writesSinceTrim = 0 }
+        let due = writesSinceTrim >= 64 && !isTrimScheduled
+        if due {
+            writesSinceTrim = 0
+            isTrimScheduled = true
+        }
         lock.unlock()
-        if due { trim() }
+        if due { scheduleTrim() }
     }
+
+    /// Lists the whole folder, which is slow for tens of thousands of files, so it runs on its own utility queue
+    /// and never in a loader slot (P-08). At most one is waiting or running at a time.
+    private func scheduleTrim() {
+        trimQueue.async { [self] in
+            trim()
+            lock.lock()
+            isTrimScheduled = false
+            lock.unlock()
+        }
+    }
+
+    /// Returns when every trim started so far has finished (tests).
+    func waitForTrim() { trimQueue.sync {} }
 
     /// Deletes the least recently used files until the total is within the cap.
     public func trim() {
@@ -105,6 +136,7 @@ public final class DiskThumbnailCache: @unchecked Sendable {
         }
         lock.lock()
         writesSinceTrim = 0
+        touched.removeAll()
         lock.unlock()
         return freed
     }

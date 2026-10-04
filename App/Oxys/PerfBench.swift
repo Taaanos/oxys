@@ -422,6 +422,10 @@ enum PerfBench {
         for pass in ["grid-warmup-frame", "grid-frame"] {
             model.grid.scrollToTop()
             await settle(.seconds(1))
+            let layout = model.grid.layoutSummary
+            Perf.record(pass + "-columns", Double(layout.columns))
+            Perf.record(pass + "-document-height-pt", layout.documentHeight)
+            Perf.record(pass + "-clip-width-pt", layout.clipWidth)
             await model.grid.scrollWithDisplayLink(pointsPerSecond: 6000) { Perf.record(pass + "-ms", $0) }
             await settle(.seconds(2))
         }
@@ -510,7 +514,29 @@ enum PerfBench {
         private var expected = ContinuousClock.now
         private var peak = 0.0
 
+        private var observers: [CFRunLoopObserver] = []
+        private var iterationStart = 0.0, flushStart = 0.0
+
+        /// P-08: which part of a long run-loop turn it was. `runloop-busy-ms` is a whole turn (wake to sleep),
+        /// `ca-flush-ms` the part Core Animation's own observer spent committing layers; both only above 20 ms.
+        private func observeRunLoop() {
+            func add(_ activity: CFRunLoopActivity, order: CFIndex, _ body: @escaping () -> Void) {
+                let o = CFRunLoopObserverCreateWithHandler(nil, activity.rawValue, true, order) { _, _ in body() }!
+                CFRunLoopAddObserver(CFRunLoopGetMain(), o, .commonModes)
+                observers.append(o)
+            }
+            func now() -> Double { Double(DispatchTime.now().uptimeNanoseconds) / 1e6 }
+            add(.afterWaiting, order: Int.min) { [unowned self] in iterationStart = now() }
+            add(.beforeWaiting, order: 0) { [unowned self] in flushStart = now() }
+            add(.beforeWaiting, order: Int.max) { [unowned self] in
+                let end = now()
+                if end - flushStart > 20 { Perf.record("ca-flush-ms", end - flushStart) }
+                if end - iterationStart > 20 { Perf.record("runloop-busy-ms", end - iterationStart) }
+            }
+        }
+
         func start() {
+            observeRunLoop()
             Perf.record("resident-start-mb", PerfBench.footprintMB())
             memory = Task { @MainActor [weak self] in
                 while !Task.isCancelled {
@@ -531,6 +557,7 @@ enum PerfBench {
         }
 
         func finish() {
+            for o in observers { CFRunLoopRemoveObserver(CFRunLoopGetMain(), o, .commonModes) }
             memory?.cancel()
             timer?.invalidate()
             Perf.record("footprint-peak-mb", peak)

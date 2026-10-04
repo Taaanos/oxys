@@ -12,19 +12,45 @@ public struct GridGeometry: Sendable, Equatable {
     public var itemSize: CGFloat
     public var spacing: CGFloat = 6
     public var inset: CGFloat = 8
+    /// The space at the right edge, which can differ from `inset`: Grid leaves room there for the scroller's knob.
+    public var trailingInset: CGFloat
     public var width: CGFloat
 
-    public init(itemSize: CGFloat, width: CGFloat, spacing: CGFloat = 6, inset: CGFloat = 8) {
+    public init(itemSize: CGFloat, width: CGFloat, spacing: CGFloat = 6, inset: CGFloat = 8, trailingInset: CGFloat? = nil) {
         self.itemSize = itemSize
         self.width = width
         self.spacing = spacing
         self.inset = inset
+        self.trailingInset = trailingInset ?? inset
+    }
+
+    /// The shape Grid draws: 8 pt at the top, bottom and left, 18 pt at the right, 6 pt between rows (P-08).
+    public static func grid(itemSize: CGFloat, width: CGFloat) -> GridGeometry {
+        GridGeometry(itemSize: itemSize, width: width, trailingInset: 18)
     }
 
     /// As many columns as fit between the insets, at least one: the same count a flow layout produces.
     public var columns: Int {
-        let usable = width - 2 * inset + spacing
+        let usable = width - inset - trailingInset + spacing
         return max(Int(usable / (itemSize + spacing)), 1)
+    }
+
+    /// The space between two cells of a row. A row is spread over the full width between the insets, as a flow layout
+    /// does, so it is never less than `spacing`.
+    public var columnGap: CGFloat {
+        columns > 1 ? (width - inset - trailingInset - CGFloat(columns) * itemSize) / CGFloat(columns - 1) : spacing
+    }
+
+    /// The cell of `index` in the scroll view's document coordinates. Plain arithmetic, so a layout built on it costs
+    /// time in proportion to the cells on screen and not to the folder (a flow layout took 27 ms for 10,000 photos).
+    public func frame(of index: Int) -> CGRect {
+        CGRect(x: inset + CGFloat(index % columns) * (itemSize + columnGap), y: rowOrigin(of: index),
+               width: itemSize, height: itemSize)
+    }
+
+    /// The indices whose rows intersect `rect` (a vertical span, like `visibleRange`).
+    public func indices(in rect: CGRect, count: Int) -> Range<Int> {
+        visibleRange(offset: rect.minY, height: rect.height, count: count)
     }
 
     public func rows(count: Int) -> Int { count == 0 ? 0 : (count + columns - 1) / columns }

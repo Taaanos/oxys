@@ -18,6 +18,13 @@ public final class FolderModel {
     /// Every photo in the folder, in capture-time order. Decisions and sidecars are kept here; what the
     /// photographer sees and moves through is `visible`.
     public private(set) var photos: [Photo] = [] { didSet { visibleVersion &+= 1 } }
+    /// Counts the changes that add, remove or reorder photos, so work done off the main thread on a copy of the list
+    /// can tell whether its positions still fit the live one (P-08).
+    @ObservationIgnored private var listEpoch = 0
+    /// The same count for a view: while the filter and the sort are at their defaults, `visible` is `photos`, so two
+    /// reads with one revision hold the same photos in the same order. Comparing 10,000 URLs to find that out took
+    /// 10 ms on each sidecar chunk (P-08).
+    public var listRevision: Int { listEpoch }
     public private(set) var content: Content = .none
     public private(set) var isReadingCaptureTimes = false
     public private(set) var isReadingSidecars = false
@@ -205,6 +212,7 @@ public final class FolderModel {
         let mine = generation
         folder = url
         photos = []
+        listEpoch &+= 1
         currentURL = nil
         selection.removeAll()
         undoStack.removeAll()
@@ -234,6 +242,7 @@ public final class FolderModel {
                 content = .empty(hasSubfolderPhotos: result.subfolderHasPhotos)
             case .success(let result):
                 photos = result.photos
+                listEpoch &+= 1
                 currentURL = visible.first?.url
                 content = .photos
                 if let session { restoreEarly(session) }
@@ -295,15 +304,37 @@ public final class FolderModel {
     private func readCaptureTimes(generation mine: Int) async {
         isReadingCaptureTimes = true
         let snapshot = photos
+        let epoch = listEpoch
         let times = await FolderScanner.captureTimes(for: snapshot)
         guard mine == generation, !Task.isCancelled else { return }
+        // The sort is the slow part (it took 22 ms for 10,000 files, a dropped frame in Grid, P-08), so it runs on a
+        // copy off the main thread and gives back the new order as positions in that copy.
+        let order = await Task.detached(priority: .userInitiated) { Self.captureOrder(of: snapshot, times: times) }.value
+        guard mine == generation, !Task.isCancelled else { return }
         // Merge into the live list: decisions and previews recorded while the times were read must survive.
-        var updated = photos
-        let byURL = Dictionary(uniqueKeysWithValues: zip(snapshot.map(\.url), times))
-        for index in updated.indices { updated[index].captureTime = byURL[updated[index].url] ?? nil }
-        updated.sort(by: Photo.isOrderedBefore)
-        photos = updated
+        if epoch == listEpoch {
+            // Nothing was added, removed or moved meanwhile, so the positions still fit.
+            photos = order.map { index in
+                var photo = photos[index]
+                photo.captureTime = times[index]
+                return photo
+            }
+        } else {
+            var updated = photos
+            let byURL = Dictionary(uniqueKeysWithValues: zip(snapshot.map(\.url), times))
+            for index in updated.indices { updated[index].captureTime = byURL[updated[index].url] ?? nil }
+            updated.sort(by: Photo.isOrderedBefore)
+            photos = updated
+        }
+        listEpoch &+= 1
         isReadingCaptureTimes = false
+    }
+
+    /// The positions of `photos` in the order their capture times give (then file names).
+    nonisolated private static func captureOrder(of photos: [Photo], times: [Date?]) -> [Int] {
+        var stamped = photos
+        for index in stamped.indices { stamped[index].captureTime = times[index] }
+        return stamped.indices.sorted { Photo.isOrderedBefore(stamped[$0], stamped[$1]) }
     }
 
     /// Reads every sidecar (or embedded rating) with a few files in flight and applies the results chunk by chunk,
@@ -342,13 +373,23 @@ public final class FolderModel {
         }
     }
 
+    /// Where each photo is in `photos`, kept between chunks. Building it hashes every URL (about 5 ms for 10,000
+    /// files), and a folder of 10,000 files has 157 chunks: rebuilding it per chunk held the main thread for 180 ms
+    /// at a time while Grid was scrolling (P-08). A position is trusted only after a check against the list, so a
+    /// re-sort or a removal costs one rebuild and never a wrong photo.
+    @ObservationIgnored private var positionCache: [URL: Int] = [:]
+
+    private func position(of url: URL) -> Int? {
+        if let i = positionCache[url], i < photos.count, photos[i].url == url { return i }
+        positionCache.removeAll(keepingCapacity: true)
+        for (i, photo) in photos.enumerated() { positionCache[photo.url] = i }
+        return positionCache[url]
+    }
+
     private func applySidecarResults(_ results: [(URL, SidecarReadResult)]) {
         // The list may have been re-sorted by capture time since the chunk started, so look photos up by URL.
-        var positions: [URL: Int] = [:]
-        positions.reserveCapacity(photos.count)
-        for (i, photo) in photos.enumerated() { positions[photo.url] = i }
         for (url, result) in results {
-            guard let i = positions[url] else { continue }
+            guard let i = position(of: url) else { continue }
             var (info, decision) = SidecarInfo.resolve(result)
             if let decision, photos[i].decision.isUndecided {
                 photos[i].decision = decision
@@ -417,6 +458,7 @@ public final class FolderModel {
     private func remove(_ urls: Set<URL>) {
         let oldIndex = currentIndex ?? 0
         photos.removeAll { urls.contains($0.url) }
+        listEpoch &+= 1
         let shown = visible
         selection.retain(shown)
         if photos.isEmpty {

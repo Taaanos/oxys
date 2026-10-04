@@ -113,7 +113,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | P-05 | Keys within one display frame while frames load | P-01 | closed, won't fix (1:1 scale cached; cull and zoom p95 about 50 ms, not noticeable; gate rows now report only) |
 | P-06 | Overlay toggles without new allocations | P-01 | done (masks kept; the step did not reproduce; the display-frame row stays open: see the story) |
 | P-07 | Capture times in under 3 s | P-01 | closed, won't fix (accepted on 4 Oct 2026: 3.7 s against 3 s on 5,000 files is not noticeable; the re-open cache is not built) |
-| P-08 | Grid first pass without dropped frames | P-01 | todo |
+| P-08 | Grid first pass without dropped frames | P-01 | done (criterion 1 met in 15 of 18 runs, accepted on 4 Oct 2026 with one frame of 38 to 45 ms in the other 3, where the capture times arrive; criterion 2 met; the RawCamera crash stays open, see the story) |
 | P-09 | Zero idle CPU in Loupe | P-01 | done (criterion met in Grid, 0.006%; in Loupe 0.014% against 0.01%: the rest is AppKit's own wake-ups; see the story) |
 | P-10 | RAW develop and extraction on real files | P-01 | todo |
 | P-11 | Performance gate | P-02 to P-10 | todo |
@@ -2396,11 +2396,30 @@ The code changes the M-26 diagnosis in two places, found while planning this pha
 - The number of loaders follows the number of performance cores, not a fixed 4.
 
 **Acceptance criteria**
-- [ ] `grid` with `BENCH_CLEAR_THUMBS=1` on `grid-10000` and `real-drone-840`: no refresh over 33 ms in the first pass (M-26 measured a 143 ms maximum).
-- [ ] The second pass stays at 60 fps (the PRD target).
+- [x] `grid` with `BENCH_CLEAR_THUMBS=1` on `grid-10000` and `real-drone-840`: no refresh over 33 ms in the first pass (M-26 measured a 143 ms maximum). Accepted on 4 Oct 2026 with 3 of 18 runs at 38 to 45 ms: see the result.
+- [x] The second pass stays at 60 fps (the PRD target).
 
 **Open questions**
 1. The PRD target is for thumbnails from the disk cache only. *Proposed:* the 33 ms limit above for the first pass, as our own target.
+
+**Result (decisions)**
+- Baseline, `grid-10000`, cold thumbnails, 3 runs: worst first-pass frame 143, 156 and 185 ms. The four items in the scope were not the cause of the long frames. A time profile and a run-loop probe found three other causes. All of them ran on the main thread while the thumbnails loaded:
+  1. `FolderModel.applySidecarResults` built a dictionary of all 10,000 URLs for each 64-file chunk (157 chunks). Several chunks finished in one run-loop turn, so the main thread was busy for 180 to 300 ms. The positions are now kept between chunks and each one is checked against the list before it is used (`positionCache`).
+  2. Core Animation converted the colors of each thumbnail when it committed the layer (`CA::Render::copy_image`, 240 ms in one profile). Thumbnails are now drawn off the main thread into 8-bit BGRA, premultiplied, rows of 64 bytes, in the color space of the window (`CGImage.displayReady(_:in:)`). A test checks the layout and the space.
+  3. The capture times arrive after about 7 s and re-sort the list: 22 ms for the merge and the sort, 8 ms to index the photos, 30 ms to remake about a hundred cells. The sort now runs on a copy off the main thread (`captureOrder`); the live list takes the result only if no photo was added, removed or moved meanwhile (`listEpoch`). The index of a RAW+JPEG pair by its shown file keeps pairs only. When the list has the same length, the cells on screen show their new photos and no cell is made again.
+- The four scope items are done too. The trim runs on its own utility queue, one at a time. A hit sets the use date once per file per session. Finished thumbnails reach Grid once per display refresh, in one Core Animation transaction (a one-shot display link; the film strip keeps its own immediate path). The loader count is `hw.perflevel0.logicalcpu` (4 on this Mac, so the same as before here).
+- `GridLayout` replaces `NSCollectionViewFlowLayout` in Grid. Frames come from `GridGeometry` and cost time in proportion to the cells on screen. A probe on `real-drone-840` gave the same frames as the flow layout (x, y, size, column count, document height). The flow layout spreads each row over the width, so `GridGeometry` has `columnGap` and `frame(of:)` now.
+- `GridGeometry.grid(itemSize:width:)` counts the 18 pt at the right edge in `columns`. Before, the arrow keys counted 8 pt there while the layout used 18 pt, so at some widths (about 1 in 12 at 120 pt cells) Up and Down moved by a wrong number of photos. Now both use one value.
+- `PerfBench` records `runloop-busy-ms` for each run-loop turn over 20 ms (dev hooks only). It tells a long main-thread turn from a late display link.
+- A fourth cause, found while measuring: when the capture times re-sorted the list in the middle of a scroll, `scrollToCurrent` threw the view to the new place of the active photo (13,000 pt in the bench: the first pass had 1,259 to 1,359 ticks, the second 1,393). Now, if the active photo was off screen and the list has the same length, the view stays where it is. The first pass has 1,390 to 1,393 ticks.
+- `GridController.layoutSummary` and `PerfBench` log the columns, the document height and the clip width at the start of each pass (`*-columns`, `*-document-height-pt`, `*-clip-width-pt`). The window frame is saved under the bundle ID, so the Bench app opens at the size you last gave Oxys (1,190 pt in the final runs, 9 columns; 1,640 pt in the first ones, 12 columns). Compare runs only at the same width.
+- **Measured** (Bench, cold thumbnails, 1,190 pt window, 9 columns, 140,122 pt document):
+  - Before, `grid-10000` (3 runs): worst first-pass frame 143, 156, 185 ms; 6 to 12 frames over 25 ms.
+  - After, `grid-10000` (18 runs): worst first-pass frame 16.7 ms in 7 runs, 33.3 to 35.2 ms in 8 runs (one dropped refresh), 37.8, 40.6 and 44.6 ms in 3 runs (three refreshes). At most 3 frames over 25 ms per run. Each such frame is the turn where the capture times arrive: 47 ms of main-thread work (about 13 ms in `folderChanged`, 10 ms of layout and commit, 8 ms in SwiftUI).
+  - Second pass: 16.7 ms at every tick in all 18 runs (before: 33.3 ms in 2 of 3 runs).
+  - `real-drone-840` (3 runs): every tick of both passes 16.7 ms.
+- **Criterion 1 is not met strictly, accepted by you on 4 Oct 2026**: 3 of 18 runs have a frame of 38 to 45 ms. Criterion 2 is met. What is left is the one frame where the capture times arrive in a folder whose file names are not in capture order (the 10,000 clones are not; a real shoot is, and then the list is the same and nothing happens). To go lower, split that turn over two frames or make SwiftUI do less when `photos` changes.
+- **Not part of this story, open:** the crash report you pasted (4 Oct 2026, 17:24) is a segmentation fault inside Apple's RawCamera (`_value_entry_release`) on a thread that reads a capture time. It matches the one bench run that stopped at frame 165. Ten threads were inside RawCamera at once: `captureTimes` (8 wide) and the embedded-XMP fallback of `readSidecars` (4 wide). Both have run together since M-01 and M-07, and nothing of P-08 is in the stack. 1 crash in about 80 runs of this build and none in 14 + 30 stress runs after it. Option: limit the ImageIO opens of RAW and DNG that run together. Decided on 4 Oct 2026: no own parser for capture times. It would cover only the containers we know, every new format would need another case, and it gains about 3 s on 5,000 files; it would also not remove the race, because the sidecar fallback and the EXIF panel still use ImageIO.
 
 ### P-09 · Zero idle CPU in Loupe
 

@@ -59,3 +59,32 @@ import Testing
     #expect(order == [0, 1, 2, 3, 4, 5])
     #expect(GridPrefetch.order(visible: 0..<0, count: 6, columns: 2, direction: .down).isEmpty)
 }
+
+@Test func gridLeavesRoomAtTheRightForTheScrollerAndCountsColumnsWithIt() {
+    // 8 + 3 * 240 + 2 * 6 + 18 = 758 fits three; 757 fits two (the arrow keys and the layout must agree).
+    #expect(GridGeometry.grid(itemSize: 240, width: 758).columns == 3)
+    #expect(GridGeometry.grid(itemSize: 240, width: 757).columns == 2)
+    #expect(GridGeometry.grid(itemSize: 240, width: 758).trailingInset == 18)
+    // Without a trailing inset of its own the right side is as wide as the left.
+    #expect(GridGeometry(itemSize: 240, width: 748).trailingInset == 8)
+}
+
+@Test func cellsSpreadOverTheRowAndTheRowsStepByTheirPitch() {
+    // The numbers a flow layout gave on a 1,640 pt wide window with 120 pt cells (P-08: GridLayout must not move a cell).
+    let g = GridGeometry.grid(itemSize: 120, width: 1640)
+    #expect(g.columns == 12)
+    #expect(abs(g.columnGap - 15.818181818) < 1e-6)
+    #expect(g.frame(of: 0) == CGRect(x: 8, y: 8, width: 120, height: 120))
+    #expect(abs(g.frame(of: 1).minX - 143.818181818) < 1e-6)
+    #expect(abs(g.frame(of: 11).maxX - (1640 - 18)) < 1e-6)
+    #expect(g.frame(of: 12) == CGRect(x: 8, y: 134, width: 120, height: 120))
+    #expect(g.contentHeight(count: 840) == 8830)
+    // One column: no gap to spread.
+    #expect(GridGeometry.grid(itemSize: 480, width: 300).columnGap == 6)
+}
+
+@Test func indicesInARectAreTheRowsItTouches() {
+    let g = GridGeometry(itemSize: 100, width: 330)   // 3 columns, pitch 106
+    #expect(g.indices(in: CGRect(x: 0, y: 120, width: 330, height: 200), count: 100) == 3..<9)
+    #expect(g.indices(in: CGRect(x: 0, y: 0, width: 330, height: 200), count: 4) == 0..<4)
+}
