@@ -7,6 +7,8 @@ Compare shows two photos side by side. Use it to choose the better one.
 
 One side is **active**. A ring marks it. Every cull key changes the active side.
 
+![Compare: the select on the left with a ring, the candidate on the right](../screenshots/compare-fit.png)
+
 ## Open Compare
 
 Press `C` in the Grid or in Loupe.

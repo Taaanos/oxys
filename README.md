@@ -2,7 +2,24 @@
 
 A keyboard-first RAW culler for macOS. Instant embedded previews, full keyboard culling, and ratings and labels saved in XMP sidecars that Lightroom Classic, RawTherapee and ART can read.
 
-Status: early development. See [PRD.md](PRD.md) for the product and [STORIES.md](STORIES.md) for the build plan.
+Status: version 1.0.0 is released. See the [changelog](CHANGELOG.md) for what changed, [PRD.md](PRD.md) for the product and [STORIES.md](STORIES.md) for the build plan.
+
+![Loupe: one photo with the EXIF panel, the histogram and the film strip](docs/screenshots/loupe.png)
+
+## What it does
+
+- Loupe and Grid views with instant embedded previews, and a film strip in Loupe.
+- Full keyboard culling: ratings, labels and reject. You can change every key, or use the Photo Mechanic key set.
+- [Compare](docs/guide/compare.md) shows two photos side by side.
+- Focus mode hides every panel but the RAW badge and the decision.
+- Checks for sharpness and exposure: focus peaking, clipping and a histogram.
+- Optional lens correction for the developed RAW, off by default.
+- Export of developed files. An opt-in switch removes location and serial numbers.
+- Decisions are saved in XMP sidecars. Oxys never writes into your photo folders except these sidecars.
+
+![Grid: thumbnails with star ratings on the photos that have one](docs/screenshots/grid.png)
+
+![Compare at 1:1: two frames at full size, with the select on the left and the candidate on the right](docs/screenshots/compare-1to1.png)
 
 ## Using Oxys
 
@@ -22,6 +39,14 @@ xattr -dr com.apple.quarantine /Applications/Oxys.app
 ```
 
 See [Install Oxys](docs/guide/install.md) for the System Settings way and for other ways.
+
+### Install with Homebrew
+
+```sh
+brew install --cask taaanos/tap/oxys
+```
+
+The tap is a separate repository, [Taaanos/homebrew-tap](https://github.com/Taaanos/homebrew-tap). The cask checks the SHA-256 of the download. It does not check the release signature: for that, use the steps in [Check the download](docs/guide/install.md#check-the-download).
 
 ### Release key fingerprint
 
@@ -43,14 +68,6 @@ make check-arch   # prints the app's architectures; must be just "arm64"
 
 The app is signed ad hoc ("Sign to Run Locally"), so no Apple developer account is needed. You can also open `App/Oxys.xcodeproj` in Xcode and press Run.
 
-## Install with Homebrew
-
-```sh
-brew install --cask taaanos/tap/oxys
-```
-
-The tap is a separate repository, [Taaanos/homebrew-tap](https://github.com/Taaanos/homebrew-tap). The cask checks the SHA-256 of the download. It does not check the release signature: for that, use the steps in [Check the download](docs/guide/install.md#check-the-download).
-
 ## Tests
 
 ```sh
@@ -64,7 +81,7 @@ make test         # runs the unit tests of every package under Packages/
 | `App/` | Xcode project and the SwiftUI app target |
 | `Packages/` | One local Swift package per module: Commands, Library, Containers, Imaging, Canvas, Sidecar, Metadata, Diagnostics |
 | `scripts/` | Developer scripts |
-| `docs/` | Spike write-ups and performance reports (added as stories land) |
+| `docs/` | The [user guide](docs/guide/README.md), spike write-ups, performance and design reports, and the security, license and release-signing notes |
 
 ## License
 
