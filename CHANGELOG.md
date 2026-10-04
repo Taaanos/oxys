@@ -16,6 +16,7 @@ First stable release. See the [release notes](notes/1.0.0.md).
 - Settings > Keys: change, add, remove and reset the keys of any command. Oxys shows a key that is already in use before it saves, and you can reassign it. Menus, the `?` list, and the key hints change at once. A Photo Mechanic key set (stars on `⌃1` to `⌃5`, `B` and `N` for the overlays, `V` for Compare, and more). Import and export the keys as a file. `F1` to `F12`, `Page Up`, `Page Down` and forward delete can be used as keys. See [Settings](docs/guide/settings.md#keys).
 - License: GPL-3.0-or-later (`LICENSE`), and a license audit (`docs/license-audit.md`).
 - Install with Homebrew from the `taaanos/tap` tap.
+- About shows the copyright line and the license, with a link to the source.
 
 - Film strip in Loupe: a row of thumbnails under the photo.
 - Focus mode: `⇥` hides every panel but the RAW badge and the decision. In Compare, `⌥⇥` switches the side.
