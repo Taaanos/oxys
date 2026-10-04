@@ -26,7 +26,7 @@ key 115
 key 8
 key 20                      # 3 on the select (first photo)
 snap "select rated 3"
-key 48                      # ⇥: the candidate is active
+key 48 "using option down"  # ⌥⇥: the candidate is active
 key 23                      # 5 on the candidate (second photo)
 snap "candidate rated 5"
 key 7 "using shift down"    # ⇧X: rejects the candidate, which moves on to the third photo

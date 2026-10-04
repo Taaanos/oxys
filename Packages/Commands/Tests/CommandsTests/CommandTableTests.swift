@@ -215,18 +215,20 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(press(.e, .loupe).isEmpty)
 }
 
-@Test func tabTogglesFocusModeInGridAndLoupeEvenWithoutPhotos() {
+@Test func tabTogglesFocusModeInEveryModeEvenWithoutPhotos() {
     var router = KeyRouter(keymap: resolve(nil).keymap)
-    for (i, mode) in [ViewMode.grid, .loupe].enumerated() {
-        let r = router.handle(KeyInput(keyCode: PhysicalKey.tab.rawValue, timestamp: Double(i)), mode: mode, focus: .canvas)
-        #expect(r.actions == [.perform("view.focusTab")])
-    }
-    #expect(CommandTable.standard["view.focusTab"]!.isEnabled(in: .init(mode: .grid, hasPhotos: false)))
-    // Option-Tab is focus mode in every mode, Compare included; Option-Command-T hides the toolbar alone.
     for (i, mode) in ViewMode.allCases.enumerated() {
-        let r = router.handle(KeyInput(keyCode: PhysicalKey.tab.rawValue, modifiers: [.option], timestamp: Double(20 + i)),
-                              mode: mode, focus: .canvas)
+        let r = router.handle(KeyInput(keyCode: PhysicalKey.tab.rawValue, timestamp: Double(i)), mode: mode, focus: .canvas)
         #expect(r.actions == [.perform("view.focus")])
+    }
+    for mode in ViewMode.allCases {
+        #expect(CommandTable.standard["view.focus"]!.isEnabled(in: .init(mode: mode, hasPhotos: false)))
+    }
+    // Option-Tab switches Compare's active side and does nothing in Grid and Loupe; Option-Command-T hides the toolbar alone.
+    #expect(router.handle(KeyInput(keyCode: PhysicalKey.tab.rawValue, modifiers: [.option], timestamp: 20), mode: .compare, focus: .canvas).actions
+            == [.perform("compare.switchSide")])
+    for (i, mode) in [ViewMode.grid, .loupe].enumerated() {
+        #expect(router.handle(KeyInput(keyCode: PhysicalKey.tab.rawValue, modifiers: [.option], timestamp: Double(30 + i)), mode: mode, focus: .canvas).actions.isEmpty)
     }
     for (i, mode) in ViewMode.allCases.enumerated() {
         let r = router.handle(KeyInput(keyCode: PhysicalKey.t.rawValue, modifiers: [.option, .command], timestamp: Double(10 + i)),
@@ -422,14 +424,15 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     }
     #expect(press(.leftArrow, .compare) == [.perform("nav.previous")])
     #expect(press(.rightArrow, .compare) == [.perform("nav.next")])
-    #expect(press(.tab, .compare) == [.perform("compare.switchSide")])
+    #expect(press(.tab, .compare, [.option]) == [.perform("compare.switchSide")])
+    #expect(press(.tab, .compare) == [.perform("view.focus")])
     #expect(press(.downArrow, .compare) == [.perform("compare.swap")])
     #expect(press(.upArrow, .compare) == [.perform("compare.advance")])
     #expect(press(.x, .compare, .shift) == [.performAdvancing("cull.reject")])
     #expect(press(.x, .compare) == [.perform("cull.reject")])
     #expect(press(.digit3, .compare, .shift) == [.performAdvancing("cull.rate.3")])
     // The same keys keep their old meaning elsewhere.
-    #expect(press(.tab, .loupe) == [.perform("view.focusTab")])
+    #expect(press(.tab, .loupe) == [.perform("view.focus")])
     #expect(press(.downArrow, .loupe) == [.perform("info.fieldNext")])
     #expect(press(.upArrow, .grid) == [.perform("nav.up")])
     #expect(press(.downArrow, .grid) == [.perform("nav.down")])

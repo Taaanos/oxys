@@ -130,11 +130,11 @@ public struct CommandTable: Sendable {
         Command("view.grid", "Show Grid", menu: .init(.view, group: 0), modes: [.loupe, .compare], requires: .photos,
                 keys: [Shortcut(.position(.g)), Shortcut(.position(.escape))]),
         // Compare (V-08). `C` opens two photos side by side; `←` `→` (the Photo menu's commands) step the active side,
-        // and `⇧X` or any `⇧` cull key acts on it and moves it on. `⇥` and `↑` `↓` are Compare's own.
+        // and `⇧X` or any `⇧` cull key acts on it and moves it on. `⌥⇥` and `↑` `↓` are Compare's own.
         Command("compare.enter", "Compare", menu: .init(.view, group: 0), modes: [.grid, .loupe], requires: .photos,
                 keys: [Shortcut(.position(.c))]),
         Command("compare.switchSide", "Switch Active Side", menu: .init(.view, group: 6), modes: compare, requires: .photos,
-                keys: [Shortcut(.position(.tab))]),
+                keys: [Shortcut(.position(.tab), [.option])]),
         Command("compare.swap", "Swap Select and Candidate", menu: .init(.view, group: 6), modes: compare, requires: .photos,
                 keys: [Shortcut(.position(.downArrow))]),
         Command("compare.advance", "Next Pair", menu: .init(.view, group: 6), modes: compare, requires: .photos, repeats: true,
@@ -207,8 +207,7 @@ public struct CommandTable: Sendable {
                 keys: [Shortcut(.position(.h), [.option])]),
 
         // Info on the image (M-18). `I` cycles off, filename and stars, plus EXIF, plus histogram; `⇧I` toggles the
-        // histogram on its own; `⌥I` keeps the rating in the bottom-left corner while the strip is off. `⌥⌘I` opens the inspector (every mode); "Move Focus to Inspector" puts the keyboard
-        // there, since `⇥` belongs to the toolbar. In Loupe `↑` and `↓` walk the EXIF values (M-16), `⌘C` copies the
+        // histogram on its own; `⌥I` shows the decision and `⌥P` the RAW badge (V-24). `⌥⌘I` opens the inspector (every mode). In Loupe `↑` and `↓` walk the EXIF values (M-16), `⌘C` copies the
         // focused one (all when none is), and Show in Maps opens the GPS spot.
         Command("info.cycle", "Cycle Info", menu: .init(.view, group: 4), modes: loupeAndCompare, requires: .photos,
                 keys: [Shortcut(.position(.i))]),
@@ -229,13 +228,11 @@ public struct CommandTable: Sendable {
         Command("info.maps", "Show in Maps", menu: .init(.view, group: 4), modes: loupe, requires: .photos),
 
         // Focus mode (V-24): `⇥` hides every panel but the RAW badge and the decision, and `⇥` again brings back the
-        // layout as it was. Each panel keeps its own key. In Compare `⇥` switches the active side (PRD), so the bare
-        // key is a second command for the other two modes and `⌥⇥` stays everywhere. `⌥⌘T` is the toolbar alone.
+        // layout as it was, in every mode. Each panel keeps its own key. Compare's `⌥⇥` switches the active side.
+        // `⌥⌘T` is the toolbar alone.
         Command("view.chrome", "Hide Toolbar", menu: .init(.view, group: 2),
                 keys: [Shortcut(.position(.t), [.option, .command])]),
         Command("view.focus", "Focus Mode", menu: .init(.view, group: 2),
-                keys: [Shortcut(.position(.tab), [.option])]),
-        Command("view.focusTab", "Focus Mode with Tab", menu: .init(.view, group: 2), modes: [.grid, .loupe],
                 keys: [Shortcut(.position(.tab))]),
         // The film strip (V-20): a row of thumbnails under the picture in Loupe, off at first launch, hidden by focus mode.
         Command("view.filmstrip", "Show Film Strip", menu: .init(.view, group: 2), modes: loupe, requires: .photos,

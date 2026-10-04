@@ -2116,7 +2116,7 @@ Before this story `⇥` flipped one flag (`chromeHidden`) that hid the toolbar, 
 
 **Scope**
 - Panels: toolbar, inspector, filter bar, film strip, info (strip and EXIF panel), histogram. Each has its own key and works alone: `⌥⌘T`, `⌥⌘I`, `\`, `⌥⌘F`, `I`, `⇧I`.
-- `⇥` is focus mode, a flag on top of the saved toggles. It hides every panel and leaves the RAW badge and the decision. `⇥` again restores the layout. In Compare `⇥` still switches the side, so `⌥⇥` is focus mode in every mode.
+- `⇥` is focus mode, a flag on top of the saved toggles. It hides every panel and leaves the RAW badge and the decision. `⇥` again restores the layout, in every mode. Compare's switch of the active side moves to `⌥⇥`, so `⇥` reacts the same everywhere.
 - `⌥I` shows or hides the decision, `⌥P` the RAW badge. Both are on by default and focus mode does not touch them.
 - The inspector no longer has a key that moves focus into it; a click on a row does that.
 
@@ -2135,11 +2135,11 @@ Before this story `⇥` flipped one flag (`chromeHidden`) that hid the toolbar, 
 - The peaking and clipping readouts and the auto-advance badge stay visible in focus mode: they describe an overlay or setting that is still active.
 - The decision and the RAW badge each have a saved switch (`showDecision`, `showTruthBadge`, default on). With the strip on, they are in the strip; with the strip off or hidden by focus mode, they are in the corners (the old `ratingCorner` setting is gone, and the corner now shows by default). Grid's cell badges are the decision there and are not touched.
 - `⌥⌘T` is now the toolbar alone (the standard macOS key). `⌃⌘I` (Move Focus to Inspector) and the `⇥` walk through inspector rows are removed; click, `↑` `↓`, `⌥↑` `⌥↓`, `Esc` and `⌘C` stay.
-- With Full Keyboard Access on the system keeps `⇥` (M-13 decision); focus mode is then `⌥⇥` or the menu.
+- With Full Keyboard Access on the system keeps `⇥` (M-13 decision); focus mode is then in the View menu. Compare's `⌥⇥` still reaches the app.
 - Logic is in `Packages/Commands` (`FocusMode`), so it is tested without the app.
 
 **Checked**
-- `make test` passes (Commands 66 tests, 7 new in `FocusModeTests`; the table tests cover `⇥`, `⌥⇥`, `⌥P`, `⌥I` and the removed `⌃⌘I`). `make build` clean, `make check-arch` prints arm64.
+- `make test` passes (Commands 66 tests, 7 new in `FocusModeTests`; the table tests cover `⇥` in every mode, Compare's `⌥⇥`, `⌥P`, `⌥I` and the removed `⌃⌘I`). `make build` clean, `make check-arch` prints arm64.
 - Not checked: the acceptance criteria marked open (the window was not driven by key events in this session), the contrast of the corner decision and badge, VoiceOver (skipped by decision).
 
 

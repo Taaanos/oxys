@@ -306,9 +306,6 @@ final class AppModel {
         commands.register("view.focus", title: { [unowned self] in focus.isOn ? "Leave Focus Mode" : "Focus Mode" }) { [unowned self] _ in
             toggleFocus()
         }
-        commands.register("view.focusTab", title: { [unowned self] in focus.isOn ? "Leave Focus Mode with Tab" : "Focus Mode with Tab" }) { [unowned self] _ in
-            toggleFocus()
-        }
         commands.register("view.fullscreen", title: {
             NSApp.keyWindow?.styleMask.contains(.fullScreen) == true ? "Exit Full Screen" : "Enter Full Screen"
         }) { _ in NSApp.keyWindow?.toggleFullScreen(nil) }
@@ -615,7 +612,7 @@ final class AppModel {
         return compare.pair.flatMap { compare.pane($0.active).zoomInfo }
     }
 
-    /// `⇥` or `⌥⇥`. Moving the pointer to the top edge does nothing, so a pointer that drifts there cannot shift the canvas while the photographer judges a frame.
+    /// `⇥`, in every mode. Moving the pointer to the top edge does nothing, so a pointer that drifts there cannot shift the canvas while the photographer judges a frame.
     func toggleFocus() {
         focus.toggle()
         // A search field the bar had focused must not keep the keys once the bar is gone.

@@ -112,7 +112,7 @@ Checking sharpness is the reason this app exists, so zoom and RAW development ar
 | Histogram on / off | `⇧I` | new |
 | Show / hide inspector (EXIF, histogram) | `⌥⌘I` | HIG |
 | Lights out (dim, then black surround) | `L` | LR. Target v1.x |
-| Focus mode: hide every panel except the RAW badge and the decision | `⇥` | FRV. In Compare `⌥⇥`, since `⇥` switches the side. A panel's own key shows that panel alone; `⇥` again restores the layout as it was |
+| Focus mode: hide every panel except the RAW badge and the decision | `⇥` | FRV. Same in every mode. A panel's own key shows that panel alone; `⇥` again restores the layout as it was |
 | Show / hide the toolbar | `⌥⌘T` | HIG |
 | Show / hide the decision (stars, label, reject) | `⌥I` | new. Stays visible by default and through focus mode |
 | Show / hide the RAW badge | `⌥P` | new. Stays visible by default and through focus mode |
@@ -127,7 +127,7 @@ Model taken from Lightroom: a left "select" (the keeper) and a right "candidate"
 | --- | --- | --- |
 | Enter Compare | `C` | Two selected images compare those two; one selected compares it with the next |
 | Step the active side | `←` / `→` |  |
-| Switch active side | `⇥` | new. Overrides panel toggle while in Compare |
+| Switch active side | `⌥⇥` | new. `⇥` is focus mode in every mode, Compare included |
 | Swap select and candidate | `↓` | LR |
 | Advance both to the next pair | `↑` | LR |
 | Zoom both sides to 1:1 at the same point | `Z` | new. Pan moves both sides |
