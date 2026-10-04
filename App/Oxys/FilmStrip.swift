@@ -340,8 +340,9 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
         return image ?? plain
     }
 
-    /// The lens rim, in points: the least space under the badges on every cell, so the rim of the active cell does not cut them.
-    private static let rimClearance: CGFloat = 12
+    /// The least space under the badges on every cell. The lens rim bends less than 1.5 pt deeper than this, so the capsule
+    /// keeps its shape on the active cell, and sits as near the bottom as it can.
+    private static let rimClearance: CGFloat = 7
 
     /// How far above the cell's bottom edge the badge strip (22 pt, the capsule centered in it) sits: the capsule rests
     /// just inside the bottom of the picture, and stays clear of the rim when the picture fills the cell. The same rule
@@ -353,7 +354,7 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
             pictureHeight = min(cell, cell * CGFloat(image.height) / CGFloat(image.width))
         }
         let pictureBottom = (cell + pictureHeight) / 2
-        let capsuleBottom = min(pictureBottom - 4, cell - rimClearance)
+        let capsuleBottom = min(pictureBottom - 3, cell - rimClearance)
         let capsuleCenter = capsuleBottom - 10
         return max(cell - capsuleCenter - GridBadgeView.height / 2, 0)
     }
