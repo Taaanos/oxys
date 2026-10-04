@@ -3,7 +3,7 @@ import Library
 import SwiftUI
 
 /// The `?` overlay (M-23): the current mode's commands in the PRD's groups, with the keys of the current keymap,
-/// printed the way the menus print them, on a dimmed backdrop. A click outside the panel, `?` or `Esc` closes it;
+/// printed the way the menus print them, on a dimmed backdrop. A click outside the panel, its own key (`?` at first) or `Esc` closes it;
 /// the arrows, Page keys, Home, End and Space scroll it. It is not a window, so `CommandCenter` hands it the keys
 /// (`AppModel.cheatSheetKey`) and swallows the rest.
 struct CheatSheetView: View {
@@ -24,7 +24,8 @@ struct CheatSheetView: View {
                     Text("Keyboard Shortcuts").font(.title3.bold())
                     Text(center.mode.rawValue.capitalized).foregroundStyle(.secondary)
                     Spacer()
-                    Text("? or Esc to close").font(.callout).foregroundStyle(.secondary)
+                    let close = center.keyText("help.cheatsheet")
+                    Text(close.isEmpty ? "Esc to close" : "\(close) or Esc to close").font(.callout).foregroundStyle(.secondary)
                 }
                 .padding([.horizontal, .top], 20)
                 .padding(.bottom, 10)
@@ -62,7 +63,7 @@ struct CheatSheetView: View {
     }
 
     private func row(_ entry: CheatSection.Entry) -> some View {
-        let keys = entry.shortcuts.map(Self.label)
+        let keys = entry.shortcuts.map { KeyLabels.label(for: $0) }
         return HStack(alignment: .firstTextBaseline) {
             Text(entry.title)
             Spacer()
@@ -72,9 +73,5 @@ struct CheatSheetView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(entry.title)
         .accessibilityValue(keys.isEmpty ? "no key" : keys.joined(separator: ", or "))
-    }
-
-    private static func label(_ shortcut: Shortcut) -> String {
-        KeyLabels.label(for: shortcut.modifiers) + KeyLabels.label(for: shortcut.key)
     }
 }

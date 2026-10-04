@@ -78,6 +78,11 @@ public struct Keymap: Sendable {
         }
     }
 
+    /// The command a key press would run in `mode`, if any. Nothing runs.
+    public func command(for input: KeyInput, mode: ViewMode) -> CommandID? {
+        match(keyCode: input.keyCode, modifiers: input.modifiers, character: input.character, mode: mode)?.command
+    }
+
     /// `character` is what the key produces on the ASCII-capable layout with the event's `⇧`/`⌥` state.
     /// A positional match wins over a character match.
     func match(keyCode: UInt16, modifiers: KeyModifiers, character: Character?, mode: ViewMode) -> KeyBinding? {

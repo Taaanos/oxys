@@ -14,7 +14,10 @@ struct FolderView: View {
         Group {
             switch folder.content {
             case .none:
-                EmptyStateView(message: EmptyStateNSView.message)
+                EmptyStateView(message: {
+                    let key = model.commands.keyText("file.open")
+                    return key.isEmpty ? "Drop a folder or use File > Open Folder" : "Drop a folder or press \(key)"
+                }())
             case .opening:
                 EmptyStateView(message: "Opening…")
             case .empty(let hasSubfolderPhotos):
@@ -74,11 +77,11 @@ struct FolderView: View {
         .toolbarVisibility(model.toolbarVisible ? .visible : .hidden, for: .windowToolbar)
         .background(WindowToolbarCollapser(hidden: !model.toolbarVisible))
         .navigationTitle(folder.folder?.lastPathComponent ?? "Oxys")
-        .navigationSubtitle(Self.subtitle(folder))
+        .navigationSubtitle(Self.subtitle(folder, reloadKey: model.commands.keyText("file.reload")))
         .dropDestination(for: URL.self) { (urls: [URL], _: CGPoint) -> Bool in model.handleDrop(urls) }
     }
 
-    static func subtitle(_ folder: FolderModel) -> String {
+    static func subtitle(_ folder: FolderModel, reloadKey: String) -> String {
         guard case .photos = folder.content else { return "" }
         let total = folder.photos.count
         let count = folder.filter.isNarrowing ? folder.visible.count : total
@@ -88,7 +91,7 @@ struct FolderView: View {
         let head = selected > 0 ? "\(photos) · \(selected.formatted()) selected" : photos
         let new = folder.newFileCount
         guard new > 0 else { return head }
-        return "\(head) · \(new == 1 ? "1 new file" : "\(new) new files"), reload with ⌥⌘R"
+        return "\(head) · \(new == 1 ? "1 new file" : "\(new) new files"), reload \(reloadKey.isEmpty ? "from the File menu" : "with \(reloadKey)")"
     }
 }
 
@@ -118,7 +121,7 @@ private struct ToolbarItems: CustomizableToolbarContent {
                 Text("Compare").tag(ViewMode.compare)
             }
             .pickerStyle(.segmented)
-            .help("Grid (G), Loupe (E) or Compare (C)")
+            .help("Grid\(model.commands.hint("view.grid")), Loupe\(model.commands.hint("view.loupe")) or Compare\(model.commands.hint("compare.enter"))")
             .accessibilityLabel("View mode")
             .disabled(model.folder.content != .photos)
         }
@@ -135,7 +138,7 @@ private struct ToolbarItems: CustomizableToolbarContent {
                         model.commands.perform("filter.bar")
                     }))
                 .toggleStyle(.button)
-                .help("Filter bar (\\)")
+                .help("Filter bar\(model.commands.hint("filter.bar"))")
                 .disabled(model.folder.content != .photos)
         }
         ToolbarSpacer(.flexible)
@@ -147,7 +150,7 @@ private struct ToolbarItems: CustomizableToolbarContent {
                     model.commands.perform("info.inspector")
                 }))
                 .toggleStyle(.button)
-                .help("Inspector (⌥⌘I)")
+                .help("Inspector\(model.commands.hint("info.inspector"))")
                 .disabled(model.folder.content != .photos)
         }
     }

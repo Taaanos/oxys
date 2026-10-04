@@ -26,6 +26,10 @@ final class AppModel {
     let compare: CompareController
     let filmStrip: FilmStripController
     let commands: CommandCenter
+    /// The keymap file and its editor (V-14). Settings → Keys edits through it.
+    let keymapStore = KeymapStore()
+    /// What Settings → Keys is doing: the key being recorded, and the note on the row that was edited.
+    let keysModel: KeysModel
     /// Focus mode (V-24, `⇥`): hides every panel but the RAW badge and the decision, on top of each panel's saved state, so `⇥` again restores the layout. Not remembered across launches. The pointer at the top edge brings nothing back (M-13).
     private(set) var focus = FocusMode()
     /// The toolbar's own saved state (`⌥⌘T`), remembered across launches.
@@ -77,19 +81,21 @@ final class AppModel {
         if id == nil, let row = inspectorRows.first(where: { $0.id == inspectorFocusID }) { announce("\(row.label), \(row.value)") }
     }
 
-    /// Keys while the cheat sheet is up: `Esc` or `?` close it; arrows, Page, Home, End and Space scroll it.
-    private func cheatSheetKey(_ code: UInt16, _ character: Character?) {
+    /// Keys while the cheat sheet is up: `Esc` or the key of "Keyboard Shortcuts" (`?` at first) closes it; arrows,
+    /// Page, Home, End and Space scroll it.
+    private func cheatSheetKey(_ input: KeyInput) {
+        let code = input.keyCode
         let m = cheatMetrics
         let line: CGFloat = 40
         let maxY = max(0, m.content - m.page)
         func scroll(to y: CGFloat) { cheatScroll.scrollTo(y: min(max(0, y), maxY)) }
-        if character == "?" { showCheatSheet = false; return }
+        if commands.keymap.command(for: input, mode: commands.mode) == "help.cheatsheet" { showCheatSheet = false; return }
         switch code {
         case PhysicalKey.escape.rawValue: showCheatSheet = false
         case PhysicalKey.downArrow.rawValue: scroll(to: m.offset + line)
         case PhysicalKey.upArrow.rawValue: scroll(to: m.offset - line)
-        case PhysicalKey.space.rawValue, 121: scroll(to: m.offset + m.page - line)
-        case 116: scroll(to: m.offset - m.page + line)
+        case PhysicalKey.space.rawValue, PhysicalKey.pageDown.rawValue: scroll(to: m.offset + m.page - line)
+        case PhysicalKey.pageUp.rawValue: scroll(to: m.offset - m.page + line)
         case PhysicalKey.home.rawValue: scroll(to: 0)
         case PhysicalKey.end.rawValue: scroll(to: maxY)
         default: break
@@ -220,7 +226,9 @@ final class AppModel {
     }
 
     init() {
-        commands = CommandCenter(folder: folder)
+        commands = CommandCenter(folder: folder, keymap: keymapStore.resolved)
+        keymapStore.onChange = { [commands] in commands.applyKeymap($0) }
+        keysModel = KeysModel(store: keymapStore, center: commands)
         grid = GridController(folder: folder, loupe: loupe)
         compare = CompareController(folder: folder, loupe: loupe)
         filmStrip = FilmStripController(folder: folder)
@@ -273,8 +281,8 @@ final class AppModel {
         }
         registerFilter()
         commands.modalActive = { [unowned self] in showCheatSheet || showEditorChooser }
-        commands.modalKey = { [unowned self] code, character in
-            if showEditorChooser { editorChooserKey(code) } else { cheatSheetKey(code, character) }
+        commands.modalKey = { [unowned self] input in
+            if showEditorChooser { editorChooserKey(input.keyCode) } else { cheatSheetKey(input) }
         }
         // Edit (V-12): `⌘E` opens in the default editor, `⌥⌘E` asks which.
         commands.register("file.edit", isAvailable: { [unowned self] in !folder.cullTargets.isEmpty && editors.defaultEditor != nil },
@@ -448,7 +456,8 @@ final class AppModel {
         // Developer hook, like OXYS_REPORT_LAUNCH: open a folder at launch for scripted checks.
         #if OXYS_DEV_HOOKS
         if let path = DevHooks.environment["OXYS_OPEN"] {
-            if PerfBench.scenario != nil { PerfBench.start(model: self, folder: URL(fileURLWithPath: path)) } else { open(URL(fileURLWithPath: path)) }
+            if KeysSelfTest.enabled { KeysSelfTest.start(model: self, folder: URL(fileURLWithPath: path)) }
+            else if PerfBench.scenario != nil { PerfBench.start(model: self, folder: URL(fileURLWithPath: path)) } else { open(URL(fileURLWithPath: path)) }
         }
         #endif
         startSessionResume()

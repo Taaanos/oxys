@@ -2,7 +2,6 @@ import AppKit
 import Commands
 import Library
 import Observation
-import os
 import SwiftUI
 
 /// Runs the command table: owns the keymap and router, installs the one key monitor, holds the handlers the
@@ -25,8 +24,13 @@ final class CommandCenter {
     @ObservationIgnored var keyActivity: () -> Void = {}
     /// True while an in-window overlay (the cheat sheet) owns the keyboard; it gets every key but `⌘` chords.
     @ObservationIgnored var modalActive: () -> Bool = { false }
-    /// Offered each key-down of a modal overlay: key code and the character the key types.
-    @ObservationIgnored var modalKey: (UInt16, Character?) -> Void = { _, _ in }
+    /// Offered each key-down of a modal overlay.
+    @ObservationIgnored var modalKey: (KeyInput) -> Void = { _ in }
+    /// Set while Settings → Keys records a key (V-14). It gets every key-down, `⌘` chords and `Esc` included, and
+    /// the monitor consumes the key-up too, so nothing reaches the menus or the photo.
+    @ObservationIgnored var keyCapture: ((KeyInput) -> Void)?
+    /// The Settings window. It is no place for cull keys, so the monitor does not route its keys (V-14).
+    @ObservationIgnored weak var settingsWindow: NSWindow?
     /// Bumped when the input source changes, so menus re-read the key labels.
     private(set) var layoutRevision = 0
 
@@ -38,23 +42,25 @@ final class CommandCenter {
     @ObservationIgnored private var titles: [CommandID: @MainActor () -> String] = [:]
     @ObservationIgnored private var monitor: Any?
     @ObservationIgnored private var observers: [Any] = []
-    @ObservationIgnored private static let log = Logger(subsystem: "com.thanosam.Oxys", category: "commands")
 
-    /// `~/Library/Application Support/Oxys/Keymap.json` (M-05/Q1).
-    static var userKeymapURL: URL {
-        URL.applicationSupportDirectory.appending(path: "Oxys/Keymap.json", directoryHint: .notDirectory)
-    }
-
-    init(table: CommandTable = .standard, folder: FolderModel, userKeymap: URL = CommandCenter.userKeymapURL) {
+    /// The keymap comes from the `KeymapStore` (V-14), which reads `Keymap.json` and calls `applyKeymap` on every change.
+    init(table: CommandTable = .standard, folder: FolderModel, keymap resolved: ResolvedKeymap) {
         self.table = table
         self.folder = folder
-        let resolved = Keymap.resolve(table: table, userFile: try? Data(contentsOf: userKeymap))
         keymap = resolved.keymap
         keymapProblems = resolved.problems
-        for problem in resolved.problems { Self.log.error("\(problem, privacy: .public)") }
         var router = KeyRouter(keymap: resolved.keymap)
         if let t = UserDefaults.standard.object(forKey: "keyHoldThresholdSeconds") as? Double, t > 0 { router.holdThreshold = t }
         self.router = router
+    }
+
+    /// Runs on a new keymap: held keys are let go first, since the key that holds them may not mean the same now.
+    /// Menus and the cheat sheet read `keymap`, so they change with it.
+    func applyKeymap(_ resolved: ResolvedKeymap) {
+        cancelHeldKeys()
+        keymap = resolved.keymap
+        keymapProblems = resolved.problems
+        router.keymap = resolved.keymap
     }
 
     // MARK: registration
@@ -86,6 +92,26 @@ final class CommandCenter {
         handlers[id]?(phase)
     }
 
+    /// The command's first key as the menus print it ("⌥⌘I"); empty when it has none. For hints and tooltips, so
+    /// they follow the user's keys (V-14).
+    func keyText(_ id: CommandID) -> String {
+        _ = layoutRevision
+        guard let first = keymap.shortcuts(for: id).first else { return "" }
+        return KeyLabels.label(for: first)
+    }
+
+    /// "the ⌥⌘I key" for a sentence in Settings, or `menu` (where to find the command) when it has no key.
+    func keyPhrase(_ id: CommandID, menu: String) -> String {
+        let text = keyText(id)
+        return text.isEmpty ? menu : "the \(text) key"
+    }
+
+    /// " (⌥⌘I)" for a tooltip, or nothing when the command has no key.
+    func hint(_ id: CommandID) -> String {
+        let text = keyText(id)
+        return text.isEmpty ? "" : " (\(text))"
+    }
+
     /// The command's first key as a menu equivalent, printed as the current layout labels it.
     func shortcut(for command: Command) -> KeyboardShortcut? {
         _ = layoutRevision
@@ -113,10 +139,20 @@ final class CommandCenter {
             case .return: return .return
             case .tab: return .tab
             case .delete: return .delete
+            case .forwardDelete: return .deleteForward
+            case .pageUp: return .pageUp
+            case .pageDown: return .pageDown
+            case .f1, .f2, .f3, .f4, .f5, .f6, .f7, .f8, .f9, .f10, .f11, .f12:
+                // AppKit's function-key characters (`NSF1FunctionKey` and on) are 0xF704 to 0xF70F.
+                let order: [PhysicalKey] = [.f1, .f2, .f3, .f4, .f5, .f6, .f7, .f8, .f9, .f10, .f11, .f12]
+                guard let n = order.firstIndex(of: key), let scalar = Unicode.Scalar(0xF704 + UInt32(n)) else { return nil }
+                return KeyEquivalent(Character(scalar))
             default: break
             }
         }
-        guard let c = KeyLabels.label(for: spec).lowercased().first else { return nil }
+        // A label longer than one character ("Keypad 3") names no key a menu can show.
+        let label = KeyLabels.label(for: spec)
+        guard label.count == 1, let c = label.lowercased().first else { return nil }
         return KeyEquivalent(c)
     }
 
@@ -148,9 +184,22 @@ final class CommandCenter {
         guard let window = event.window, window.isKeyWindow, !(window is NSPanel), window.sheetParent == nil,
               let input = KeyInput(event: event, layout: KeyLayout.asciiCapable())
         else { return false }
+        // Settings → Keys is recording: it takes every key and nothing else sees it. The key-up of the Space that
+        // pressed the Record button also ends here.
+        if let capture = keyCapture {
+            if event.type == .keyDown, !event.isARepeat { capture(input) }
+            return true
+        }
+        // Settings is no place for cull keys. A key the keymap owns does nothing there, unless a field or control has it;
+        // `⌘` chords go on, so `⌘W` and `⌘,` work as in any window.
+        if window === settingsWindow {
+            return !event.modifierFlags.contains(.command) && !(window.firstResponder is NSControl)
+                && !((window.firstResponder as? NSTextView)?.isEditable == true)
+                && keymap.command(for: input, mode: mode) != nil
+        }
         if event.type == .keyDown { keyActivity() }
         if modalActive(), !event.modifierFlags.contains(.command) {
-            if event.type == .keyDown { modalKey(event.keyCode, input.character) }
+            if event.type == .keyDown { modalKey(input) }
             return true
         }
         // With Full Keyboard Access on, `⇥` and `⇧⇥` are how the keyboard moves between controls (the filter bar,
@@ -187,4 +236,9 @@ final class CommandCenter {
     private func cancelHeldKeys() {
         apply(router.cancelAll(at: ProcessInfo.processInfo.systemUptime))
     }
+}
+
+extension String {
+    /// The first letter in capitals, for a phrase that starts a sentence.
+    var sentenceCased: String { prefix(1).uppercased() + dropFirst() }
 }

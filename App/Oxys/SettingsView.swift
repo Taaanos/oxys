@@ -1,5 +1,6 @@
 import AppKit
 import Canvas
+import Commands
 import Imaging
 import Library
 import UniformTypeIdentifiers
@@ -13,20 +14,41 @@ struct SettingsView: View {
 
     var body: some View {
         TabView {
-            GeneralPane().tabItem { Label("General", systemImage: "gearshape") }
-            RawPane().tabItem { Label("RAW", systemImage: "camera.aperture") }
+            GeneralPane(center: model.commands).tabItem { Label("General", systemImage: "gearshape") }
+            KeysPane(model: model).tabItem { Label("Keys", systemImage: "keyboard") }
+            RawPane(center: model.commands).tabItem { Label("RAW", systemImage: "camera.aperture") }
             MemoryPane().tabItem { Label("Memory", systemImage: "memorychip") }
-            EditorsPane(store: model.editors).tabItem { Label("Editors", systemImage: "square.and.pencil") }
-            PeakingPane().tabItem { Label("Peaking", systemImage: "scope") }
-            ClippingPane().tabItem { Label("Clipping", systemImage: "circle.lefthalf.filled") }
+            EditorsPane(store: model.editors, center: model.commands).tabItem { Label("Editors", systemImage: "square.and.pencil") }
+            PeakingPane(center: model.commands).tabItem { Label("Peaking", systemImage: "scope") }
+            ClippingPane(center: model.commands).tabItem { Label("Clipping", systemImage: "circle.lefthalf.filled") }
             SidecarsPane().tabItem { Label("Sidecars", systemImage: "doc.text") }
         }
         .frame(width: 500)
         .scenePadding()
+        .background(SettingsWindowTag(center: model.commands))
     }
 }
 
+/// Tells the command center which window is Settings, so the key monitor leaves its keys alone (V-14).
+private struct SettingsWindowTag: NSViewRepresentable {
+    let center: CommandCenter
+
+    final class TagView: NSView {
+        weak var center: CommandCenter?
+        override func viewDidMoveToWindow() { center?.settingsWindow = window }
+    }
+
+    func makeNSView(context: Context) -> TagView {
+        let view = TagView()
+        view.center = center
+        return view
+    }
+
+    func updateNSView(_ view: TagView, context: Context) { view.center = center }
+}
+
 private struct GeneralPane: View {
+    let center: CommandCenter
     @AppStorage("autoAdvance") private var autoAdvance = false
     @AppStorage("pairRawJpeg") private var pairRawJpeg = true
     @AppStorage("reopenLastFolder") private var reopenLastFolder = true
@@ -36,7 +58,7 @@ private struct GeneralPane: View {
             Toggle("Reopen the last folder at launch", isOn: $reopenLastFolder)
             note("Each folder remembers its photo, filter, sort and selection, and any decision that could not be saved.")
             Toggle("Advance after rating, label or reject", isOn: $autoAdvance)
-            note("Hold ⇧ with a key to apply it and stay on the photo. The A key switches this on and off.")
+            note("Hold ⇧ with a key to apply it and stay on the photo. To switch this on and off, use \(center.keyPhrase("cull.autoAdvance", menu: "Auto-Advance After Rating in the Photo menu")).")
             Toggle("Show a RAW and its JPEG as one photo", isOn: $pairRawJpeg)
             note("A rating goes to both files. Switching this changes the open folder at once.")
         }
@@ -47,6 +69,7 @@ private struct GeneralPane: View {
 }
 
 private struct RawPane: View {
+    let center: CommandCenter
     @AppStorage("rawMode") private var rawMode = RawMode.default.rawValue
     @AppStorage("rawAutoActual") private var rawAutoActual = true
     @AppStorage("rawLensCorrection") private var lensCorrection = false
@@ -56,7 +79,7 @@ private struct RawPane: View {
             Picker("RAW decode", selection: $rawMode) {
                 ForEach(RawMode.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
             }
-            note("Never shows previews only. On demand decodes with R. Always decodes every RAW. ⇧R switches to Always until you quit.")
+            note("Never shows previews only. On demand decodes when you use \(center.keyPhrase("zoom.raw", menu: "Show RAW in the View menu")). Always decodes every RAW. To switch to Always until you quit, use \(center.keyPhrase("zoom.rawAlways", menu: "Always Show RAW in the View menu")).")
             Toggle("Automatic RAW at 1:1", isOn: $rawAutoActual)
                 .disabled(rawMode == RawMode.never.rawValue)
             note("In On demand mode, 1:1 decodes the RAW when the preview has fewer pixels than the sensor.")
@@ -251,6 +274,7 @@ private struct SidecarsPane: View {
 
 /// Settings → Peaking (V-06): how the focus-peaking overlay looks.
 private struct PeakingPane: View {
+    let center: CommandCenter
     @AppStorage(PeakingSettings.modeKey) private var mode = PeakingMode.edges.rawValue
     @AppStorage(PeakingSettings.redKey) private var red = Double(PeakingStyle.defaultColor.x)
     @AppStorage(PeakingSettings.greenKey) private var green = Double(PeakingStyle.defaultColor.y)
@@ -272,7 +296,7 @@ private struct PeakingPane: View {
                     ForEach(PeakingMode.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
                 }
                 .pickerStyle(.radioGroup)
-                Text("Edges marks the outlines of what is sharp. Fine detail marks small detail and texture, and shows more noise. ⇧F in Loupe switches between them.")
+                Text("Edges marks the outlines of what is sharp. Fine detail marks small detail and texture, and shows more noise. To switch between them in Loupe, use \(center.keyPhrase("overlay.peakingMode", menu: "Peaking Mode in the View menu")).")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 ColorPicker("Color", selection: color, supportsOpacity: false)
                 LabeledContent("Sensitivity") {
@@ -298,6 +322,7 @@ private struct PeakingPane: View {
 
 /// Settings → Clipping: the thresholds behind the H and S overlays.
 private struct ClippingPane: View {
+    let center: CommandCenter
     @AppStorage(ClippingSettings.highlightKey) private var highlight = ClippingThresholds.defaultHighlight
     @AppStorage(ClippingSettings.shadowKey) private var shadow = ClippingThresholds.defaultShadow
     @AppStorage(ClippingSettings.patternKey) private var pattern = false
@@ -312,7 +337,7 @@ private struct ClippingPane: View {
                     LabeledContent("Shadows up to", value: "\(shadow)%")
                 }
                 Toggle("Stripes instead of solid color", isOn: $pattern)
-                Text("H marks highlights in red and S marks shadows in blue. A highlight has any channel at or above its threshold; a shadow has all channels at or below. ⌥H in Loupe opens the same values.")
+                Text("\(center.keyPhrase("overlay.highlights", menu: "Highlight Clipping in the View menu").sentenceCased) marks highlights in red and \(center.keyPhrase("overlay.shadows", menu: "Shadow Clipping in the View menu")) marks shadows in blue. A highlight has any channel at or above its threshold; a shadow has all channels at or below. To open the same values in Loupe, use \(center.keyPhrase("overlay.clippingThresholds", menu: "Clipping Thresholds in the View menu")).")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Button("Reset to Defaults") { ClippingSettings.reset() }
             }
@@ -326,6 +351,7 @@ private struct ClippingPane: View {
 /// Settings → Editors (V-12): the apps `⌘E` can open photos in. Missing ones stay listed and cannot be the default.
 private struct EditorsPane: View {
     let store: EditorStore
+    let center: CommandCenter
 
     var body: some View {
         let defaultID = store.defaultEditor?.id
@@ -353,7 +379,7 @@ private struct EditorsPane: View {
                 .opacity(installed ? 1 : 0.6)
             }
             Button("Add Editor…") { addEditor() }
-            Text("⌘E opens the selected photos in the default editor. ⌥⌘E asks which one. A RAW with its JPEG opens as the RAW. Oxys writes the newest ratings to the sidecars first. Lightroom Classic may only start, or ask to import, instead of opening the files.")
+            Text("\(center.keyPhrase("file.edit", menu: "Edit in External Editor in the Photo menu").sentenceCased) opens the selected photos in the default editor. \(center.keyPhrase("file.editIn", menu: "Edit In in the Photo menu").sentenceCased) asks which one. A RAW with its JPEG opens as the RAW. Oxys writes the newest ratings to the sidecars first. Lightroom Classic may only start, or ask to import, instead of opening the files.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }

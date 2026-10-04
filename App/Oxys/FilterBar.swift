@@ -21,7 +21,7 @@ struct FilterBar: View {
         HStack(spacing: 14) {
             Toggle("Filter", isOn: Binding(get: { filter.isOn }, set: { _ in model.commands.perform("filter.enabled") }))
                 .toggleStyle(.switch).controlSize(.mini)
-                .help("Filtering on or off (⌘L)")
+                .help("Filtering on or off\(model.commands.hint("filter.enabled"))")
             stars(filter)
             labels(filter)
             Picker("Rejects", selection: Binding(
@@ -29,7 +29,7 @@ struct FilterBar: View {
                 ForEach(RejectFilter.allCases, id: \.self) { Text($0.title).tag($0) }
             }
             .labelsHidden().fixedSize()
-            .help("Rejected photos (⌥⌘X cycles)")
+            .help("Rejected photos\(model.commands.keyText("filter.rejects.cycle").isEmpty ? "" : " (\(model.commands.keyText("filter.rejects.cycle")) cycles)")")
             .accessibilityLabel("Rejected photos")
             Spacer(minLength: 8)
             sort(filter)
@@ -74,7 +74,7 @@ struct FilterBar: View {
                 Image(systemName: "star.slash").foregroundStyle(noStars ? Color.yellow : .secondary)
             }
             .buttonStyle(.borderless)
-            .help("No stars. ⌘-click to add it to other ratings (⌥⌘U)")
+            .help("No stars. ⌘-click to add it to other ratings\(model.commands.hint("filter.stars.unrated"))")
             .accessibilityLabel("No stars")
             .accessibilityAddTraits(noStars ? .isSelected : [])
             ForEach(1...5, id: \.self) { n in
@@ -88,7 +88,7 @@ struct FilterBar: View {
                     Image(systemName: lit ? "star.fill" : "star").foregroundStyle(lit ? Color.yellow : .secondary)
                 }
                 .buttonStyle(.borderless)
-                .help("\(n == 1 ? "1 star" : "\(n) stars"). ⌘-click to add another, ⇧-click for a range, ⌥-click for \(n) or more (⌥⌘\(n))")
+                .help("\(n == 1 ? "1 star" : "\(n) stars"). ⌘-click to add another, ⇧-click for a range, ⌥-click for \(n) or more\(model.commands.hint(CommandID(rawValue: "filter.stars.\(n)")))")
                 .accessibilityLabel(n == 1 ? "1 star" : "\(n) stars")
                 .accessibilityAddTraits(lit ? .isSelected : [])
             }
@@ -121,7 +121,7 @@ struct FilterBar: View {
                     .frame(width: 14, height: 14)
             }
             .buttonStyle(.borderless)
-            .help("No label (⌥⌘-)")
+            .help("No label\(model.commands.hint("filter.label.none"))")
             .accessibilityLabel("No label")
             .accessibilityAddTraits(filter.noLabel ? .isSelected : [])
         }

@@ -10,7 +10,8 @@ public enum PhysicalKey: UInt16, CaseIterable, Sendable {
     case backslash = 42, comma = 43, slash = 44, period = 47, grave = 50
     case `return` = 36, tab = 48, space = 49, delete = 51, escape = 53
     case leftArrow = 123, rightArrow = 124, downArrow = 125, upArrow = 126
-    case home = 115, end = 119
+    case home = 115, end = 119, pageUp = 116, pageDown = 121, forwardDelete = 117
+    case f1 = 122, f2 = 120, f3 = 99, f4 = 118, f5 = 96, f6 = 97, f7 = 98, f8 = 100, f9 = 101, f10 = 109, f11 = 103, f12 = 111
     case keypad0 = 82, keypad1 = 83, keypad2 = 84, keypad3 = 85, keypad4 = 86, keypad5 = 87
     case keypad6 = 88, keypad7 = 89, keypad8 = 91, keypad9 = 92
 
@@ -49,6 +50,9 @@ public enum PhysicalKey: UInt16, CaseIterable, Sendable {
         case .upArrow: "↑"
         case .home: "Home"
         case .end: "End"
+        case .pageUp: "Page Up"
+        case .pageDown: "Page Down"
+        case .forwardDelete: "⌦"
         case .keypad0: "Keypad 0"
         case .keypad1: "Keypad 1"
         case .keypad2: "Keypad 2"
@@ -65,6 +69,20 @@ public enum PhysicalKey: UInt16, CaseIterable, Sendable {
 }
 
 extension PhysicalKey {
+    /// Keys whose label is the same on every layout: they type no letter, or (the keypad) the same one as another key,
+    /// and the label must tell the two apart.
+    public var hasFixedLabel: Bool {
+        switch self {
+        case .space, .return, .tab, .delete, .escape, .leftArrow, .rightArrow, .upArrow, .downArrow,
+             .home, .end, .pageUp, .pageDown, .forwardDelete,
+             .f1, .f2, .f3, .f4, .f5, .f6, .f7, .f8, .f9, .f10, .f11, .f12,
+             .keypad0, .keypad1, .keypad2, .keypad3, .keypad4, .keypad5, .keypad6, .keypad7, .keypad8, .keypad9:
+            true
+        default:
+            false
+        }
+    }
+
     /// The case name, used in keymap files (`"rightArrow"`, `"digit3"`).
     public var name: String { String(describing: self) }
 

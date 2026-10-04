@@ -7,7 +7,7 @@ BENCH_APP := $(BUILD_DIR)/Build/Products/Bench/Oxys.app
 BUILD_SETTINGS ?=
 PACKAGES  := $(sort $(dir $(wildcard Packages/*/Package.swift)))
 
-.PHONY: build build-debug build-bench testcheck-arch launch-time corpus manifest bench-folders perf-bench perf-gate perf-selftest perf-report sidecar-stress extract-bench sidecar-gate contrast contrast-quick contrast-selftest ui-walk ui-walk-compare clean
+.PHONY: build build-debug build-bench testcheck-arch launch-time corpus manifest bench-folders perf-bench perf-gate perf-selftest perf-report sidecar-stress extract-bench sidecar-gate contrast contrast-quick contrast-selftest ui-walk ui-walk-compare keys-selftest clean
 
 build:
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release \
@@ -100,3 +100,7 @@ ui-walk:
 
 ui-walk-compare:
 	scripts/ui-walk-compare.sh
+
+# V-14: the keymap checks inside the running app (key events built in code; no Accessibility permission needed).
+keys-selftest: build-bench
+	scripts/keys-selftest.sh $(BENCH_APP)

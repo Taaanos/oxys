@@ -75,15 +75,16 @@ public enum KeyLabels {
         case .character(let c):
             return String(c)
         case .position(let key):
-            switch key {
-            case .space, .return, .tab, .delete, .escape, .leftArrow, .rightArrow, .upArrow, .downArrow:
-                return key.usLabel
-            default:
-                let chosen = layout ?? KeyLayout.current()
-                let source = (chosen?.typesLatin == true) ? chosen : (KeyLayout.asciiCapable() ?? chosen)
-                return source?.character(keyCode: key.rawValue).map { String($0).uppercased() } ?? key.usLabel
-            }
+            if key.hasFixedLabel { return key.usLabel }
+            let chosen = layout ?? KeyLayout.current()
+            let source = (chosen?.typesLatin == true) ? chosen : (KeyLayout.asciiCapable() ?? chosen)
+            return source?.character(keyCode: key.rawValue).map { String($0).uppercased() } ?? key.usLabel
         }
+    }
+
+    /// A whole shortcut as the menus print it: modifiers, then the key ("⌥⌘I").
+    @MainActor public static func label(for shortcut: Shortcut, layout: KeyLayout? = nil) -> String {
+        label(for: shortcut.modifiers) + label(for: shortcut.key, layout: layout)
     }
 
     public static func label(for modifiers: KeyModifiers) -> String {

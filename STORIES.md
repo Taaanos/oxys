@@ -95,7 +95,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-11 | Auto-advance | M-06 | done |
 | V-12 | External editors | M-19, M-22 | built, needs a live check (ART first; RawTherapee and Lightroom Classic untested) |
 | V-13 | Extract embedded JPEGs | M-02, M-19 | built, needs a live check (the ⇧⌘E panel and plate not clicked through; cold-cache time over the limit) |
-| V-14 | Key remapping and presets | M-22, M-23 | moved to v1.x (B-19): built when users ask for it |
+| V-14 | Key remapping and presets | M-22, M-23 | in progress (4 Oct 2026; two commits. Part 1, remapping, is built; the live checks are yours. Part 2, the two presets, waits for your review of the key tables) |
 | V-15 | Session resume | M-20 | built (checked in the live app on a read-only disk image; filter and selection restore not clicked through) |
 | V-16 | Interop guidance | M-22, F-04 | done (documentation only, no in-app guidance; ART preference wording and the Lightroom and RawTherapee results stay open with F-04 and M-25) |
 | V-17 | Distribution | G-2 | in progress (license, audit, bundle ID, changelog and cask script done; waiting for you: release key, tap repository, screenshots, clean-Mac test, next release) |
@@ -1761,11 +1761,39 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - [ ] Remapping needs no code change; switching presets changes the menu shortcuts live.
 - [ ] Every conflict is reported before it is saved.
 
-**Status:** moved to v1.x as B-19 (4 Oct 2026). **Decided by you:** Oxys ships with the default keymap. This is built only when users ask for remapping or presets. The scope below stays as the starting point. Keymap files already work by editing `Keymap.json` (M-05).
+**Status:** in progress. It moved to v1.x as B-19 on 4 Oct 2026, and you asked to build it the same day, in **two commits**. **Part 1 (remapping) is built.** **Part 2 (the FastRawViewer and Photo Mechanic presets) waits for your review of the key tables** (Q1). The preset file format and the loader are in part 1; no preset ships yet.
 
 **Open questions**
-1. The FastRawViewer and Photo Mechanic presets need research: their default keys for each of our commands. *Proposed:* I compile both tables from their documentation for you to review before we build.
-2. Import and export keymap files? *Proposed:* yes; it's the same JSON file.
+1. The FastRawViewer and Photo Mechanic presets need research: their default keys for each of our commands. *Proposed:* I compile both tables from their documentation for you to review before we build. **Part 2.** The tables go in `docs/keymap-presets.md` with a source for each row, "not in that app" where it fits, and "not verified" where I cannot confirm. You review that file before any data file exists.
+2. Import and export keymap files? **Decided** as proposed: yes, the same JSON file.
+3. Can `Esc` be recorded? *Proposed:* **Decided** as proposed. A bare `Esc` stops recording, so it cannot be a new key. `⌫` can. To take `Esc` away from a command (it is on Show Grid and Cancel Selection), use Remove Key.
+4. A key that another command has in the same modes: *Proposed:* **Decided** as proposed. Oxys reports it before it saves. Reassign writes both commands, so the file says what happened. A clash with the `⇧` twin of a cull key is not offered: the twin comes from that command's own key, so the user changes that key first.
+5. Reserved keys. *Proposed:* **Decided** as proposed: `⌘Q`, `⌘W`, `⌘H`, `⌥⌘H`, `⌘M`, `⌘,`, `⇧⌘/`, ``⌘` ``, and `Space` for a command that works in Loupe (holding it pans).
+6. Save and reload. *Proposed:* **Decided** as proposed. Every edit writes the file at once (no Save button). The file is read again before each edit and when the app becomes active. There is no file watcher. A file that does not parse, or has another version, blocks editing: the app runs on the Default keys, the pane says why, and Start Over moves the file to `Keymap.json.bak`.
+7. The Keys pane scrolls (110 rows cannot fit; `EditorsPane` already breaks the no-scroll rule of M-22). A row names its modes only when the command works in some modes.
+8. Keys the table could not name. *Proposed:* **Decided** as proposed. `PhysicalKey` gained `F1` to `F12`, `Page Up`, `Page Down` and forward delete. The keypad digits now print as "Keypad 3", so they differ from the digit row in menus, the cheat sheet and this pane.
+9. Hints that name keys (tooltips, the new-files banner, the empty state, Settings notes, the cheat sheet header). *Proposed:* **Decided** as proposed. They read the live keymap (`CommandCenter.keyText`, `hint`, `keyPhrase`). A command with no key shows where to find it in the menus.
+10. Switching a preset removes your own changes after a confirmation that shows the count and offers Export first. *Proposed*, for part 2. To confirm then.
+
+**Built, part 1 (decisions and results)**
+- `Commands`: `KeymapFile` writes (`encoded()` with sorted keys, `Entry(_ shortcut:)`, `Entry.shortcut()`, optional `preset` and `name`; the version stays 1). `Keymap.resolve(table:userFile:presets:)` and `resolve(table:file:presets:)` layer Default, then the named preset, then the file; old calls work. `KeymapPreset` loads `Presets/*.json` from the package resources (the folder holds only `.gitkeep` until part 2). `KeymapEditor` is a value type: `assign`, `remove`, `reset`, `resetAll`, `check`. The file holds only commands that differ from the layer below, and entries the editor does not know survive an edit. `KeyConflict` and `KeyCheck` carry the other command, the modes both answer in, and whether the clash is a `⇧` twin. `Shortcut.capture(_:)` turns a key-down into the stored form: position for letters, digits, arrows and the rest; the typed character for bare punctuation; position for punctuation with `⌘ ⌃ ⌥`. `ReservedShortcuts`. `USLayout.press(of:)` compares keys by the press they match, so `.character("/")` and `.position(.slash)` clash. `Keymap.command(for:mode:)`.
+- App: `KeymapStore` owns the file and the editor and calls `CommandCenter.applyKeymap`, which lets go of held keys, then sets the keymap and the router's copy. `KeysModel` and `KeysPane` are the Keys tab (after General): a search field, a list in the cheat sheet's groups, one control per key (a menu: Change Key, Remove Key), `+`, a reset arrow on a changed row, notes on the row that caused them, a Keymap file menu (Import, Export, Show File in Finder, Reset All) and a banner for file problems. `CommandCenter.keyCapture` is checked right after the window guard and takes every key while a key is recorded.
+- **Found and fixed:** the key monitor routed the keys of the Settings window. With nothing focused there, a bare `3` rated the open photo. The command center now knows the Settings window and ignores the keys that the keymap owns there, unless a text field or control has the keyboard.
+- The cheat sheet closes on `Esc` or the key bound to Keyboard Shortcuts (it was a fixed `?`). `CommandCenter.keyEquivalent` builds the menu key for F-keys, `Page Up`, `Page Down` and forward delete; a label longer than one character ("Keypad 3") no longer makes a wrong menu key.
+- `OXYS_KEYMAP=<file>` (Bench only, through `DevHooks`) moves the keymap file.
+
+**Checked**
+- `make test`: 109 `Commands` tests (66 before; the 34 older keymap tests pass unchanged), all other packages pass. `make build`: no warnings; `make check-arch`: `arm64`. The resource bundle is in the Release app.
+- `make keys-selftest` (new): the Bench app builds key events in code and sends them through `NSApp.sendEvent`, so the real monitor sees them; it needs no Accessibility permission. 37 checks pass: the Default `X` rejects; a remap reaches the keymap, the file and the menu (SwiftUI fills a menu in when it opens, so the check asks the menu to update first); the old key does nothing; the recorder gets every key including `⌘Z` and `Esc`, and nothing runs; the Settings window opens and its keys change nothing; through the pane's own model: change a key, `⌘Q` is refused and the app keeps running, `Esc` stops, `⇧W` is named as a twin, `E` is offered for reassignment and moves; Reset All removes the file; a hand edit is read when the app becomes active; an unreadable file blocks editing and is not touched; Start Over keeps a `.bak`. With the Settings gate switched off the self-test fails (a bare key rated the photo), so the check is real.
+- A picture of the pane was made in-process (no screen capture): the search, a row with a conflict note and its Reassign and Cancel buttons render as intended.
+
+**Not checked**
+- **By you, in the live app** (keys and eyes): press bare `X` and `3` with Settings focused; record `Q` for Reject; record `E` (Reassign); record `⇧X` (twin note); record `⌘Q` (reserved note); `Esc` while recording; open Settings with the cheat sheet up; Reset, Reset All, Export, edit, Import, relaunch; a Greek or Russian layout; the `Space` that starts recording does not leave a key behind.
+- Whether a bare-key menu equivalent can fire before the Keys search field sees a typed letter (the M-05 risk). The self-test cannot type into a field editor.
+- F-keys as the first key of a command in the menu bar (SwiftUI may not draw them; the cheat sheet and this pane do).
+- Import and Export panels (the self-test calls the store, not the panels).
+- Recording on a Greek or Russian layout: unit-tested (the same shortcut as ABC), not tried live.
+- VoiceOver: not checked, by decision. Each row is a container with a label and each key is a menu button with a label and a hint.
 
 ### V-15 · Session resume
 
@@ -3074,7 +3102,7 @@ These are not broken into stories yet. The right column shows what each one buil
 | B-16 | Faster capture times | v1.x | M-26, M-01 | **Moved to P-07.** 5,000 files take 3.7 s (target 3 s) |
 | B-17 | Gate on the slowest Mac and slow media | v1.x | M-26, G-3, G-11 | **Closed:** no other Mac, SD card or SMB share is available (G-3, G-11). The real 1,000-frame shoot is in P-01 |
 | B-18 | Zero idle CPU in Loupe | v1.x | M-26 | **Moved to P-09.** 0.18% with nothing changing (Grid: 0.01%) |
-| B-19 | Key remapping and presets | v1.x | M-05, M-22, M-23 | **Moved from V-14** (4 Oct 2026). Build when users ask for it; the scope is in V-14 |
+| B-19 | Key remapping and presets | v1.x | M-05, M-22, M-23 | **Moved from V-14** (4 Oct 2026), then **moved back to V-14** the same day: you asked to build it now |
 | L-01 | Sharpness score badge | Later | V-06 | Reuses the peaking kernels |
 | L-02 | RAW-level histogram and clipping stats | Later | V-02, V-04 | Needs sensor data before white balance |
 | L-03 | Waveform, RGB parade, vectorscope | Later | M-17 | |
