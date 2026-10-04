@@ -19,6 +19,8 @@ Press `⌘,` to open Settings. It has seven tabs: General, RAW, Memory, Editors,
 
 **Automatic RAW at 1:1** is on by default. It works in On demand mode. When you zoom to 1:1 and the preview has fewer pixels than the sensor, Oxys decodes the RAW. Then 1:1 shows real sensor detail.
 
+**Lens correction for RAW** is off by default. When it is on, the system decoder corrects the lens geometry in the decoded RAW, as the camera's own preview and most editors do. Applies only to cameras that the system decoder supports. Other cameras are not changed. With the correction on, 1:1 is resampled and does not show sensor pixels. When you change this setting, Oxys decodes the RAW on screen again. To see the result for the photo on screen, look at the **Lens correction** row in the inspector (`⌥⌘I`).
+
 ## Memory
 
 **Frame cache** is the memory Oxys uses to keep decoded photos ready. Choose Automatic or Custom. Automatic is 2 GB, or one quarter of your RAM if that is less. On a Mac with little memory, choose a smaller size.

@@ -18,6 +18,8 @@ nonisolated struct LoupeFrame: Sendable {
     /// P-03: a stand-in decoded at the size of the screen. `width` and `height` are still the full preview's, so the
     /// zoom geometry and the badge talk about the picture; the texture behind `image` is smaller.
     var isScreenSize = false
+    /// V-19: what the decoder did about the lens; nil for an embedded preview.
+    var lensCorrection: LensCorrection?
 
     /// The upright size of the pixels in the texture.
     var pixelSize: CGSize { image.displaySize }
@@ -162,12 +164,13 @@ nonisolated enum FrameLoader {
     /// Develops the RAW of `key` into a texture (V-02): the neutral filter, the render, the mip chain, then the
     /// histogram from a small mip level (the frame never exists as a `CGImage`). Checks for cancellation between
     /// the steps; a render already running cannot be stopped, so its result is dropped by the caller's cache.
-    static func develop(_ key: FrameKey, minLongEdge: Int) throws -> LoadedFrame<LoupeFrame> {
+    /// `lensCorrection` is the setting (V-19), read by the caller on the main actor when it asked for the frame.
+    static func develop(_ key: FrameKey, minLongEdge: Int, lensCorrection: Bool) throws -> LoadedFrame<LoupeFrame> {
         let token = Perf.begin(.rawDevelop)
         defer { Perf.end(token) }
         try Task.checkCancellation()
         guard let gpu = LoupeGPU.shared else { throw RawDevelopError.unsupported }
-        let filter = try RawDeveloper.neutralFilter(for: key.url, minLongEdge: minLongEdge)
+        let filter = try RawDeveloper.neutralFilter(for: key.url, minLongEdge: minLongEdge, lensCorrection: lensCorrection)
         try Task.checkCancellation()
         guard let output = filter.outputImage, let prepared = try gpu.prepare(developed: output) else {
             throw RawDevelopError.unsupported
@@ -177,8 +180,9 @@ nonisolated enum FrameLoader {
             histogram = Histogram.compute(bgra: small.bgra, pixelCount: small.width * small.height, source: .raw)
         }
         let size = prepared.displaySize
-        return LoadedFrame(frame: LoupeFrame(image: prepared, width: Int(size.width), height: Int(size.height), histogram: histogram),
-                           cost: prepared.byteCost)
+        var frame = LoupeFrame(image: prepared, width: Int(size.width), height: Int(size.height), histogram: histogram)
+        frame.lensCorrection = LensCorrection(requested: lensCorrection, filter: filter)
+        return LoadedFrame(frame: frame, cost: prepared.byteCost)
     }
 
     /// The disk thumbnail of `key` as a texture, or nil when there is none yet.

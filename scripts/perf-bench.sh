@@ -32,6 +32,8 @@ delay=()
 mode=(--args -rawMode onDemand -prefetchBudgetMB "${BENCH_BUDGET_MB:-2048}" -rawCacheCount 0)
 mode+=(-showFilmStrip "$([ "${BENCH_FILMSTRIP:-}" = 1 ] && echo YES || echo NO)")
 case $scenario in develop*) mode=(--args -prefetchBudgetMB "${BENCH_BUDGET_MB:-2048}" -rawCacheCount 0 -showFilmStrip "$([ "${BENCH_FILMSTRIP:-}" = 1 ] && echo YES || echo NO)") ;; esac
+# V-19: lens correction stays off (the default) unless BENCH_LENS=1 asks for it.
+mode+=(-rawLensCorrection "$([ "${BENCH_LENS:-}" = 1 ] && echo YES || echo NO)")
 open -n -W --env OXYS_BENCH="$scenario" --env OXYS_OPEN="$work" --env OXYS_PERF_LOG="$log" \
   --env OXYS_FRAME_LOG="$log.frames" "${delay[@]}" "$APP" "${mode[@]}"
 { [ "$scenario" != cull ] && [ "$scenario" != compare ]; } || rm -rf "$(dirname "$work")"

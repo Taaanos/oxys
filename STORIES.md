@@ -99,7 +99,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-15 | Session resume | M-20 | built (checked in the live app on a read-only disk image; filter and selection restore not clicked through) |
 | V-16 | Interop guidance | M-22, F-04 | done (documentation only, no in-app guidance; ART preference wording and the Lightroom and RawTherapee results stay open with F-04 and M-25) |
 | V-17 | Distribution | G-2 | in progress (license, audit, bundle ID, changelog and cask script done; waiting for you: release key, tap repository, screenshots, clean-Mac test, next release) |
-| V-19 | Optional lens correction for RAW | V-02, M-22 | todo (spike done: `docs/spikes/lens-correction.md`) |
+| V-19 | Optional lens correction for RAW | V-02, M-22 | built (tests and timing pass; the live switch with a RAW on screen and the inspector row not checked in the running app; VoiceOver skipped by decision) |
 | V-20 | Film strip in Loupe | M-12, M-13, M-04 | built, checked in the live app (open: idle CPU row, which fails with the strip off too, see P-09; VoiceOver not checked by decision) |
 | V-21 | Export developed JPEG and HEIC | V-13, V-02 | done (checked on six brands and 20 drone files with the bench tool; live panel used by you on 4 Oct 2026) |
 | V-22 | Remove location and serial numbers on export | V-13, V-21 | built (opt-in switch in the ⇧⌘E panel; checked on seven real files in all three formats; panel not looked at on screen, VoiceOver skipped by decision) |
@@ -1876,14 +1876,14 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 - Not in this story: a lens database, a manual lens profile, or any correction that the decoder does not offer (G-2 stays closed).
 
 **Acceptance criteria**
-- [ ] With the setting off, the developed RAW is the same as before this story: a test compares the pixels of a corpus RAW before and after.
-- [ ] With the setting on, a camera with `isLensCorrectionSupported` gives a developed RAW that differs from the setting-off RAW, and the extent is the same as `nativeSize` after orientation. The DJI FC8482 file from the spike is the check.
-- [ ] A camera without support gives the same frame with the setting on or off.
-- [ ] The inspector row shows Applied, Off, Not supported and Camera preview in the right cases, and VoiceOver reads it.
-- [ ] Switching the setting while a RAW is on screen develops it again with no relaunch. A frame cached under the old setting is never shown.
-- [ ] A decode with correction on stays inside the V-02 time limits (1 s at 24 MP, 2 s at 45 to 61 MP), measured with `make perf-bench SCENARIO=develop`.
-- [ ] The toggle is reachable by keyboard and has a VoiceOver label. `docs/guide/settings.md` describes it and says that 1:1 with correction on is resampled and is not sensor pixels.
-- [ ] `docs/spikes/lens-correction.md` states the edge error of the preview-to-RAW zoom mapping (see Decided).
+- [x] With the setting off, the developed RAW is the same as before this story: a test compares the pixels of a corpus RAW before and after. (`settingOffDevelopsTheSamePixelsAsBefore`: Sony 20 MP ARW, which supports correction, rendered to RGBA8 through the new `neutralFilter(lensCorrection: false)` and through the V-02 recipe; the bytes are the same.)
+- [x] With the setting on, a camera with `isLensCorrectionSupported` gives a developed RAW that differs from the setting-off RAW, and the extent is the same as `nativeSize` after orientation. The DJI FC8482 file from the spike is the check. (`settingOnCorrectsASupportedCameraAndKeepsTheExtent` on the corpus DJI FC8482 DNG, 8064×6048, upright. The spike's file was a different one from the same camera.)
+- [x] A camera without support gives the same frame with the setting on or off. (`settingOnLeavesAnUnsupportedCameraAsItWas`: Canon EOS 7D CR2, same bytes, state "Not supported".)
+- [ ] The inspector row shows Applied, Off, Not supported and Camera preview in the right cases, and VoiceOver reads it. (Built; the mapping has a unit test. Not looked at in the running app. VoiceOver is not checked, by your decision on 4 Oct 2026; the row uses the inspector's combined label "Lens correction, Applied".)
+- [ ] Switching the setting while a RAW is on screen develops it again with no relaunch. A frame cached under the old setting is never shown. (Built, see below. Not checked in the running app: this session cannot send key events, because macOS refused Apple events to System Events.)
+- [x] A decode with correction on stays inside the V-02 time limits (1 s at 24 MP, 2 s at 45 to 61 MP), measured with `make perf-bench SCENARIO=develop`. (Bench build, `BENCH_LENS=1`, interval `raw-develop`, p50 / p95 / max: `real-drone-840` (48.8 MP DJI DNG, supported), 20 runs: 317 / 362 / 429 ms, off 300 / 329 / 336 ms. `raw-mix` (the six corpus RAWs, 12 to 48.8 MP), 5 develops: 194 / 380 / 380 ms, off 172 / 266 / 266 ms.)
+- [ ] The toggle is reachable by keyboard and has a VoiceOver label. `docs/guide/settings.md` describes it and says that 1:1 with correction on is resampled and is not sensor pixels. (The guide part is done. The toggle is a standard SwiftUI `Toggle` in a grouped `Form`, labelled by its title, like "Automatic RAW at 1:1" above it; not walked through by keyboard in the running app.)
+- [x] `docs/spikes/lens-correction.md` states the edge error of the preview-to-RAW zoom mapping (see Decided). (New "Edge error, stated" item: exact at the centre, up to a few percent of the long edge at the corners, not measured in pixels.)
 
 **Decided (before the build)**
 - **Supported cameras only, silently.** The setting applies when `isLensCorrectionSupported` is true. Other cameras ignore it, and the toggle gives no message. The inspector row is the only place that shows the state.
@@ -1894,6 +1894,20 @@ Spikes answer a question and produce a short write-up in `docs/spikes/`. Their c
 
 **Open questions**
 None. Support is read from `isLensCorrectionSupported` when each file is developed, so we keep no list of cameras.
+
+**Decisions and checks**
+
+- **The toggle is in Settings → RAW, not General.** The RAW tab did not exist when the story was written (V-03 made it). It now holds every RAW decode setting, so the toggle sits under "Automatic RAW at 1:1". It is dimmed in Never mode, like that toggle.
+- **`neutralFilter(for:minLongEdge:lensCorrection:)` takes the setting, not `neutralize`.** `neutralize` still switches everything off; `neutralFilter` switches the correction back on when the setting asks for it and the camera supports it. Export (V-21) uses `defaultFilter` and is not changed.
+- **The setting is read on the main actor when a develop is asked for**, and handed to `FrameLoader.develop` as a value. Loupe, its neighbor develops in Always mode, and Compare all read it the same way (`LoupeController.lensCorrection`). `LensCorrection` (`applied`, `off`, `notSupported`) is in Imaging, read back from the filter after the setup; `LoupeFrame.lensCorrection` carries it, nil for a preview.
+- **A change of the setting** (`LoupeController.applyLensCorrection`, on `UserDefaults.didChangeNotification`): the develop in flight is stopped and `RawFrameCache.removeAll()` empties the cache. `removeAll` also clears the in-flight entry, so a develop that started under the old setting cannot put its result in the cache. If a RAW is on screen in Loupe, its preview comes back first, and then it develops again with the new setting. Compare does the same for both panes (`CompareController.lensCorrectionChanged`). Both are silent: no "Preview", "Developing" or "RAW" announcement.
+- **On demand mode after a change:** a photo you developed earlier and come back to shows its preview, because its RAW is no longer cached. This is the V-02/Q1 rule ("the mode lapses when the decode is gone"). Always mode develops it again.
+- **Inspector:** a section "RAW" with the row "Lens correction", above EXIF, for a RAW or a RAW+JPEG pair. In Loupe and Compare it shows the state of the developed RAW on screen; otherwise, and in Grid, "Camera preview". The row is in the inspector's key walk (`⌃⌘I`, `↑`/`↓`, `⌘C`).
+- **Perf bench:** `scripts/perf-bench.sh` now pins `-rawLensCorrection NO`, so the gate keeps the default whatever the user chose. `BENCH_LENS=1` switches it on.
+- **Found by the corpus run:** supported: the DJI FC8482 DNG, Sony 20 MP ARW and its DNG conversion, Fujifilm X-M1 RAF. Not supported: Canon EOS 7D CR2, Sony 33 MP ARW, iPhone DNG, and the small pixls TIFF-named files. The list is in the spike document.
+- **Not checked:** the setting switched with a RAW on screen, the inspector row and the toggle in the running app (this session cannot send key events). VoiceOver, by your decision.
+- Unit tests: `LensCorrectionTests` (the state mapping; the three corpus pixel checks above, skipped when `TestData` is absent).
+- Docs: `docs/guide/settings.md` (RAW section), `docs/guide/inspecting.md` (the inspector row), `docs/spikes/lens-correction.md` (edge error, decode time, the corpus list).
 
 ### V-20 · Film strip in Loupe
 

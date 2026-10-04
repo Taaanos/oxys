@@ -32,10 +32,12 @@ V-02 maps a zoom position between the preview and the RAW by fraction of the pic
 - **Correction off (default):** the preview is corrected by the camera and the RAW is not. The mapped position is correct at the centre and wrong toward the edges. On the DJI file the shift looks like a few percent of the long edge at the extremes.
 - **Correction on:** both images are corrected. We expect the mapped position to be close at all points. This is not measured.
 - **AF point (V-01):** the camera writes the AF point in sensor coordinates, and Oxys maps it by the same fractions. It has the same error near the edges, and a larger one when the correction is on.
+- **Edge error, stated (V-19):** the error is zero at the centre and grows toward the edges. With the correction off, it is about the size of the correction itself: on the DJI FC8482 it looks like a few percent of the long edge at the corners (by eye, not measured in pixels). With the correction on, it is the difference between the camera's correction and the decoder's, which we expect to be much smaller. Neither is measured, because the decoder does not give its correction model. In practice: at 1:1 near a corner, the spot after a switch from the preview to the RAW can be off by up to a few percent of the long edge; at the centre it is exact.
 - **Decision (V-19):** the fraction mapping stays. The decoder does not give us its correction model, so an exact mapping is not possible. We document the error here and do not show it in the UI.
 
 ## Not checked
 
 - Other cameras. Oxys reads `isLensCorrectionSupported` for each file when it develops it, so we keep no list of supported cameras.
 - The size of the shift in pixels.
-- The decode time with the correction on.
+- ~~The decode time with the correction on.~~ Measured in V-19: `make perf-bench SCENARIO=develop` with `BENCH_LENS=1`, 48.8 MP DJI DNG, 20 runs: `raw-develop` p50 317 ms, max 429 ms (off: 300 / 336 ms).
+- The corpus has files with support (this DJI DNG, Sony 20 MP ARW and DNG, Fujifilm X-M1) and without it (Canon EOS 7D, Sony 33 MP ARW, iPhone DNG).

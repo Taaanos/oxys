@@ -91,7 +91,7 @@ Press `⇧I` to show or hide only the histogram. The histogram shows luminance a
 
 ## Inspector
 
-Press `⌥⌘I` to open the inspector. It shows the histogram, the full EXIF list, and the sidecar state. The sidecar state tells you which file holds your choices and if Oxys saved them. You can select and copy each value. Press `⌃⌘I` to move the keyboard to the inspector.
+Press `⌥⌘I` to open the inspector. It shows the histogram, the full EXIF list, and the sidecar state. For a RAW, the **Lens correction** row shows what you see: **Applied**, **Off**, **Not supported** (the setting is on, but the decoder has no correction for this camera), or **Camera preview** (the RAW is not decoded yet; the camera's preview usually has its own correction). The sidecar state tells you which file holds your choices and if Oxys saved them. You can select and copy each value. Press `⌃⌘I` to move the keyboard to the inspector.
 
 ## EXIF
 

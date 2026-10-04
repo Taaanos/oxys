@@ -217,6 +217,7 @@ final class AppModel {
         compare = CompareController(folder: folder, loupe: loupe)
         filmStrip = FilmStripController(folder: folder)
         loupe.compareCanvases = { [compare] in compare.canvases }
+        loupe.onLensCorrectionChange = { [compare] in compare.lensCorrectionChanged() }
         grid.onOpen = { [unowned self] in commands.mode = .loupe }
         commands.register("file.open") { [unowned self] _ in chooseFolder() }
         commands.register("file.reload") { [unowned self] _ in folder.reload() }

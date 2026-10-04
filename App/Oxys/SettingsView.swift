@@ -49,6 +49,7 @@ private struct GeneralPane: View {
 private struct RawPane: View {
     @AppStorage("rawMode") private var rawMode = RawMode.default.rawValue
     @AppStorage("rawAutoActual") private var rawAutoActual = true
+    @AppStorage("rawLensCorrection") private var lensCorrection = false
 
     var body: some View {
         Form {
@@ -59,6 +60,9 @@ private struct RawPane: View {
             Toggle("Automatic RAW at 1:1", isOn: $rawAutoActual)
                 .disabled(rawMode == RawMode.never.rawValue)
             note("In On demand mode, 1:1 decodes the RAW when the preview has fewer pixels than the sensor.")
+            Toggle("Lens correction for RAW", isOn: $lensCorrection)
+                .disabled(rawMode == RawMode.never.rawValue)
+            note("Applies only to cameras that the system decoder supports. Other cameras are not changed.")
         }
         .formStyle(.grouped)
         .fixedSize(horizontal: false, vertical: true)

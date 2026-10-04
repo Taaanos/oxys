@@ -19,6 +19,8 @@ final class ComparePane {
     private(set) var exif: ExifInfo?
     /// The pane's own RAW state (V-09): `R` develops both panes, and each keeps its own state until its photo changes.
     private(set) var developState = LoupeController.DevelopState.preview
+    /// V-19: what the decoder did about the lens for this pane's RAW; read only while `developState` is `.raw`.
+    private(set) var lensCorrection: LensCorrection?
     /// How much of the frame is clipped, while an overlay is on; nil until the analysis is back.
     private(set) var clippingStats: ClippingStats?
 
@@ -122,16 +124,18 @@ final class ComparePane {
         developState = .developing
         let key = FrameLoader.compareKey(for: photo)
         let minLongEdge = max(512, shownPixels.map { max($0.width, $0.height) } ?? 0)
+        let lens = LoupeController.lensCorrection
         let task = Task { [weak self] in
             let result: Result<LoupeFrame?, any Error>
             do {
-                result = .success(try await cache.develop(key) { try FrameLoader.develop($0, minLongEdge: minLongEdge) })
+                result = .success(try await cache.develop(key) { try FrameLoader.develop($0, minLongEdge: minLongEdge, lensCorrection: lens) })
             } catch { result = .failure(error) }
             guard let self, !Task.isCancelled, shown?.url == photo.url else { return }
             developTask = nil
             switch result {
             case .success(let developed?):
                 developState = .raw
+                lensCorrection = developed.lensCorrection
                 shownPixels = (developed.width, developed.height)
                 canvas?.setAccessibilityLabel("\(side.title) pane, \(photo.name), RAW, \(developed.width) by \(developed.height) pixels")
                 canvas?.show(developed.image, sameZoom: true, keepView: true)
@@ -425,6 +429,17 @@ final class CompareController {
     }
 
     @ObservationIgnored private var developChain: Task<Void, Never>?
+
+    /// The lens correction setting changed (V-19); the cache is already empty. Each pane goes back to its preview and
+    /// develops again with the new setting.
+    func lensCorrectionChanged() {
+        guard isActive else { return }
+        developChain?.cancel()
+        developChain = nil
+        select.showPreview()
+        candidate.showPreview()
+        developPending()
+    }
 
     /// For the `R` menu item's check mark.
     var anyDeveloped: Bool { [select, candidate].contains { $0.developState != .preview } }

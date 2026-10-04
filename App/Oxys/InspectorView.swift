@@ -4,7 +4,7 @@ import Library
 import Metadata
 import SwiftUI
 
-/// The inspector sidebar (M-18, `⌥⌘I`): Histogram, EXIF and Sidecar for the active photo, in Grid and in Loupe.
+/// The inspector sidebar (M-18, `⌥⌘I`): Histogram, RAW, EXIF and Sidecar for the active photo, in Grid and in Loupe.
 /// "Move Focus to Inspector" (`⌃⌘I`) or a click on a row activates it: `⇥`/`⇧⇥` and `↑`/`↓` walk the rows, `⌘C`
 /// copies the focused one, `Esc` hands the keyboard back to the image. The text can also be selected with the pointer.
 struct InspectorView: View {
@@ -37,6 +37,7 @@ struct InspectorView: View {
                         Text("RAW+JPEG with \(companion.url.lastPathComponent)").font(.callout).foregroundStyle(.secondary)
                     }
                     histogramSection(photo)
+                    if let lens = lensRow { section("RAW") { row(lens) } }
                     exifSection
                     sidecarSection(photo, folder: folder)
                 } else {
@@ -108,7 +109,27 @@ struct InspectorView: View {
         return rows
     }
 
-    private var rows: [Row] { exifRows + sidecarRows }
+    /// V-19: what the decoder did about the lens for the picture on screen. A RAW (or a RAW+JPEG pair) only; until
+    /// its RAW is developed and shown, the picture is the camera's preview.
+    private var lensRow: Row? {
+        guard let photo, photo.format.isRaw || photo.showsRaw else { return nil }
+        return Row(id: "raw.lens", label: "Lens correction", value: developedLens(of: photo)?.title ?? "Camera preview")
+    }
+
+    private func developedLens(of photo: Photo) -> LensCorrection? {
+        switch model.commands.mode {
+        case .loupe:
+            let loupe = model.loupe
+            return loupe.shown?.url == photo.url && loupe.developState == .raw ? loupe.shownLensCorrection : nil
+        case .compare:
+            let panes = [model.compare.select, model.compare.candidate]
+            return panes.first { $0.shown?.url == photo.url && $0.developState == .raw }?.lensCorrection
+        case .grid:
+            return nil
+        }
+    }
+
+    private var rows: [Row] { (lensRow.map { [$0] } ?? []) + exifRows + sidecarRows }
 
     // MARK: sections
 
