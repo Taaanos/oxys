@@ -62,4 +62,4 @@ Oxys is free software under the [GNU General Public License, version 3 or any la
 
 The name "Oxys" and the app icon are not licensed for reuse. A changed version that you distribute, on the Mac App Store or anywhere else, must use another name and another icon.
 
-Copyright (C) 2026 Thanos Amoutzias.
+Copyright (C) 2026 Athanasios Amoutzias.
