@@ -1,5 +1,5 @@
 # raw.pixls.us files (all CC0 1.0). Columns: pixls id, local file name, sha256, camera.
-# Local names replace ':' with '_'. Other files in TestData/ are the developer's own shoots and are never fetched.
+# Local names replace ':' with '_'. Files whose name ends in "id<n>" share a pixls name with another file, so the id is part of the local name (P-10). Other files in TestData/ are the developer's own shoots and are never fetched.
 1022	Adobe DNG Converter - Canon EOS 5D Mark III - 16bit 16bit uncompressed (3_2).tiff	95dc76a2f255e623acaa5149b320389f7da7c995da890c3e0d511c0ff681b2e1	Adobe DNG Converter Canon EOS 5D Mark III
 131	Canon - EOS 7D - RAW (3_2).CR2	b5e47c5fcf7332ac03e0134926f17a338a42e68c1fd7f83e16f45f4b767544e8	Canon EOS 7D
 8963	Canon - EOS R6 Mark III - RAW (3_2).CR3	1f533686b2230817dac98266a6cc8ffd960413c109965768b7efc05cc1ca96eb	Canon EOS R6 Mark III
@@ -9,3 +9,10 @@
 3009	Hasselblad - L1D-20c - 16bit (3_2).tiff	7afecae0db80d832941eeeb3c0eb2dc03f5696637b6e78b3c592e8c002dce4ec	Hasselblad L1D-20c
 4282	Nikon - Nikon COOLSCAN IV ED - uncompressed (4_3).tiff	268d9a98920a9f3ea3ebf6a2b9ff68b956df74ac0e46b980bee69e7ef3ebc172	Nikon Nikon COOLSCAN IV ED
 2239	Pentax - K10D - 12bit 12bit compressed (3_2).tiff	e35ae4154a468be3154f5f462e884ba5941f010d3e8f23d347fbec14809f44d3	Pentax K10D
+3478	Sony - ILCE-7RM4 - 12bit 12bit uncompressed (3_2).ARW	04918dfe85dc1da51f875d22030f39776e99ffa2af3d210b83659933234688fa	Sony ILCE-7RM4
+3479	Sony - ILCE-7RM4 - 12bit 12bit compressed (3_2).ARW	3421b919ee81224d59f78872ee099a021bff0e2a47ae5fbbac385b182ac7241e	Sony ILCE-7RM4
+3480	Sony - ILCE-7RM4 - 14bit 14bit compressed (3_2).ARW	e6dafe42643f69ab9d1fd00414b7a1f5104df354bb589201600ac934b29b5e4a	Sony ILCE-7RM4
+3481	Sony - ILCE-7RM4 - 14bit 14bit uncompressed (3_2).ARW	2c7d9ddce62bf197bc922e28b3eb93817ff723867dcc34bc3de0179fe12d6a13	Sony ILCE-7RM4
+4820	Sony - ILCE-7RM4A - 12bit 12bit compressed (3_2).ARW	1e491a7070014e31d9525ebb9cd9cbe761c85f0395073f6e72347365de68fb6b	Sony ILCE-7RM4A
+6232	Sony - ILCE-7RM5 - 14bit (4_3) id6232.ARW	c294c388ad9bccbee169f87b9ceb661001515fb039d63f587dcabba76df5636d	Sony ILCE-7RM5
+6231	Sony - ILCE-7RM5 - 14bit 14bit uncompressed (3_2) id6231.ARW	8918ba274f0919be4f9902f9eebcab4663445ebe441d22fb48f3f328198ac2ee	Sony ILCE-7RM5

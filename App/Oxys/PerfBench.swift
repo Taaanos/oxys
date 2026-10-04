@@ -132,7 +132,8 @@ enum PerfBench {
                 let began = ContinuousClock.now
                 commands.perform("zoom.raw")
                 while loupe.developState != .raw, began.duration(to: .now) < .seconds(15) { try? await Task.sleep(for: .milliseconds(1)) }
-                if loupe.developState == .raw { Perf.record("raw-ready", ms(began.duration(to: .now))) } else { Perf.record("raw-timeout", 1) }
+                if loupe.developState != .raw { Perf.record("raw-timeout", 1) }
+                Perf.record("raw-ready", ms(began.duration(to: .now))) // a timeout counts as the full wait, so the gate fails on it (P-10)
                 await settle(.milliseconds(300))
                 commands.perform("zoom.raw"); await settle(.milliseconds(200))
                 commands.perform("nav.next"); await settle(.milliseconds(500))
@@ -149,8 +150,11 @@ enum PerfBench {
             for _ in 0..<20 {
                 let began = ContinuousClock.now
                 commands.perform("nav.next")
+                // A TIFF scan never develops, and the bench folders mix them in: wait only for a RAW (P-10).
+                guard model.folder.currentPhoto?.showsRaw == true else { await settle(.milliseconds(500)); continue }
                 while loupe.developState != .raw, began.duration(to: .now) < .seconds(15) { try? await Task.sleep(for: .milliseconds(1)) }
-                if loupe.developState == .raw { Perf.record("raw-ready", ms(began.duration(to: .now))) } else { Perf.record("raw-timeout", 1) }
+                if loupe.developState != .raw { Perf.record("raw-timeout", 1) }
+                Perf.record("raw-ready", ms(began.duration(to: .now))) // a timeout counts as the full wait, so the gate fails on it (P-10)
                 await settle(.seconds(2))
             }
         case "develop-cancel":
@@ -396,14 +400,16 @@ enum PerfBench {
         let active: ComparePair.Side?
     }
 
-    /// Steps forward until the photo on screen is a RAW (the bench folders mix in TIFF scans).
+    /// Goes to a RAW 37 places on (the list wraps), so that 20 calls meet different files (P-10). The bench folders mix in
+    /// TIFF scans, and once the capture times have sorted the list the clones of one file sit together, in runs of
+    /// hundreds: stepping one by one would meet one file, or no RAW at all. 37 shares no factor with the folder sizes.
     private static func nextRaw(_ model: AppModel) async {
-        if model.folder.currentIndex == model.folder.visible.count - 1 { model.commands.perform("nav.first"); await settle(.milliseconds(400)) }
-        for _ in 0..<10 {
-            if model.loupe.shown?.url == model.folder.currentURL, model.folder.currentPhoto?.showsRaw == true { return }
-            model.commands.perform("nav.next")
-            await settle(.milliseconds(400))
-        }
+        let photos = model.folder.visible
+        let target = ((model.folder.currentIndex ?? -1) + 37) % max(1, photos.count)
+        guard let index = (photos.indices.filter { $0 >= target } + photos.indices.filter { $0 < target }).first(where: { photos[$0].showsRaw }) else { return }
+        model.folder.setCurrent(index: index)
+        for _ in 0..<500 where model.loupe.shown?.url != model.folder.currentURL { await settle(.milliseconds(10)) }
+        await settle(.milliseconds(400))
     }
 
     private static func held(_ commands: CommandCenter, steps: Int, every interval: Duration) async {

@@ -115,7 +115,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | P-07 | Capture times in under 3 s | P-01 | closed, won't fix (accepted on 4 Oct 2026: 3.7 s against 3 s on 5,000 files is not noticeable; the re-open cache is not built) |
 | P-08 | Grid first pass without dropped frames | P-01 | done (criterion 1 met in 15 of 18 runs, accepted on 4 Oct 2026 with one frame of 38 to 45 ms in the other 3, where the capture times arrive; criterion 2 met; the RawCamera crash got a limit of 8 ImageIO opens at once, see the story) |
 | P-09 | Zero idle CPU in Loupe | P-01 | done (criterion met in Grid, 0.006%; in Loupe 0.014% against 0.01%: the rest is AppKit's own wake-ups; see the story) |
-| P-10 | RAW develop and extraction on real files | P-01 | todo |
+| P-10 | RAW develop and extraction on real files | P-01 | done (develop p95 470 ms at 24 to 33 MP, 276 ms at 48.8 MP, 480 ms at 61 MP; extraction 0.34 to 0.48 of the copy warm, cold not measured by decision; 61 MP develop-always peak 3.1 GB accepted) |
 | P-11 | Performance gate | P-02 to P-10 | todo |
 | **Phase 2c** | **Design (Liquid Glass)** (see G-14) | | |
 | D-01 | Contrast probe for labels on the photo | M-18, V-05, P-01 | done (measured in dark appearance only; the Reduce Transparency, Increase Contrast and light runs are open) |
@@ -2467,11 +2467,51 @@ The code changes the M-26 diagnosis in two places, found while planning this pha
 - Cold extraction (V-13 missed it): `make extract-bench` on `real-drone-840` after `purge`, against `cp` of a purged set of files with the same total bytes, so that both read from disk.
 
 **Acceptance criteria**
-- [ ] Develop p95 under 1 s at 24 to 33 MP and under 2 s at 61 MP.
-- [ ] 500 files extract within 20% of the cold copy.
+- [x] Develop p95 under 1 s at 24 to 33 MP and under 2 s at 61 MP.
+- [x] 500 files extract within 20% of the cold copy. Met warm (ratio 0.34 to 0.48). The cold copy was not measured, by decision: see the result.
 
 **Open questions**
 1. What if the cold extraction still misses? *Proposed:* read the preview bytes with `F_NOCACHE` and larger reads, then measure again. If it still misses, record the reason and accept it, because a Finder copy from a card also reads from disk.
+
+**Result (decisions)**
+- **Develop, criterion 1 met** (`make perf-gate` with `PERF_GATE_ONLY="develop develop-always"`, 3 runs of 20 presses of `R` each; the value is the p95 of `raw-ready`, press to developed frame, per run; the gate takes the median of the runs):
+
+  | Folder | Files | Limit | Runs | Gate value |
+  |---|---|---|---|---|
+  | `24mp-1000` | ZV-1 20 MP DNG and ARW, A7C II 32.7 MP ARW | 1,000 ms | 504, 468, 470 ms | 470 ms |
+  | `real-zv1-1111` | 1,111 different 20 MP ZV-1 ARW (your shoot, cloned without its sidecars) | 1,000 ms | 396, 380, 360 ms | 380 ms (3 runs by `perf-bench.sh`; the new gate row reads the same logs and passes) |
+  | `real-drone-840` | 840 different 48.8 MP DJI DNG | 2,000 ms | 351, 220, 276 ms | 276 ms |
+  | `61mp-28` | 14 different 60.2 MP ARW (A7R IV, A7R IV A, A7R V) | 2,000 ms | 544, 479, 480 ms | 480 ms |
+
+  The decode is full size: `make extract-bench EXTRA="--developed=jpeg --limit=7"` on `61mp-28` wrote 9504×6336 pixels, 0.70 s a file with the JPEG encode. `minLongEdge` only checks that the decode is not the thumbnail; it does not shrink it.
+- **`develop-always` at 61 MP.** The neighbor ahead is developed before the key press: `raw-ready` p95 0.26 ms. The memory peak is 3,182, 3,145 and 3,136 MB against the P-04 limit of 2,648 MB. After the held steps the footprint is 1.27 to 1.59 GB (previews 455 MB, developed frames 613 to 919 MB), so the peak is the decode workspace of one 61 MP RAW on top of the caches. **Accepted by you on 4 Oct 2026:** nobody who works on 61 MP files will use a Mac with 8 GB. The gate row is now report only (limit `-`). P-11 records it as a decision.
+- **Extraction, criterion 2.** `make extract-bench FOLDER=TestData/bench/real-drone-840 EXTRA="--limit=500"` (new option `--limit=N`), 500 files of 98 MB, 725 KB of JPEG each:
+
+  | Mode | Extract | `cp -R` of the same bytes | Ratio |
+  |---|---|---|---|
+  | all metadata (default), 2 runs | 0.137, 0.109 s | 0.284, 0.283 s | 0.48, 0.39 |
+  | exact bytes, 2 runs | 0.095, 0.097 s | 0.281, 0.205 s | 0.34, 0.47 |
+
+  On your ZV-1 shoot (`real-zv1-1111`, 1,111 files of 20 MP, previews of 1616×1080, first 500 files, 3 runs each):
+
+  | Mode | Extract | `cp -R` of the same bytes | Ratio |
+  |---|---|---|---|
+  | all metadata (default), 261 MB | 0.113, 0.095 s | 0.198, 0.196 s | 0.57, 0.48 |
+  | exact bytes, 243 MB | 0.087, 0.108, 0.105 s | 0.197, 0.199, 0.202 s | 0.44, 0.54, 0.52 |
+
+  The first run of the default mode read the ZV-1 files from the disk for the first time: 0.887 s for 500 files, 1.8 ms a file, with a warm copy of 0.196 s (ratio 4.51, not a fair one).
+  The very first run read the RAWs from the disk (they were not in the file cache) and the copy read the JPEGs it had just written: 0.844 s against 0.356 s, ratio 2.37. That is not a fair ratio, and it is the same one V-13 saw as "cold".
+- **Cold extraction not measured, by your decision (4 Oct 2026).** A fair cold check needs `sudo purge` before the extraction and before the copy, and you do not want to run sudo without reviewing it. So Q1 (what if the cold run misses?) was not reached, and `F_NOCACHE` reads were not tried. A first, naturally cold run misses against a warm copy, so the question is open for a cold card or disk. Open it again if a user reports slow extraction from a card.
+- **Three faults in the bench, fixed.** They gave no data or slow runs, never a wrong number:
+  1. `perf-bench.sh` left the RAW setting to the user for the `develop*` scenarios. Your setting is Always, so every photo developed by itself and the bench's `R` sent it back to the preview. Each photo then waited 15 s for a state that did not come (20 × 15 s a run). Now every scenario runs with `-rawMode onDemand`.
+  2. `nextRaw` stepped at most 10 photos. Once the capture times have sorted the list, the clones of one file sit together, and in `24mp-1000` the TIFF scans form runs of about 200. The scenario pressed `R` on a TIFF. Now it jumps 37 places on (37 shares no factor with the folder sizes), so 20 presses meet 20 different files.
+  3. The last loop of `develop-always` waited 15 s for a RAW on each TIFF. It now skips a photo that is not a RAW. A timeout is recorded as a `raw-ready` of 15 s (and `raw-timeout`), so the gate fails on it and does not show "no data".
+- **The 61 MP files.** Seven are from raw.pixls.us (CC0) and are in `scripts/corpus.tsv` with their ids and checksums: ids 3478 to 3481 (A7R IV), 4820 (A7R IV A), 6231 and 6232 (A7R V). Where two pixls files have the same name, the local name has `id<n>`. Seven more A7R IV files came from DPReview's sample gallery. They are **not CC0**, so they are not in `corpus.tsv`; they stay in the git-ignored `TestData/` and are never committed. `make bench-folders` builds `61mp-28` (14 files, 2 clones each) only when `TestData/` has files of 60 MP or more, and keeps them out of `hires-1000`, `scan-5000` and `grid-10000`, so the earlier numbers stay comparable. Your own download folders were not changed.
+- **Memory of plain `develop`, not gated.** The footprint peak of the `develop` scenario (on demand, 20 presses) is 2.56 GB on `real-drone-840`, 2.76 GB on `24mp-1000`, 3.1 to 3.5 GB on `61mp-28` and 3.1 GB on `real-zv1-1111`. After the run it is 1.3 to 1.8 GB. No row holds it to a limit, and the cause was not looked for (the peak includes the decode workspace and the caches; the 20 MP ZV-1 peak is as high as the 61 MP one, which is not explained). Covered by your acceptance of the 61 MP peak; look again if a user reports memory pressure.
+- **Not checked.** A cold read of the RAW before a develop (the files of one run share data through clones; at 123 MB a cold read adds little, but it is not measured). Develop with lens correction on (`BENCH_LENS=1`, V-19). Other Macs.
+- **For P-11.**
+  - The old `develop-always` row on the folder under test (P-04, 1,315 MB on `24mp-1000`) developed no frame: after the sort the run stood in a run of TIFF clones. It means something only on a folder of RAWs (`hires-1000`, `real-drone-840`, `61mp-28`).
+  - `make bench-folders` was not run again, to keep the existing folders as they are. The R6 Mark III CR3 file is no longer in `TestData/` (the old manifest listed it, `scan-5000` still has clones of it). `make corpus` fetches it again; it is a download, so ask first.
 
 ### P-11 · Performance gate
 

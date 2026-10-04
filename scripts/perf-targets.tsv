@@ -25,6 +25,12 @@ scrub	footprint-peak-mb	peak	2648	Memory, prefetch cache within its 2 GB budget 
 scrub	footprint-excess-after-scrub-mb	max	600	After a scrub: footprint less the cache content, within 2 s (P-04)
 scrub	footprint-peak-mb	peak	2648	Memory, 61 MP frames, same limit (P-04)	hires-1000
 develop-always	footprint-peak-mb	peak	2648	Memory with RAWs developing (P-04)
+develop-always	footprint-peak-mb	peak	-	Memory with 61 MP RAWs developing (reported, accepted by you on 4 Oct 2026: P-10 measured about 3.1 GB against 2,648)	61mp-28
+develop-always	raw-ready	p95	-	Next RAW, neighbour developed ahead: key to developed frame (reported, P-10)	61mp-28
+develop	raw-ready	p95	1000	RAW decode at 24 to 33 MP, p95 under 1 s (P-10)	24mp-1000
+develop	raw-ready	p95	1000	RAW decode at 20 MP, a real shoot (P-10)	real-zv1-1111
+develop	raw-ready	p95	2000	RAW decode at 45 to 61 MP, p95 under 2 s: 48.8 MP (P-10)	real-drone-840
+develop	raw-ready	p95	2000	RAW decode at 45 to 61 MP, p95 under 2 s: 61 MP (P-10)	61mp-28
 idle	idle-cpu-percent-loupe	max	0.02	Idle, 0% CPU in Loupe (P-09: AppKit's own wake-ups leave about 0.014%)
 idle	idle-cpu-percent-grid	max	0.02	Idle, 0% CPU in Grid (P-09)
 load-memory	load-working-ratio	max	1.5	Working memory of one 24 MP frame load, as a multiple of the frame (P-02)

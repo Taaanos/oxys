@@ -26,12 +26,12 @@ fi
 pkill -x Oxys 2>/dev/null || true
 delay=()
 [ -z "${OXYS_BENCH_DELAY_MS:-}" ] || delay=(--env OXYS_BENCH_DELAY_MS="$OXYS_BENCH_DELAY_MS")
-# The user's RAW setting must not change a measurement: every scenario but the develop ones runs in the default mode.
+# The user's RAW setting must not change a measurement: every scenario runs in the default mode (On demand). The develop
+# scenarios need it too: with "Always" set, each photo develops by itself and the bench's `R` sends it back to the preview (P-10).
 # The memory settings are pinned too (P-04): the 2 GB budget and the automatic RAW count, whatever the user chose.
 # BENCH_BUDGET_MB overrides the budget.
 mode=(--args -rawMode onDemand -prefetchBudgetMB "${BENCH_BUDGET_MB:-2048}" -rawCacheCount 0)
 mode+=(-showFilmStrip "$([ "${BENCH_FILMSTRIP:-}" = 1 ] && echo YES || echo NO)")
-case $scenario in develop*) mode=(--args -prefetchBudgetMB "${BENCH_BUDGET_MB:-2048}" -rawCacheCount 0 -showFilmStrip "$([ "${BENCH_FILMSTRIP:-}" = 1 ] && echo YES || echo NO)") ;; esac
 # V-19: lens correction stays off (the default) unless BENCH_LENS=1 asks for it.
 mode+=(-rawLensCorrection "$([ "${BENCH_LENS:-}" = 1 ] && echo YES || echo NO)")
 open -n -W --env OXYS_BENCH="$scenario" --env OXYS_OPEN="$work" --env OXYS_PERF_LOG="$log" \

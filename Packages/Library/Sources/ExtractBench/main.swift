@@ -1,8 +1,9 @@
 // V-13 tool. Not shipped.
-//   ExtractBench <folder or files...> [--exact] [--verify] [--developed=jpeg|heic] [--quality=0.9] [--private]
+//   ExtractBench <folder or files...> [--exact] [--verify] [--developed=jpeg|heic] [--quality=0.9] [--private] [--limit=N]
 // Extracts every file's largest embedded JPEG into a new temporary folder, then copies that folder with `cp -R`
 // (a real byte copy: the stand-in for Finder) and prints both times. The extraction must be within 20% of the copy.
 // --out=DIR keeps the JPEGs there instead of a temporary folder.
+// --limit=N takes the first N files of the list (P-10: the criterion is 500 files).
 // --verify compares each output with the reference extractor named in PREVIEW_ORACLE (identical bytes, or the same
 // bytes plus zero padding), in exact mode only.
 // --developed=jpeg|heic (V-21) develops every RAW at the decoder's defaults instead, one at a time, prints the time
@@ -24,6 +25,7 @@ let keep = paths.first { $0.hasPrefix("--out=") }.map { URL(fileURLWithPath: Str
 let developed = paths.first { $0.hasPrefix("--developed=") }.flatMap { DevelopedFormat(rawValue: String($0.dropFirst(12))) }
 let removing = paths.contains("--private")
 let quality = paths.first { $0.hasPrefix("--quality=") }.flatMap { Double($0.dropFirst(10)) }
+let limit = paths.first { $0.hasPrefix("--limit=") }.flatMap { Int($0.dropFirst(8)) }
 paths.removeAll { $0.hasPrefix("--") }
 guard !paths.isEmpty else {
     FileHandle.standardError.write(Data("usage: ExtractBench <folder or files...> [--exact] [--verify]\n".utf8))
@@ -49,6 +51,7 @@ for path in paths {
     }
 }
 
+if let limit { sources = Array(sources.prefix(limit)) }
 let work = FileManager.default.temporaryDirectory.appendingPathComponent("extract-bench-\(UUID().uuidString)")
 let out = keep ?? work.appendingPathComponent("out"), copy = work.appendingPathComponent("copy")
 try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
