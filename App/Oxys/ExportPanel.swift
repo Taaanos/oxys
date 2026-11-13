@@ -12,10 +12,22 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
     private let caption = NSTextField(wrappingLabelWithString: "")
     /// V-22: off unless the user turned it on (and then it stays on, the next time).
     private let removePrivate = NSButton(checkboxWithTitle: "Remove location and serial numbers", target: nil, action: nil)
+    /// V-30: per-format quality (0.50–1.00) persisted in UserDefaults for Developed JPEG and Developed HEIC.
+    private let qualityLabel = NSTextField(labelWithString: "Quality:")
+    private let qualitySlider = NSSlider(value: 92, minValue: 50, maxValue: 100, target: nil, action: nil)
+    private let qualityReadout = NSTextField(labelWithString: "92%")
+    private var jpegQuality: Double
+    private var heicQuality: Double
+    private var qualityRow: NSGridRow?
 
     /// `remembered` is the raw value of the format used last time; `rememberedRemovePrivate` the switch's last state.
     init(sources: [URL], remembered: String?, rememberedRemovePrivate: Bool = false) {
         self.sources = sources
+        let defaults = UserDefaults.standard
+        let savedJPEG = defaults.object(forKey: "exportJPEGQuality") as? Double ?? 0.92
+        let savedHEIC = defaults.object(forKey: "exportHEICQuality") as? Double ?? 0.80
+        self.jpegQuality = min(max(savedJPEG, 0.50), 1.0)
+        self.heicQuality = min(max(savedHEIC, 0.50), 1.0)
         // A format the system cannot write is not offered.
         formats = ExportFormat.allCases.filter { format in
             format.developedFormat.map(DevelopedRenderer.isSupported) ?? true
@@ -26,6 +38,14 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
         menu.setAccessibilityLabel("Export format")
         menu.target = self
         menu.action = #selector(formatChanged)
+        qualityLabel.setAccessibilityElement(false)
+        qualitySlider.isContinuous = true
+        qualitySlider.target = self
+        qualitySlider.action = #selector(qualityChanged)
+        qualitySlider.setAccessibilityLabel("Export quality")
+        qualityReadout.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        qualityReadout.textColor = .secondaryLabelColor
+        qualityReadout.setAccessibilityElement(false)
         removePrivate.state = rememberedRemovePrivate ? .on : .off
         removePrivate.setAccessibilityHelp(Self.removePrivateHelp)
         caption.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
@@ -40,9 +60,9 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
 
     static func title(_ format: ExportFormat) -> String {
         switch format {
-        case .embeddedJPEG: "Embedded JPEG"
-        case .developedJPEG: "Developed JPEG"
-        case .developedHEIC: "Developed HEIC"
+        case .embeddedJPEG: "Embedded JPEG (camera preview, fastest)"
+        case .developedJPEG: "Developed JPEG (best compatibility)"
+        case .developedHEIC: "Developed HEIC (best compression)"
         }
     }
 
@@ -65,6 +85,30 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
         let format = formats[max(0, menu.indexOfSelectedItem)]
         caption.stringValue = Self.detail(format)
         menu.setAccessibilityHelp(Self.detail(format))
+        qualityRow?.isHidden = !format.isDeveloped
+        if format == .developedHEIC {
+            let pct = Int(round(heicQuality * 100))
+            qualitySlider.doubleValue = Double(pct)
+            qualityReadout.stringValue = "\(pct)%"
+        } else if format == .developedJPEG {
+            let pct = Int(round(jpegQuality * 100))
+            qualitySlider.doubleValue = Double(pct)
+            qualityReadout.stringValue = "\(pct)%"
+        }
+    }
+
+    @objc private func qualityChanged() {
+        let format = formats[max(0, menu.indexOfSelectedItem)]
+        let pct = Int(round(qualitySlider.doubleValue))
+        let q = Double(pct) / 100.0
+        qualityReadout.stringValue = "\(pct)%"
+        if format == .developedHEIC {
+            heicQuality = q
+            UserDefaults.standard.set(q, forKey: "exportHEICQuality")
+        } else if format == .developedJPEG {
+            jpegQuality = q
+            UserDefaults.standard.set(q, forKey: "exportJPEGQuality")
+        }
     }
 
     /// Shows the panel. Nil when the user cancels.
@@ -85,19 +129,35 @@ final class ExportPanel: NSObject, NSOpenSavePanelDelegate {
         let label = NSTextField(labelWithString: "Format:")
         label.setAccessibilityElement(false)
         menu.translatesAutoresizingMaskIntoConstraints = false
-        menu.widthAnchor.constraint(equalToConstant: 170).isActive = true   // does not change with the item
+        menu.widthAnchor.constraint(equalToConstant: 310).isActive = true   // fits all three format labels without truncation
+        qualitySlider.translatesAutoresizingMaskIntoConstraints = false
+        qualitySlider.widthAnchor.constraint(equalToConstant: 200).isActive = true
+        qualityReadout.translatesAutoresizingMaskIntoConstraints = false
+        qualityReadout.widthAnchor.constraint(equalToConstant: 42).isActive = true
+        let qualityStack = NSStackView(views: [qualitySlider, qualityReadout])
+        qualityStack.orientation = .horizontal
+        qualityStack.spacing = 8
+        qualityStack.alignment = .centerY
         removePrivate.translatesAutoresizingMaskIntoConstraints = false
-        let grid = NSGridView(views: [[label, menu], [NSGridCell.emptyContentView, caption], [NSGridCell.emptyContentView, removePrivate]])
+        let grid = NSGridView(views: [
+            [label, menu],
+            [NSGridCell.emptyContentView, caption],
+            [qualityLabel, qualityStack],
+            [NSGridCell.emptyContentView, removePrivate],
+        ])
         grid.columnSpacing = 8
         grid.rowSpacing = 4
         grid.column(at: 0).xPlacement = .trailing
         grid.column(at: 1).xPlacement = .leading
         grid.row(at: 0).yPlacement = .center
+        grid.row(at: 2).yPlacement = .center
+        qualityRow = grid.row(at: 2)
         grid.translatesAutoresizingMaskIntoConstraints = false
 
-        // Height for the tallest caption, so the panel does not resize when the choice changes.
+        // Height for the tallest caption (with the quality row visible), so the panel does not resize when the choice changes.
         let chosen = menu.indexOfSelectedItem
         var height: CGFloat = 0
+        qualityRow?.isHidden = false
         for (i, format) in formats.enumerated() {
             menu.selectItem(at: i)
             caption.stringValue = Self.detail(format)

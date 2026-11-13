@@ -138,7 +138,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-27 | Rename "Keep Zoom Between Photos" to "Sticky Zoom" (I19) | M-15 | done |
 | V-28 | Spike + fix: ZV-1 ARW edge distortion with lens correction (Bug 1) | V-19 | todo (waiting for `DSC00170.ARW` sample) |
 | V-29 | Shortcut for lens correction (I11) | V-19, M-05 | done |
-| V-30 | Export format labels and JPEG/HEIC quality sliders (I12, I13) | V-21 | todo |
+| V-30 | Export format labels and JPEG/HEIC quality sliders (I12, I13) | V-21 | done |
 | V-31 | Spotlight-style searchable and executable shortcut panel (I14) | M-23, D-03 | todo |
 | V-32 | Photo context menu, Copy Path, and AirDrop (I5, I10, I3) | M-19, M-21, V-12, V-21 | todo |
 | V-33 | Clean color label circles respecting Differentiate Without Color (I16) | M-06, D-13 | todo |
@@ -3204,10 +3204,10 @@ Collected from real culling sessions (Tier 1).
 - Hide or disable the quality slider when `Embedded JPEG` is selected (since embedded JPEGs are copied byte-for-byte).
 
 **Acceptance criteria**
-- [ ] Format menu displays the updated compatibility/compression labels.
-- [ ] Switching between `Developed JPEG` and `Developed HEIC` shows and persists each format's own quality slider value (`50%–100%`).
-- [ ] Selecting `Embedded JPEG` hides or disables the quality slider.
-- [ ] Exported files reflect the chosen quality setting (`DevelopedRenderer.encode` uses the slider value).
+- [x] Format menu displays the updated compatibility/compression labels.
+- [x] Switching between `Developed JPEG` and `Developed HEIC` shows and persists each format's own quality slider value (`50%–100%`).
+- [x] Selecting `Embedded JPEG` hides or disables the quality slider.
+- [x] Exported files reflect the chosen quality setting (`DevelopedRenderer.encode` uses the slider value).
 
 ### V-31 · Spotlight-style searchable and executable shortcut panel (I14)
 
