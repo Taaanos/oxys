@@ -132,6 +132,17 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | D-11 | Spike: the info strip as a floating glass bar | D-01, D-02 | done (glass kept; `⇧I` toggle 9 ms slower, full `make contrast`, the morph and the 20-frame comparison not done) |
 | D-12 | Spike: a glass HUD for commands with no visible result | D-02 | built; gate open (nothing run or seen on screen yet: contrast, Reduce Motion, idle CPU, one-session decision) |
 | D-13 | Glass lens and capsule marks in Grid | V-20, M-12, M-19 | done (checked on screen at all five sizes; you used the arrow keys, no lag; contrast on pure white accepted by you; the R+J chip, a 10,000-photo folder and VoiceOver not checked) |
+| **Phase 2d** | **Usage fixes & polish** | | |
+| V-25 | Reset filters when opening a new folder (I6) | M-20, V-15 | todo |
+| V-26 | Standard text editing and defocus in filter search (I7) | M-20, M-05 | built (needs live check) |
+| V-27 | Rename "Keep Zoom Between Photos" to "Sticky Zoom" (I19) | M-15 | todo |
+| V-28 | Spike + fix: ZV-1 ARW edge distortion with lens correction (Bug 1) | V-19 | todo (waiting for `DSC00170.ARW` sample) |
+| V-29 | Shortcut for lens correction (I11) | V-19, M-05 | todo |
+| V-30 | Export format labels and JPEG/HEIC quality sliders (I12, I13) | V-21 | todo |
+| V-31 | Spotlight-style searchable and executable shortcut panel (I14) | M-23, D-03 | todo |
+| V-32 | Photo context menu, Copy Path, and AirDrop (I5, I10, I3) | M-19, M-21, V-12, V-21 | todo |
+| V-33 | Clean color label circles respecting Differentiate Without Color (I16) | M-06, D-13 | todo |
+| V-34 | Trackpad swipe and pinch navigation (I18) | M-12, M-15 | todo |
 
 ### Dependency map (foundations and MVP)
 
@@ -3091,6 +3102,188 @@ Still open: the cut check for `F`, `S` and `⇧I` (the code uses `.glassEffectTr
 
 ---
 
+## Phase 2d: Usage fixes & polish
+
+Collected from real culling sessions (Tier 1).
+
+### V-25 · Reset filters when opening a new folder (I6)
+
+**Depends on:** M-20, V-15
+
+> As a photographer, I want the filter to reset whenever I open a new folder, so that a filter from the previous shoot doesn't hide photos in the new one.
+
+**Scope**
+- Reset `filter = PhotoFilter()` inside `FolderModel.open(_:restoring:)` (`Packages/Library/Sources/Library/FolderModel.swift`).
+- Keep `restoreLate(_:)` restoring the saved sort order (`sortKey`, `ascending`) when reopening a folder with a saved session, while leaving filter criteria (`stars`, `labels`, `noLabel`, `rejects`, `search`, `isOn`) cleared as specified in [PRD.md](PRD.md).
+- Leave the Filter Bar's open/closed state (`showFilterBar`) as the user left it, and keep `File > Reload` preserving the active filter.
+
+**Acceptance criteria**
+- [ ] Opening a new folder while a filter (stars, label, reject, or search text) is active clears the filter and shows all photos in the new folder.
+- [ ] Reopening a folder with a saved session restores its sort order without restoring a narrowing filter.
+- [ ] `File > Reload` on the current folder keeps the active filter intact.
+- [ ] Unit test in `LibraryTests` covering filter reset on `FolderModel.open`.
+
+**Decisions**
+- **Decided:** Keep Filter Bar visibility (`showFilterBar`) unchanged on folder open, and keep `File > Reload` preserving the current filter.
+
+### V-26 · Standard text editing and defocus in filter search (I7)
+
+**Depends on:** M-20, M-05
+
+> As a photographer, I want `⌘A` (and standard editing shortcuts) to work inside the filter search box, and clicking outside the box to return focus to the photos.
+
+**Scope**
+- When a text field editor (`NSTextView` with `isEditable || isFieldEditor`) is first responder, route `⌘A` (and `⌘Z` / `⌘C` / `⌘V` / `⌘X`) to the responder chain (`NSResponder.selectAll(_:)`, etc.) rather than `AppModel`'s `select.all` / `edit.undo` photo commands.
+- Resign first responder from the filter search field (`releaseKeyboardFromFilterBar()`) on mouse-down outside the search box: Grid cells and empty Grid background, FilmStrip, Compare panes, and Inspector.
+
+**Acceptance criteria**
+- [ ] With the filter search field focused, `⌘A` selects all text in the search field (not all photos in the folder).
+- [ ] `⌘Z`, `⌘C`, `⌘V`, and `⌘X` act on the search text while the field is focused.
+- [ ] Clicking on a Grid cell, Grid background, FilmStrip, Compare pane, or Inspector removes focus from the search box so bare cull/navigation keys work immediately.
+
+**Decisions**
+- **Decided:** Dispatch `⌘A`, `⌘C`, `⌘V`, `⌘X`, `⌘Z`, and `⇧⌘Z` directly to the responder chain via `NSApp.sendAction(_:to:from:)` in `CommandCenter.route(_:)` when an `NSTextView` (`isEditable || isFieldEditor`) is first responder, consuming the key-down before menu-bar equivalents (`select.all`, `edit.undo`, `edit.redo`, `info.copy`) can intercept it.
+- **Decided:** Resign first responder from the field editor on `mouseDown` in `GridCellView`, `GridCollectionView`, and `FilmStripCollectionView`, and on tap in `CompareScreen`, `InspectorView`, and `AppModel.activateInspector(at:)`.
+
+### V-27 · Rename "Keep Zoom Between Photos" to "Sticky Zoom" (I19)
+
+**Depends on:** M-15
+
+> As a photographer, I want the `⌥Z` command to be named "Sticky Zoom" so it matches how I think about the feature.
+
+**Scope**
+- Rename `"Keep Zoom Between Photos"` to `"Sticky Zoom"` in `CommandTable` (`Packages/Commands/Sources/Commands/CommandTable.swift`), and update any matching references in docs or tests.
+
+**Acceptance criteria**
+- [ ] View menu and Cheat Sheet (`?`) display `"Sticky Zoom"` for `zoom.sticky` (`⌥Z`).
+- [ ] `make test` and `make build` pass.
+
+### V-28 · Spike + fix: ZV-1 ARW edge distortion with lens correction (Bug 1)
+
+**Depends on:** V-19
+
+> As a photographer, I want Sony ZV-1 RAWs with lens correction enabled to render clean edges without messed-up sides.
+
+**Scope**
+- **Prerequisite:** Copy `/Users/thanos/Pictures/KG/ZV1 Photos/DSC00170.ARW` into the git-ignored `TestData/` before starting.
+- Spike with `RawSpike lens` on `DSC00170.ARW` to inspect `CIRAWFilter.outputImage.extent`, Sony crop/distortion metadata, and border pixels when `isLensCorrectionEnabled = true`.
+- Implement the fix (e.g., cropping to the valid active image extent or handling `CIRAWFilter`'s edge behavior) and add a regression check.
+
+**Acceptance criteria**
+- [ ] `DSC00170.ARW` with lens correction enabled renders clean edges in Loupe and Compare without stretched or corrupted side pixels.
+- [ ] Other lens-corrected RAWs in `TestData/` (e.g., DJI DNG, ZV-1 `DSC01014.ARW`) continue to pass `LensCorrectionTests`.
+
+### V-29 · Shortcut for lens correction (I11)
+
+**Depends on:** V-19, M-05
+
+> As a photographer, I want a keyboard shortcut to toggle RAW lens correction on and off, so I can check geometry and corners without opening Settings.
+
+**Scope**
+- Add `zoom.lensCorrection` to `CommandTable` (`Packages/Commands/Sources/Commands/CommandTable.swift`) in the View menu (proposed default key: `⌥L`, since `L` is reserved for Lights Out and `⌘L` is Toggle Filters).
+- Register the handler in `AppModel`: toggle `rawLensCorrection` in `UserDefaults`, re-develop the current RAW in place (Loupe/Compare), and show `"Lens correction on"` / `"Lens correction off"` in the HUD and VoiceOver announcement.
+- Update `Settings → RAW` note to mention the shortcut via `center.keyPhrase`.
+
+**Acceptance criteria**
+- [ ] Pressing `⌥L` (or choosing View → Lens Correction) toggles RAW lens correction, re-develops the current RAW in place, and updates the Inspector's Lens correction row.
+- [ ] Command appears in the View menu, Cheat Sheet (`?`), and `Settings → Keys` for remapping.
+- [ ] Disabled/no-op when `RAW decode` is set to `Never`.
+
+### V-30 · Export format labels and JPEG/HEIC quality sliders (I12, I13)
+
+**Depends on:** V-21
+
+> As a photographer, I want clear format labels and compression quality sliders in the export panel, so I can trade file size against quality for developed JPEGs and HEICs.
+
+**Scope**
+- Rename format menu items in `ExportPanel` (`App/Oxys/ExportPanel.swift`):
+  - `Embedded JPEG (camera preview, fastest)`
+  - `Developed JPEG (best compatibility)`
+  - `Developed HEIC (best compression)`
+- Add a Quality slider (`50%`–`100%`, with percentage readout) in `ExportPanel` when `Developed JPEG` or `Developed HEIC` is selected, reading and persisting `exportJPEGQuality` (default `0.92`) and `exportHEICQuality` (default `0.80`) in `UserDefaults`.
+- Hide or disable the quality slider when `Embedded JPEG` is selected (since embedded JPEGs are copied byte-for-byte).
+
+**Acceptance criteria**
+- [ ] Format menu displays the updated compatibility/compression labels.
+- [ ] Switching between `Developed JPEG` and `Developed HEIC` shows and persists each format's own quality slider value (`50%–100%`).
+- [ ] Selecting `Embedded JPEG` hides or disables the quality slider.
+- [ ] Exported files reflect the chosen quality setting (`DevelopedRenderer.encode` uses the slider value).
+
+### V-31 · Spotlight-style searchable and executable shortcut panel (I14)
+
+**Depends on:** M-23, D-03
+
+> As a photographer, I want to search the `?` shortcut panel and press Return to run a command directly, like Spotlight, so I can both discover shortcuts and trigger rarely-used actions fast.
+
+**Scope**
+- Add a search field at the top of `CheatSheetView` (`App/Oxys/CheatSheetView.swift`), focused automatically when `?` opens.
+- When the search query is empty, display the full grouped shortcut list for the current mode as today.
+- When typing a query, filter commands across the command table by title or shortcut label, with `↑`/`↓` moving a selection highlight and `Return` executing the highlighted enabled command and closing the sheet.
+- `Esc` (or `?` when search is empty) closes the sheet.
+
+**Acceptance criteria**
+- [ ] Opening `?` focuses the search field; typing filters commands live by name or shortcut.
+- [ ] `↑`/`↓` moves the highlight through matching commands; `Return` runs the selected command and dismisses the sheet.
+- [ ] Disabled commands are shown dimmed and cannot be executed via `Return`.
+- [ ] Pressing `Esc` closes the sheet and returns keyboard focus to the canvas.
+
+### V-32 · Photo context menu, Copy Path, and AirDrop (I5, I10, I3)
+
+**Depends on:** M-19, M-21, V-12, V-21
+
+> As a photographer, I want a right-click context menu on any photo to rate, reveal in Finder, copy its file path, AirDrop the original file, or open it in an editor.
+
+**Scope**
+- Attach a right-click `NSMenu` (built from `CommandCenter` / `AppModel` actions) to photo items in Grid (`GridCellView`), Loupe (`LoupeView`), Compare (`CompareScreen`), and FilmStrip.
+- Right-clicking an unselected photo makes it the active/target photo; right-clicking inside an existing selection acts on the whole selection.
+- Menu items:
+  - Rate (`1–5 Stars`, `Clear Rating`), `Reject`, Label (`Red`–`Purple`)
+  - `Reveal in Finder` (`⌘R`)
+  - `Copy Path` (new command `file.copyPath`, default `⌥⌘C`; copies newline-separated POSIX paths of `cullTargets`)
+  - `Share via AirDrop…` (`NSSharingService(named: .sendViaAirDrop)` sending the original file URLs on disk, e.g. `.ARW`/`.DNG`)
+  - `Edit in <Default Editor>` (`⌘E`) and `Edit In` submenu
+  - `Export…` (`⇧⌘E`)
+
+**Acceptance criteria**
+- [ ] Right-clicking any photo in Grid, Loupe, Compare, or FilmStrip opens the context menu and acts on the clicked photo or current selection.
+- [ ] `Copy Path` (and `⌥⌘C`) copies the file path(s) to the pasteboard and shows a HUD confirmation (`"Copied path"` / `"Copied N paths"`).
+- [ ] `Share via AirDrop…` opens the macOS AirDrop sheet with the original file URL(s) on disk.
+- [ ] `file.copyPath` is in `CommandTable` and appears in the File/Photo menu and Cheat Sheet.
+
+### V-33 · Clean color label circles respecting Differentiate Without Color (I16)
+
+**Depends on:** M-06, D-13
+
+> As a photographer, I want color labels on photos to appear as clean colored circles without letters, while still showing letters when macOS "Differentiate Without Color" is enabled.
+
+**Scope**
+- Update `LabelChip` (Info Strip / Rating Corner) and the Grid/FilmStrip capsule mark drawing (`GridScreen.swift`, `GlassCell.swift`) to draw a clean colored circle (matching `FilterBar` swatches) instead of a lettered square by default.
+- Observe `NSWorkspace.shared.accessibilityDisplayShouldDifferentiateWithoutColor` (and `NSWorkspace.accessibilityDisplayOptionsDidChangeNotification`): when enabled, render the label letter (`R`, `Y`, `G`, `B`, `P`) inside the mark so color is never the sole indicator for users who need it.
+- Keep VoiceOver labels unchanged (announcing the color name).
+
+**Acceptance criteria**
+- [ ] With Differentiate Without Color off, color labels render as clean colored circles in Loupe, Compare, Grid, and FilmStrip.
+- [ ] With Differentiate Without Color on, color labels render with their letter (`R`, `Y`, `G`, `B`, `P`).
+- [ ] Contrast on dark glass (`Plate.glassOpacity`) and Grid/FilmStrip capsules remains readable.
+
+### V-34 · Trackpad swipe and pinch navigation (I18)
+
+**Depends on:** M-12, M-15
+
+> As a photographer on a MacBook trackpad, I want natural swipe and pinch gestures to step through photos and move between Grid and Loupe.
+
+**Scope**
+- In `LoupeView` when `zoom == .fit`, recognize a two-finger horizontal swipe (`scrollWheel` with `phase` / momentum coalescing, or `NSSwipeGestureRecognizer`) to step `nav.previous` / `nav.next` once per gesture.
+- Keep two-finger scroll panning when zoomed in (`zoom != .fit`).
+- Optional/complementary: pinch-in at `Fit` in Loupe transitions to Grid (`view.grid`); pinch-out on a cell in Grid opens it in Loupe (`view.loupe`).
+
+**Acceptance criteria**
+- [ ] In Loupe at `Fit`, swiping left/right with two fingers advances one photo per swipe without skipping multiple frames.
+- [ ] When zoomed in (`zoom != .fit`), two-finger scrolling pans the image as before without triggering photo navigation.
+- [ ] Pinch-to-zoom in Loupe and Compare continues to zoom smoothly around the pointer.
+
+---
+
 ## Backlog: v1.x and later
 
 These are not broken into stories yet. The right column shows what each one builds on, so the v1.0 design leaves room for it.
@@ -3116,6 +3309,7 @@ These are not broken into stories yet. The right column shows what each one buil
 | B-17 | Gate on the slowest Mac and slow media | v1.x | M-26, G-3, G-11 | **Closed:** no other Mac, SD card or SMB share is available (G-3, G-11). The real 1,000-frame shoot is in P-01 |
 | B-18 | Zero idle CPU in Loupe | v1.x | M-26 | **Moved to P-09.** 0.18% with nothing changing (Grid: 0.01%) |
 | B-19 | Key remapping and presets | v1.x | M-05, M-22, M-23 | **Moved from V-14** (4 Oct 2026), then **moved back to V-14** the same day: you asked to build it now |
+| B-20 | Tags (`dc:subject` XMP keywords) for exported JPEG/HEIC files (I17) | v1.x | V-21, M-08 | Lightweight tag popover (`⌘T`) writing `dc:subject` into XMP and embedding on exported non-RAWs for iOS Photos / Immich |
 | L-01 | Sharpness score badge | Later | V-06 | Reuses the peaking kernels |
 | L-02 | RAW-level histogram and clipping stats | Later | V-02, V-04 | Needs sensor data before white balance |
 | L-03 | Waveform, RGB parade, vectorscope | Later | M-17 | |

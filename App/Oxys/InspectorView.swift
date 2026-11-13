@@ -48,6 +48,7 @@ struct InspectorView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .environment(\.probeScope, "inspector")
+        .simultaneousGesture(TapGesture().onEnded { model.releaseKeyboardFromFilterBar() })
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Inspector")
         .task(id: photo?.url) {

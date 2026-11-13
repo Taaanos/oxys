@@ -5,6 +5,15 @@ import Imaging
 import Library
 import SwiftUI
 
+private final class GridCollectionView: NSCollectionView {
+    override func mouseDown(with event: NSEvent) {
+        if let editor = window?.firstResponder as? NSTextView, editor.isFieldEditor {
+            window?.makeFirstResponder(nil)
+        }
+        super.mouseDown(with: event)
+    }
+}
+
 /// A scroll view that reports each layout pass and window change, so Grid can notice a viewport that
 /// settled after its first thumbnail request.
 final class GridScrollView: NSScrollView {
@@ -89,7 +98,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         let layout = GridLayout()
         layout.itemSize = size
 
-        let collection = NSCollectionView()
+        let collection = GridCollectionView()
         collection.collectionViewLayout = layout
         collection.dataSource = self
         collection.isSelectable = false
@@ -540,6 +549,9 @@ final class GridCellView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        if let editor = window?.firstResponder as? NSTextView, editor.isFieldEditor {
+            window?.makeFirstResponder(nil)
+        }
         guard let url else { return }
         onClick?(url, event.clickCount >= 2, event.modifierFlags)
     }

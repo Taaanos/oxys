@@ -27,6 +27,7 @@ struct CompareScreen: View {
         }
         .padding(6)
         .background(Color(white: LoupeView.canvasGray))
+        .simultaneousGesture(TapGesture().onEnded { model.releaseKeyboardFromFilterBar() })
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in fullScreen = true }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in fullScreen = false }
         // Anchor for the `⌥H` popover: the bottom of the window, between the panes.

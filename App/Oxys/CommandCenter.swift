@@ -219,6 +219,11 @@ final class CommandCenter {
         } else if responder is NSControl {
             .textInput
         } else { .canvas }
+        if event.type == .keyDown, let tv = responder as? NSTextView, tv.isEditable || tv.isFieldEditor,
+           let action = Self.textEditingAction(for: input) {
+            NSApp.sendAction(action, to: nil, from: nil)
+            return true
+        }
         if event.type == .keyDown, focus == .canvas,
            event.modifierFlags.isDisjoint(with: [.command, .control]),
            inspectorKey(event.keyCode, event.modifierFlags.contains(.shift), event.modifierFlags.contains(.option)) { return true }
@@ -247,6 +252,25 @@ final class CommandCenter {
 
     private func cancelHeldKeys() {
         apply(router.cancelAll(at: ProcessInfo.processInfo.systemUptime))
+    }
+
+    /// Standard editing chords in a text field editor must reach the responder chain rather than the menu bar's
+    /// photo commands (`select.all`, `edit.undo`, `edit.redo`, `info.copy`).
+    private static func textEditingAction(for input: KeyInput) -> Selector? {
+        if input.modifiers == [.command] {
+            switch PhysicalKey(rawValue: input.keyCode) {
+            case .a: return #selector(NSText.selectAll(_:))
+            case .c: return #selector(NSText.copy(_:))
+            case .v: return #selector(NSText.paste(_:))
+            case .x: return #selector(NSText.cut(_:))
+            case .z: return Selector(("undo:"))
+            default: return nil
+            }
+        }
+        if input.modifiers == [.command, .shift], PhysicalKey(rawValue: input.keyCode) == .z {
+            return Selector(("redo:"))
+        }
+        return nil
     }
 }
 

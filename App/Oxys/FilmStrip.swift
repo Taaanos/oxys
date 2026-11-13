@@ -56,6 +56,13 @@ private final class FilmStripScrollView: NSScrollView {
 
 private final class FilmStripCollectionView: NSCollectionView {
     override var acceptsFirstResponder: Bool { false }
+
+    override func mouseDown(with event: NSEvent) {
+        if let editor = window?.firstResponder as? NSTextView, editor.isFieldEditor {
+            window?.makeFirstResponder(nil)
+        }
+        super.mouseDown(with: event)
+    }
 }
 
 private final class FilmStripItem: NSCollectionViewItem {

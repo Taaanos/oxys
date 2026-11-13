@@ -76,6 +76,7 @@ final class AppModel {
     }
 
     func activateInspector(at id: String? = nil) {
+        releaseKeyboardFromFilterBar()
         inspectorActive = true
         inspectorFocusID = id ?? inspectorFocusID.flatMap { id in inspectorRows.contains { $0.id == id } ? id : nil } ?? inspectorRows.first?.id
         if id == nil, let row = inspectorRows.first(where: { $0.id == inspectorFocusID }) { announce("\(row.label), \(row.value)") }
