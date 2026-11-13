@@ -127,6 +127,47 @@ for url in urls {
                let dest = CGImageDestinationCreateWithURL(URL(fileURLWithPath: name) as CFURL, UTType.png.identifier as CFString, 1, nil) {
                 CGImageDestinationAddImage(dest, cg, nil); CGImageDestinationFinalize(dest)
             }
+
+            let w = Int(e.width), h = Int(e.height), depth = 32
+            var px = [UInt8](repeating: 0, count: w * h * 4)
+            context.render(img, toBitmap: &px, rowBytes: w * 4, bounds: e, format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
+            func luma(_ x: Int, _ y: Int) -> Double {
+                let i = (y * w + x) * 4
+                return 0.2126 * Double(px[i]) + 0.7152 * Double(px[i + 1]) + 0.0722 * Double(px[i + 2])
+            }
+            func streakRatio(_ side: String) -> Double {
+                var outSum = 0.0, inSum = 0.0
+                switch side {
+                case "left":
+                    let inOff = depth * 2
+                    for y in 0..<h {
+                        for x in 0..<(depth - 1) { outSum += abs(luma(x, y) - luma(x + 1, y)) }
+                        for x in inOff..<(inOff + depth - 1) { inSum += abs(luma(x, y) - luma(x + 1, y)) }
+                    }
+                case "right":
+                    let inOff = w - depth * 3
+                    for y in 0..<h {
+                        for x in (w - depth)..<(w - 1) { outSum += abs(luma(x, y) - luma(x + 1, y)) }
+                        for x in inOff..<(inOff + depth - 1) { inSum += abs(luma(x, y) - luma(x + 1, y)) }
+                    }
+                case "top":
+                    let inOff = h - depth * 3
+                    for x in 0..<w {
+                        for y in (h - depth)..<(h - 1) { outSum += abs(luma(x, y) - luma(x, y + 1)) }
+                        for y in inOff..<(inOff + depth - 1) { inSum += abs(luma(x, y) - luma(x, y + 1)) }
+                    }
+                case "bottom":
+                    let inOff = depth * 2
+                    for x in 0..<w {
+                        for y in 0..<(depth - 1) { outSum += abs(luma(x, y) - luma(x, y + 1)) }
+                        for y in inOff..<(inOff + depth - 1) { inSum += abs(luma(x, y) - luma(x, y + 1)) }
+                    }
+                default: break
+                }
+                return outSum / max(inSum, 1e-4)
+            }
+            print(String(format: "    edge streak ratios: left %.2f, right %.2f, top %.2f, bottom %.2f",
+                         streakRatio("left"), streakRatio("right"), streakRatio("top"), streakRatio("bottom")))
         }
         if small.count == 2, small[0].extent.size == small[1].extent.size {
             let diff = small[0].applyingFilter("CIDifferenceBlendMode", parameters: [kCIInputBackgroundImageKey: small[1]])

@@ -136,7 +136,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-25 | Reset filters when opening a new folder (I6) | M-20, V-15 | done |
 | V-26 | Standard text editing and defocus in filter search (I7) | M-20, M-05 | built (needs live check) |
 | V-27 | Rename "Keep Zoom Between Photos" to "Sticky Zoom" (I19) | M-15 | done |
-| V-28 | Spike + fix: ZV-1 ARW edge distortion with lens correction (Bug 1) | V-19 | todo (waiting for `DSC00170.ARW` sample) |
+| V-28 | Spike + fix: ZV-1 ARW edge distortion with lens correction (Bug 1) | V-19 | done (spiked on macOS 27.2.1; edge streaks no longer reproduce upstream; regression test added) |
 | V-29 | Shortcut for lens correction (I11) | V-19, M-05 | done |
 | V-30 | Export format labels and JPEG/HEIC quality sliders (I12, I13) | V-21 | done |
 | V-31 | Spotlight-style searchable and executable shortcut panel (I14) | M-23, D-03 | done |
@@ -3170,8 +3170,16 @@ Collected from real culling sessions (Tier 1).
 - Implement the fix (e.g., cropping to the valid active image extent or handling `CIRAWFilter`'s edge behavior) and add a regression check.
 
 **Acceptance criteria**
-- [ ] `DSC00170.ARW` with lens correction enabled renders clean edges in Loupe and Compare without stretched or corrupted side pixels.
-- [ ] Other lens-corrected RAWs in `TestData/` (e.g., DJI DNG, ZV-1 `DSC01014.ARW`) continue to pass `LensCorrectionTests`.
+- [x] `DSC00170.ARW` with lens correction enabled renders clean edges in Loupe and Compare without stretched or corrupted side pixels. (Spiked on macOS 27.2.1: decoder output extent is 5472×3648 at (0, 0), identical to nativeSize; edge streak ratios around 1.0; verified clean in live app by user.)
+- [x] Other lens-corrected RAWs in `TestData/` (e.g., DJI DNG, ZV-1 `DSC01014.ARW`) continue to pass `LensCorrectionTests`.
+
+**Decisions and checks**
+- **Original bug:** User screenshot showed ~40 pt (80 px) horizontal streaks on the left edge in Loupe at Fit 51%, caused by an upstream `CIRAWFilter` coordinate warp clamping to the boundary during lens correction.
+- **Upstream fix:** On macOS 27.2.1 (26B131), the bug is no longer reproducible in `CIRAWFilter`, `LoupeGPU` or in the live app.
+- **No artificial inset crop applied:** Rather than cropping field-of-view from all lens-corrected cameras for an upstream bug that is now resolved, we keep full sensor coverage.
+- **Regression test:** Added `LensCorrectionTests.zv1EdgesHaveNoClampStreaksWithCorrection` (plus checks on `DSC01014.ARW` and DJI FC8482 DNG) asserting `edgeStreakRatio > 0.5` across all 4 edges. Clamped borders fail this test with ratio 0.0 (verified).
+- **Spike tool updated:** `RawSpike lens` now computes and prints edge streak ratios for both correction on and off.
+- **Documentation:** Updated `docs/spikes/lens-correction.md` with ZV-1 findings.
 
 ### V-29 · Shortcut for lens correction (I11)
 

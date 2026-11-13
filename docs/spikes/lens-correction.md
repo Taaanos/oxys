@@ -41,3 +41,21 @@ V-02 maps a zoom position between the preview and the RAW by fraction of the pic
 - The size of the shift in pixels.
 - ~~The decode time with the correction on.~~ Measured in V-19: `make perf-bench SCENARIO=develop` with `BENCH_LENS=1`, 48.8 MP DJI DNG, 20 runs: `raw-develop` p50 317 ms, max 429 ms (off: 300 / 336 ms).
 - The corpus has files with support (this DJI DNG, Sony 20 MP ARW and DNG, Fujifilm X-M1) and without it (Canon EOS 7D, Sony 33 MP ARW, iPhone DNG).
+
+## ZV-1 edge streaks (V-28)
+
+Spike on `DSC00170.ARW` (Sony ZV-1, 16.9 mm, 5472×3648, 12-bit compressed ARW).
+
+### Background
+A screenshot from an earlier session showed the developed RAW of `DSC00170.ARW` with a smeared left edge (~40 pt / 80 px wide) in Loupe at Fit 51%: horizontal streaks where every row repeated its edge pixel value, characteristic of an edge-clamped coordinate warp during lens correction.
+
+### Spike result on macOS 27.2.1 (26B131)
+- Re-tested with `RawSpike lens` and direct `CIRAWFilter` / `LoupeGPU` rendering.
+- `isLensCorrectionSupported`: yes; default enabled: yes.
+- Output extent: 5472×3648 at origin (0, 0), identical to `nativeSize`.
+- Edge variation / streak ratios:
+  - Correction off: left 0.99, right 0.97, top 1.06, bottom 0.96
+  - Correction on : left 1.03, right 1.01, top 1.10, bottom 0.90
+- Live app inspection in Loupe and Compare: edges render clean with no stretching or streaking.
+- Conclusion: the distortion was an upstream decoder bug that is no longer present in macOS 27.2.1.
+- Prevention: `LensCorrectionTests.zv1EdgesHaveNoClampStreaksWithCorrection` continuously checks edge variation ratio (> 0.5) against all four borders to detect regressions if upstream introduces edge clamping in future OS updates.
