@@ -3,9 +3,7 @@ import Testing
 @testable import Library
 
 @Suite @MainActor struct FilterModelTests {
-    private func open(_ folder: TempFolder) async -> FolderModel {
-        let model = FolderModel()
-        model.open(folder.url)
+    private func waitUntilLoaded(_ model: FolderModel) async {
         for _ in 0..<500 where model.content != .photos || model.isReadingSidecars || model.isReadingCaptureTimes {
             try? await Task.sleep(for: .milliseconds(10))
         }
@@ -13,6 +11,12 @@ import Testing
         for _ in 0..<500 where model.isReadingSidecars || model.isReadingCaptureTimes {
             try? await Task.sleep(for: .milliseconds(10))
         }
+    }
+
+    private func open(_ folder: TempFolder) async -> FolderModel {
+        let model = FolderModel()
+        model.open(folder.url)
+        await waitUntilLoaded(model)
         return model
     }
 
@@ -62,5 +66,24 @@ import Testing
         model.updateFilter { $0.ascending = false }
         #expect(model.visible.map(\.name) == ["c.ARW", "b.ARW", "a.ARW"])
         #expect(model.photos.map(\.name) == ["a.ARW", "b.ARW", "c.ARW"])
+    }
+
+    @Test func openingNewFolderResetsFilter() async throws {
+        let (first, model) = try await threePhotos(); defer { first.remove() }
+        let second = try TempFolder(); defer { second.remove() }
+        for name in ["x.ARW", "y.ARW"] { try second.add(name) }
+
+        model.updateFilter {
+            $0.setMinimumStars(4)
+            $0.search = "a."
+            $0.sortKey = .filename
+            $0.ascending = false
+        }
+        #expect(model.visible.map(\.name) == ["a.ARW"])
+
+        model.open(second.url)
+        await waitUntilLoaded(model)
+        #expect(model.filter == PhotoFilter())
+        #expect(model.visible.map(\.name) == ["x.ARW", "y.ARW"])
     }
 }

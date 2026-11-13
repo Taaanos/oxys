@@ -216,6 +216,7 @@ public final class FolderModel {
         currentURL = nil
         selection.removeAll()
         undoStack.removeAll()
+        filter = PhotoFilter()
         newFiles = []
         isReadOnly = false
         unsavedCount = 0
