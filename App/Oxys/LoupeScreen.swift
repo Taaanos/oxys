@@ -1,4 +1,5 @@
 import Canvas
+import Commands
 import Imaging
 import Library
 import Metadata
@@ -14,7 +15,10 @@ struct LoupeScreen: View {
         let folder = model.folder
         let loupe = model.loupe
         ZStack(alignment: .bottom) {
-            LoupeCanvas(controller: loupe) { model.photoContextMenu() }
+            LoupeCanvas(controller: loupe,
+                        onContextMenu: { model.photoContextMenu() },
+                        onSwipe: { delta in model.commands.perform(delta > 0 ? "nav.next" : "nav.previous") },
+                        onPinchToGrid: { model.commands.perform("view.grid") })
             if let failure = loupe.failure {
                 ErrorTile(name: loupe.shown?.name ?? "", message: failure)
             }
@@ -71,16 +75,22 @@ private struct LoadKey: Equatable {
 private struct LoupeCanvas: NSViewRepresentable {
     let controller: LoupeController
     let onContextMenu: @MainActor () -> NSMenu?
+    let onSwipe: @MainActor (Int) -> Void
+    let onPinchToGrid: @MainActor () -> Void
 
     func makeNSView(context: Context) -> LoupeView {
         let view = LoupeView()
         controller.canvas = view
         view.onContextMenu = onContextMenu
+        view.onSwipe = onSwipe
+        view.onPinchToGrid = onPinchToGrid
         return view
     }
 
     func updateNSView(_ view: LoupeView, context: Context) {
         view.onContextMenu = onContextMenu
+        view.onSwipe = onSwipe
+        view.onPinchToGrid = onPinchToGrid
     }
 }
 

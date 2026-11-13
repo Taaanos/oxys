@@ -32,6 +32,10 @@ public final class LoupeView: NSView {
     public var onClick: (@MainActor () -> Void)?
     /// Called on a right-click to provide a context menu for the photo shown in this canvas (V-32).
     public var onContextMenu: (@MainActor () -> NSMenu?)?
+    /// Called on a two-finger horizontal swipe at Fit (`-1` previous, `+1` next) (V-34).
+    public var onSwipe: (@MainActor (Int) -> Void)?
+    /// Called when pinching inward at Fit to return to Grid (V-34).
+    public var onPinchToGrid: (@MainActor () -> Void)?
     public var onViewChange: (@MainActor (ViewState) -> Void)?
     /// Where the camera focused in the upright picture (0...1, top-left origin), for the photo on screen; nil when the
     /// file does not say. The zoom goes here when the pointer is not over the image.
@@ -45,6 +49,8 @@ public final class LoupeView: NSView {
         didSet { if spaceHeld != oldValue { window?.invalidateCursorRects(for: self) } }
     }
     private var dragging = false
+    private var swipeTracker = SwipeTracker()
+    private var pinchTracker = PinchNavigationTracker()
     /// Focus peaking (V-06); nil is off. Set with ``setPeaking(_:token:)``.
     public private(set) var peaking: PeakingStyle?
     /// Kept while the overlay is off (P-06), so the next toggle runs no analysis and allocates nothing. Dropped when the
@@ -481,19 +487,44 @@ public final class LoupeView: NSView {
 
     // MARK: pointer and keys
 
-    /// Two-finger scroll pans; with `⌥` it zooms about the pointer. A mouse wheel's notches are scaled up.
+    /// Two-finger scroll pans when zoomed in, or steps photos at Fit; with `⌥` it zooms about the pointer.
     public override func scrollWheel(with event: NSEvent) {
         let precise = event.hasPreciseScrollingDeltas
         let unit: CGFloat = precise ? 1 : 10
         if event.modifierFlags.contains(.option) {
             let dy = event.scrollingDeltaY * unit
             if dy != 0 { zoom(by: exp(dy * 0.01)) }
-        } else {
+        } else if zoom != .fit {
+            swipeTracker.reset()
             pan(byPoints: CGPoint(x: event.scrollingDeltaX * unit, y: event.scrollingDeltaY * unit))
+        } else if precise, let onSwipe, let phase = Self.gesturePhase(event.phase) {
+            if let step = swipeTracker.update(phase: phase, dx: event.scrollingDeltaX, dy: event.scrollingDeltaY,
+                                            isMomentum: event.momentumPhase != []) {
+                onSwipe(step)
+            }
         }
     }
 
-    public override func magnify(with event: NSEvent) { zoom(by: 1 + event.magnification) }
+    public override func magnify(with event: NSEvent) {
+        if zoom == .fit, let onPinchToGrid, let phase = Self.gesturePhase(event.phase),
+           event.magnification <= 0 || phase != .changed {
+            if pinchTracker.update(phase: phase, magnification: event.magnification) == -1 {
+                onPinchToGrid()
+                return
+            }
+        } else {
+            pinchTracker.reset()
+        }
+        zoom(by: 1 + event.magnification)
+    }
+
+    private static func gesturePhase(_ phase: NSEvent.Phase) -> SwipeTracker.Phase? {
+        if phase.contains(.began) || phase.contains(.mayBegin) { return .began }
+        if phase.contains(.changed) { return .changed }
+        if phase.contains(.ended) { return .ended }
+        if phase.contains(.cancelled) { return .cancelled }
+        return nil
+    }
 
     public override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)

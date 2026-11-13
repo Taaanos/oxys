@@ -6,11 +6,27 @@ import Library
 import SwiftUI
 
 private final class GridCollectionView: NSCollectionView {
+    var onPinchToLoupe: ((NSPoint) -> Void)?
+    private var pinchTracker = PinchNavigationTracker()
+
     override func mouseDown(with event: NSEvent) {
         if let editor = window?.firstResponder as? NSTextView, editor.isFieldEditor {
             window?.makeFirstResponder(nil)
         }
         super.mouseDown(with: event)
+    }
+
+    override func magnify(with event: NSEvent) {
+        let phase: SwipeTracker.Phase? =
+            event.phase.contains(.began) || event.phase.contains(.mayBegin) ? .began :
+            event.phase.contains(.changed) ? .changed :
+            event.phase.contains(.ended) ? .ended :
+            event.phase.contains(.cancelled) ? .cancelled : nil
+        if let phase, pinchTracker.update(phase: phase, magnification: event.magnification) == 1 {
+            onPinchToLoupe?(convert(event.locationInWindow, from: nil))
+            return
+        }
+        super.magnify(with: event)
     }
 }
 
@@ -106,6 +122,13 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         collection.backgroundColors = [NSColor(white: LoupeView.canvasGray, alpha: 1)]
         collection.register(GridItem.self, forItemWithIdentifier: GridItem.identifier)
         collection.setAccessibilityLabel("Photos")
+        collection.onPinchToLoupe = { [weak self, weak collection] point in
+            guard let self, let collection else { return }
+            if let indexPath = collection.indexPathForItem(at: point) {
+                folder.setCurrent(index: indexPath.item)
+            }
+            if folder.currentURL != nil { onOpen?() }
+        }
 
         let scroll = GridScrollView()
         scroll.onLayout = { [weak self] in self?.viewportChanged() }

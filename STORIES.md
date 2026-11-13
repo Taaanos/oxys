@@ -142,7 +142,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-31 | Spotlight-style searchable and executable shortcut panel (I14) | M-23, D-03 | todo |
 | V-32 | Photo context menu, Copy Path, and AirDrop (I5, I10, I3) | M-19, M-21, V-12, V-21 | done |
 | V-33 | Clean color label circles respecting Differentiate Without Color (I16) | M-06, D-13 | done |
-| V-34 | Trackpad swipe and pinch navigation (I18) | M-12, M-15 | todo |
+| V-34 | Trackpad swipe and pinch navigation (I18) | M-12, M-15 | done |
 
 ### Dependency map (foundations and MVP)
 
@@ -3278,9 +3278,9 @@ Collected from real culling sessions (Tier 1).
 - Optional/complementary: pinch-in at `Fit` in Loupe transitions to Grid (`view.grid`); pinch-out on a cell in Grid opens it in Loupe (`view.loupe`).
 
 **Acceptance criteria**
-- [ ] In Loupe at `Fit`, swiping left/right with two fingers advances one photo per swipe without skipping multiple frames.
-- [ ] When zoomed in (`zoom != .fit`), two-finger scrolling pans the image as before without triggering photo navigation.
-- [ ] Pinch-to-zoom in Loupe and Compare continues to zoom smoothly around the pointer.
+- [x] In Loupe at `Fit`, swiping left/right with two fingers advances one photo per swipe without skipping multiple frames.
+- [x] When zoomed in (`zoom != .fit`), two-finger scrolling pans the image as before without triggering photo navigation.
+- [x] Pinch-to-zoom in Loupe and Compare continues to zoom smoothly around the pointer.
 
 ---
 
