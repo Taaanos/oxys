@@ -139,7 +139,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-28 | Spike + fix: ZV-1 ARW edge distortion with lens correction (Bug 1) | V-19 | todo (waiting for `DSC00170.ARW` sample) |
 | V-29 | Shortcut for lens correction (I11) | V-19, M-05 | done |
 | V-30 | Export format labels and JPEG/HEIC quality sliders (I12, I13) | V-21 | done |
-| V-31 | Spotlight-style searchable and executable shortcut panel (I14) | M-23, D-03 | todo |
+| V-31 | Spotlight-style searchable and executable shortcut panel (I14) | M-23, D-03 | done |
 | V-32 | Photo context menu, Copy Path, and AirDrop (I5, I10, I3) | M-19, M-21, V-12, V-21 | done |
 | V-33 | Clean color label circles respecting Differentiate Without Color (I16) | M-06, D-13 | done |
 | V-34 | Trackpad swipe and pinch navigation (I18) | M-12, M-15 | done |
@@ -3222,10 +3222,15 @@ Collected from real culling sessions (Tier 1).
 - `Esc` (or `?` when search is empty) closes the sheet.
 
 **Acceptance criteria**
-- [ ] Opening `?` focuses the search field; typing filters commands live by name or shortcut.
-- [ ] `↑`/`↓` moves the highlight through matching commands; `Return` runs the selected command and dismisses the sheet.
-- [ ] Disabled commands are shown dimmed and cannot be executed via `Return`.
-- [ ] Pressing `Esc` closes the sheet and returns keyboard focus to the canvas.
+- [x] Opening `⌘K` focuses the search field; typing filters commands live by name, group, or shortcut.
+- [x] `↑`/`↓` moves the highlight through enabled matching commands; `Return` runs the selected command (`.perform`) and dismisses the bar.
+- [x] Disabled commands are shown dimmed and non-selectable, and cannot be executed via `Return`.
+- [x] Pressing `Esc` (or `⌘K`) closes the bar and returns keyboard focus to the canvas.
+
+**Decisions & notes**
+- Replaced `?` with `⌘K` (`Shortcut(.position(.k), [.command])`) and renamed `help.cheatsheet` to `"Command Bar"`.
+- Scoped to commands available in the current `ViewMode`, displaying SF Symbols, dynamic titles, and toggle checkmarks (`isOn`).
+- Anchored in the top-third of the window (`540pt` wide, `.glassEffect(.regular)`) and shrinks to fit filtered results.
 
 ### V-32 · Photo context menu, Copy Path, and AirDrop (I5, I10, I3)
 
