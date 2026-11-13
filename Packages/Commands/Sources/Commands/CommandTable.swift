@@ -295,9 +295,9 @@ public struct CommandTable: Sendable {
         Command("file.extractCancel", "Cancel or Close Export", menu: .init(.photo, group: 5),
                 keys: [Shortcut(.position(.period), [.command])]),
 
-        // The cheat sheet (M-23): `?` in every mode. The Help menu search finds every item above by its title.
-        Command("help.cheatsheet", "Keyboard Shortcuts", menu: .init(.help),
-                keys: [Shortcut(.character("?"))]),
+        // The command bar (M-23): `⌘K` in every mode. Lists the mode's shortcuts and runs any enabled command.
+        Command("help.cheatsheet", "Command Bar", menu: .init(.help),
+                keys: [Shortcut(.position(.k), [.command])]),
     ])
 
     private static let grid: Set<ViewMode> = [.grid]

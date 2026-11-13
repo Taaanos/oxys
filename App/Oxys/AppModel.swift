@@ -41,11 +41,10 @@ final class AppModel {
     var infoVisible: Bool { focus.isVisible(.info, saved: loupe.showInfoStrip) }
     var exifVisible: Bool { infoVisible && loupe.showExif }
     var histogramVisible: Bool { focus.isVisible(.histogram, saved: loupe.showHistogram) }
-    /// The `?` sheet (M-23).
+    /// The `⌘K` Command Bar (M-23).
     var showCheatSheet = false
-    var cheatScroll = ScrollPosition()
-    /// Kept by the sheet's scroll view so the keys can move it: current offset, visible height and content height.
-    var cheatMetrics: (offset: CGFloat, page: CGFloat, content: CGFloat) = (0, 0, 0)
+    var cheatSearch = ""
+    var cheatSelectedID: CommandID?
     /// External editors (V-12) and the `⌥⌘E` chooser.
     let editors = EditorStore()
     var showEditorChooser = false
@@ -82,29 +81,80 @@ final class AppModel {
         if id == nil, let row = inspectorRows.first(where: { $0.id == inspectorFocusID }) { announce("\(row.label), \(row.value)") }
     }
 
-    /// Keys while the cheat sheet is up: `Esc` or the key of "Keyboard Shortcuts" (`?` at first) closes it; arrows,
-    /// Page, Home, End and Space scroll it.
-    private func cheatSheetKey(_ input: KeyInput) {
+    var cheatSections: [CheatSection] {
+        CheatSheet.sections(
+            table: commands.table,
+            keymap: commands.keymap,
+            mode: commands.mode,
+            title: { commands.title(for: $0) },
+            isEnabled: { commands.isEnabled($0) },
+            isOn: { commands.isOn($0) }
+        )
+    }
+
+    var cheatVisibleEntries: [CheatSection.Entry] {
+        let sections = cheatSections
+        if cheatSearch.trimmingCharacters(in: .whitespaces).isEmpty {
+            return sections.flatMap(\.entries)
+        }
+        return CheatSheet.search(sections: sections, query: cheatSearch)
+    }
+
+    func openCheatSheet() {
+        cheatSearch = ""
+        cheatSelectedID = cheatVisibleEntries.first(where: \.isEnabled)?.id
+        showCheatSheet = true
+    }
+
+    func closeCheatSheet() {
+        showCheatSheet = false
+        cheatSearch = ""
+        cheatSelectedID = nil
+        NSApp.keyWindow?.makeFirstResponder(nil)
+    }
+
+    func toggleCheatSheet() {
+        if showCheatSheet { closeCheatSheet() } else { openCheatSheet() }
+    }
+
+    func runCheatCommand(_ id: CommandID) {
+        guard let command = commands.table[id], commands.isEnabled(command) else { return }
+        closeCheatSheet()
+        commands.perform(id, phase: .perform)
+    }
+
+    /// Keys while the Command Bar is up: `Esc` or the key of "Command Bar" (`⌘K`) closes it;
+    /// `↑`/`↓` step across enabled commands; `↵` runs the selected command; typing goes to the search field.
+    private func cheatSheetKey(_ input: KeyInput) -> Bool {
+        if commands.keymap.command(for: input, mode: commands.mode) == "help.cheatsheet" {
+            closeCheatSheet()
+            return true
+        }
         let code = input.keyCode
-        let m = cheatMetrics
-        let line: CGFloat = 40
-        let maxY = max(0, m.content - m.page)
-        func scroll(to y: CGFloat) { cheatScroll.scrollTo(y: min(max(0, y), maxY)) }
-        if commands.keymap.command(for: input, mode: commands.mode) == "help.cheatsheet" { showCheatSheet = false; return }
         switch code {
-        case PhysicalKey.escape.rawValue: showCheatSheet = false
-        case PhysicalKey.downArrow.rawValue: scroll(to: m.offset + line)
-        case PhysicalKey.upArrow.rawValue: scroll(to: m.offset - line)
-        case PhysicalKey.space.rawValue, PhysicalKey.pageDown.rawValue: scroll(to: m.offset + m.page - line)
-        case PhysicalKey.pageUp.rawValue: scroll(to: m.offset - m.page + line)
-        case PhysicalKey.home.rawValue: scroll(to: 0)
-        case PhysicalKey.end.rawValue: scroll(to: maxY)
-        default: break
+        case PhysicalKey.escape.rawValue:
+            closeCheatSheet()
+            return true
+        case PhysicalKey.downArrow.rawValue:
+            cheatSelectedID = CheatSheet.stepSelection(in: cheatVisibleEntries, from: cheatSelectedID, by: 1)
+            return true
+        case PhysicalKey.upArrow.rawValue:
+            cheatSelectedID = CheatSheet.stepSelection(in: cheatVisibleEntries, from: cheatSelectedID, by: -1)
+            return true
+        case PhysicalKey.return.rawValue, 76:
+            if let id = cheatSelectedID { runCheatCommand(id) }
+            return true
+        default:
+            if input.modifiers.contains(.command) { return false }
+            let isEditing = (NSApp.keyWindow?.firstResponder as? NSTextView).map { $0.isEditable || $0.isFieldEditor } ?? false
+            return !isEditing
         }
     }
 
     /// Keys while the editor chooser is up.
-    private func editorChooserKey(_ code: UInt16) {
+    private func editorChooserKey(_ input: KeyInput) -> Bool {
+        if input.modifiers.contains(.command) { return false }
+        let code = input.keyCode
         let list = editors.editors
         func move(_ step: Int) {
             guard !list.isEmpty else { return }
@@ -123,6 +173,7 @@ final class AppModel {
             let digits: [PhysicalKey] = [.digit1, .digit2, .digit3, .digit4, .digit5, .digit6, .digit7, .digit8, .digit9]
             if let n = digits.firstIndex(where: { $0.rawValue == code }) { chooseEditor(at: n) }
         }
+        return true
     }
 
     /// Opens the selection in the chooser's `index`th editor, then closes the chooser. A missing editor does nothing.
@@ -301,7 +352,7 @@ final class AppModel {
         registerFilter()
         commands.modalActive = { [unowned self] in showCheatSheet || showEditorChooser }
         commands.modalKey = { [unowned self] input in
-            if showEditorChooser { editorChooserKey(input.keyCode) } else { cheatSheetKey(input) }
+            if showEditorChooser { editorChooserKey(input) } else { cheatSheetKey(input) }
         }
         // Edit (V-12): `⌘E` opens in the default editor, `⌥⌘E` asks which.
         commands.register("file.edit", isAvailable: { [unowned self] in !folder.cullTargets.isEmpty && editors.defaultEditor != nil },
@@ -320,7 +371,7 @@ final class AppModel {
         commands.register("file.extractCancel", isAvailable: { [unowned self] in extract.isShowing }) { [unowned self] _ in
             if extract.isRunning { extract.cancel() } else { extract.dismiss() }
         }
-        commands.register("help.cheatsheet") { [unowned self] _ in showCheatSheet.toggle() }
+        commands.register("help.cheatsheet") { [unowned self] _ in toggleCheatSheet() }
         commands.register("view.filmstrip", isOn: { [unowned self] in showFilmStrip }) { [unowned self] _ in
             panelKey(.filmStrip, saved: showFilmStrip, toggle: { setFilmStrip(!showFilmStrip) }, turnOn: { setFilmStrip(true) })
         }

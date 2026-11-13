@@ -130,8 +130,8 @@ private func press(_ key: PhysicalKey, _ keymap: Keymap, mods: KeyModifiers = []
     let editor = KeymapEditor()
     // `/` is `.position(.slash)` for Deselect Active Photo; the recorder gives `.character("/")` for the same press.
     #expect(conflictIDs(editor.check(Shortcut(.character("/")), for: "info.cycle")) == ["select.deselectActive"])
-    // `?` is `.character("?")` for the cheat sheet; `⇧/` as a position is the same press.
-    #expect(conflictIDs(editor.check(k(.slash, [.shift]), for: "info.cycle")) == ["help.cheatsheet"])
+    // `⌘K` is `.position(.k)` with `.command` for the Command Bar.
+    #expect(conflictIDs(editor.check(k(.k, [.command]), for: "info.cycle")) == ["help.cheatsheet"])
     #expect(conflictIDs(editor.check(Shortcut(.character("\\")), for: "info.cycle")) == ["filter.bar"])
 }
 

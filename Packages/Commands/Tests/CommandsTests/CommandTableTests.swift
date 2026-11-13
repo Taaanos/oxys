@@ -392,11 +392,44 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(sections.first { $0.group == .cull }?.entries.first { $0.id == "cull.reject" }?.shortcuts == [Shortcut(.position(.x))])
 }
 
-@Test func theCheatSheetKeyIsQuestionMark() {
+@Test func theCommandBarKeyIsCommandK() {
     var router = KeyRouter(keymap: resolve(nil).keymap)
-    let slash = PhysicalKey.slash.rawValue
-    let result = router.handle(KeyInput(keyCode: slash, modifiers: [.shift], timestamp: 0, character: "?"), mode: .grid, focus: .canvas)
+    let k = PhysicalKey.k.rawValue
+    let result = router.handle(KeyInput(keyCode: k, modifiers: [.command], timestamp: 0), mode: .grid, focus: .canvas)
     #expect(result.actions == [.perform("help.cheatsheet")])
+    let slash = PhysicalKey.slash.rawValue
+    let question = router.handle(KeyInput(keyCode: slash, modifiers: [.shift], timestamp: 1, character: "?"), mode: .grid, focus: .canvas)
+    #expect(question.actions.isEmpty)
+}
+
+@MainActor @Test func commandBarSearchRanksMatchesAndEnabledFirst() {
+    let keymap = resolve(nil).keymap
+    let sections = CheatSheet.sections(
+        table: .standard,
+        keymap: keymap,
+        mode: .loupe,
+        isEnabled: { $0.id != "cull.reject" }
+    )
+    let rejectResults = CheatSheet.search(sections: sections, query: "reject")
+    #expect(rejectResults.contains { $0.id == "cull.reject" && !$0.isEnabled })
+
+    let zoomResults = CheatSheet.search(sections: sections, query: "zoom")
+    #expect(zoomResults.first?.title.lowercased().hasPrefix("zoom") == true)
+
+    let shortcutResults = CheatSheet.search(sections: sections, query: "⌘K")
+    #expect(shortcutResults.contains { $0.id == "help.cheatsheet" })
+}
+
+@Test func commandBarStepSelectionSkipsDisabledEntries() {
+    let entries: [CheatSection.Entry] = [
+        .init(id: "file.open", group: .file, title: "Open", symbol: nil, shortcuts: [], advances: false, isEnabled: true, isOn: false),
+        .init(id: "cull.reject", group: .cull, title: "Reject", symbol: nil, shortcuts: [], advances: false, isEnabled: false, isOn: false),
+        .init(id: "help.cheatsheet", group: .help, title: "Command Bar", symbol: nil, shortcuts: [], advances: false, isEnabled: true, isOn: false),
+    ]
+    #expect(CheatSheet.stepSelection(in: entries, from: "file.open", by: 1) == "help.cheatsheet")
+    #expect(CheatSheet.stepSelection(in: entries, from: "help.cheatsheet", by: 1) == "file.open")
+    #expect(CheatSheet.stepSelection(in: entries, from: "file.open", by: -1) == "help.cheatsheet")
+    #expect(CheatSheet.stepSelection(in: entries.map { var e = $0; e.isEnabled = false; return e }, from: nil, by: 1) == nil)
 }
 
 /// V-09: Compare takes the zoom, pan, RAW and overlay keys of Loupe, and `⇧Z` links the panes. `⇧Z` is Compare's alone.

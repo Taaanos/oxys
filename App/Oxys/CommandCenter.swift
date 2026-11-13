@@ -22,10 +22,10 @@ final class CommandCenter {
     @ObservationIgnored var inspectorKey: (UInt16, Bool, Bool) -> Bool = { _, _, _ in false }
     /// Called for every key-down the window gets, held keys included (the film strip, V-20, waits for keys to stop).
     @ObservationIgnored var keyActivity: () -> Void = {}
-    /// True while an in-window overlay (the cheat sheet) owns the keyboard; it gets every key but `⌘` chords.
+    /// True while an in-window overlay (the command bar or editor chooser) owns the keyboard.
     @ObservationIgnored var modalActive: () -> Bool = { false }
-    /// Offered each key-down of a modal overlay.
-    @ObservationIgnored var modalKey: (KeyInput) -> Void = { _ in }
+    /// Offered each key-down of a modal overlay; return true if handled (consumed), false to pass to the focused field or menu bar.
+    @ObservationIgnored var modalKey: (KeyInput) -> Bool = { _ in true }
     /// Set while Settings → Keys records a key (V-14). It gets every key-down, `⌘` chords and `Esc` included, and
     /// the monitor consumes the key-up too, so nothing reaches the menus or the photo.
     @ObservationIgnored var keyCapture: ((KeyInput) -> Void)?
@@ -203,9 +203,18 @@ final class CommandCenter {
                 && keymap.command(for: input, mode: mode) != nil
         }
         if event.type == .keyDown { keyActivity() }
-        if modalActive(), !event.modifierFlags.contains(.command) {
-            if event.type == .keyDown { modalKey(input) }
-            return true
+        if modalActive() {
+            if event.type == .keyDown, let tv = window.firstResponder as? NSTextView, tv.isEditable || tv.isFieldEditor,
+               let action = Self.textEditingAction(for: input) {
+                NSApp.sendAction(action, to: nil, from: nil)
+                return true
+            }
+            if event.type == .keyDown {
+                if modalKey(input) { return true }
+            } else {
+                let isEditing = (window.firstResponder as? NSTextView).map { $0.isEditable || $0.isFieldEditor } ?? false
+                if !isEditing { return true }
+            }
         }
         // With Full Keyboard Access on, `⇥` and `⇧⇥` are how the keyboard moves between controls (the filter bar,
         // the toolbar, the banner's buttons), so they go to the system. "Focus Mode" stays in the View menu; Compare's `⌥⇥` still reaches the app.

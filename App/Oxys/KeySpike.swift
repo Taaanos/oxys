@@ -25,7 +25,7 @@ enum KeySpikeSetup {
             .init(.character("\\"), command: "cull.clear"),
             .init(.character("="), command: "zoom.in"),
             .init(.character("-"), command: "zoom.out"),
-            .init(.character("?"), command: "help.cheatsheet"),
+            .init(.position(.k), [.command], command: "help.cheatsheet"),
         ]
         let digits: [PhysicalKey] = [.digit1, .digit2, .digit3, .digit4, .digit5]
         for (i, k) in digits.enumerated() {
@@ -185,7 +185,7 @@ struct KeySpikeCommands: Commands {
             item("Reveal", "file.reveal", "r", .command)
             item("Undo", "edit.undo", "z", .command)
             item("Rate down", "rate.down", "[", [])
-            item("Cheat sheet", "help.cheatsheet", "?", [])
+            item("Command Bar", "help.cheatsheet", "k", .command)
         }
     }
 
