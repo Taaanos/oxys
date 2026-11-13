@@ -133,9 +133,9 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | D-12 | Spike: a glass HUD for commands with no visible result | D-02 | built; gate open (nothing run or seen on screen yet: contrast, Reduce Motion, idle CPU, one-session decision) |
 | D-13 | Glass lens and capsule marks in Grid | V-20, M-12, M-19 | done (checked on screen at all five sizes; you used the arrow keys, no lag; contrast on pure white accepted by you; the R+J chip, a 10,000-photo folder and VoiceOver not checked) |
 | **Phase 2d** | **Usage fixes & polish** | | |
-| V-25 | Reset filters when opening a new folder (I6) | M-20, V-15 | todo |
+| V-25 | Reset filters when opening a new folder (I6) | M-20, V-15 | done |
 | V-26 | Standard text editing and defocus in filter search (I7) | M-20, M-05 | built (needs live check) |
-| V-27 | Rename "Keep Zoom Between Photos" to "Sticky Zoom" (I19) | M-15 | todo |
+| V-27 | Rename "Keep Zoom Between Photos" to "Sticky Zoom" (I19) | M-15 | done |
 | V-28 | Spike + fix: ZV-1 ARW edge distortion with lens correction (Bug 1) | V-19 | todo (waiting for `DSC00170.ARW` sample) |
 | V-29 | Shortcut for lens correction (I11) | V-19, M-05 | todo |
 | V-30 | Export format labels and JPEG/HEIC quality sliders (I12, I13) | V-21 | todo |
@@ -3121,7 +3121,7 @@ Collected from real culling sessions (Tier 1).
 - [ ] Opening a new folder while a filter (stars, label, reject, or search text) is active clears the filter and shows all photos in the new folder.
 - [ ] Reopening a folder with a saved session restores its sort order without restoring a narrowing filter.
 - [ ] `File > Reload` on the current folder keeps the active filter intact.
-- [ ] Unit test in `LibraryTests` covering filter reset on `FolderModel.open`.
+- [x] Unit test in `LibraryTests` covering filter reset on `FolderModel.open`.
 
 **Decisions**
 - **Decided:** Keep Filter Bar visibility (`showFilterBar`) unchanged on folder open, and keep `File > Reload` preserving the current filter.
@@ -3155,8 +3155,8 @@ Collected from real culling sessions (Tier 1).
 - Rename `"Keep Zoom Between Photos"` to `"Sticky Zoom"` in `CommandTable` (`Packages/Commands/Sources/Commands/CommandTable.swift`), and update any matching references in docs or tests.
 
 **Acceptance criteria**
-- [ ] View menu and Cheat Sheet (`?`) display `"Sticky Zoom"` for `zoom.sticky` (`⌥Z`).
-- [ ] `make test` and `make build` pass.
+- [x] View menu and Cheat Sheet (`?`) display `"Sticky Zoom"` for `zoom.sticky` (`⌥Z`).
+- [x] `make test` and `make build` pass.
 
 ### V-28 · Spike + fix: ZV-1 ARW edge distortion with lens correction (Bug 1)
 

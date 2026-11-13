@@ -163,7 +163,7 @@ public struct CommandTable: Sendable {
         // Compare (V-09): `⇧Z` links and unlinks the two panes' zoom and pan. Linked, a zoom or pan on either pane moves both.
         Command("zoom.link", "Link Zoom and Pan", menu: .init(.view, group: 1), modes: compare, requires: .photos,
                 kind: .toggle, keys: [Shortcut(.position(.z), [.shift])]),
-        Command("zoom.sticky", "Keep Zoom Between Photos", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
+        Command("zoom.sticky", "Sticky Zoom", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
                 kind: .toggle, keys: [Shortcut(.position(.z), [.option])]),
         Command("pan.left", "Pan Left", menu: .init(.view, group: 3), modes: loupeAndCompare, requires: .photos, repeats: true,
                 keys: [Shortcut(.position(.leftArrow), [.option])]),
