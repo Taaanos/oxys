@@ -30,6 +30,8 @@ public final class LoupeView: NSView {
     /// ``apply(_:)``, so two linked canvases do not answer each other.
     /// Called on a click, before a drag starts. Compare uses it to make the clicked pane the active one.
     public var onClick: (@MainActor () -> Void)?
+    /// Called on a right-click to provide a context menu for the photo shown in this canvas (V-32).
+    public var onContextMenu: (@MainActor () -> NSMenu?)?
     public var onViewChange: (@MainActor (ViewState) -> Void)?
     /// Where the camera focused in the upright picture (0...1, top-left origin), for the photo on screen; nil when the
     /// file does not say. The zoom goes here when the pointer is not over the image.
@@ -510,6 +512,11 @@ public final class LoupeView: NSView {
     }
 
     public override func mouseUp(with event: NSEvent) { endDrag() }
+
+    public override func menu(for event: NSEvent) -> NSMenu? {
+        onClick?()
+        return onContextMenu?()
+    }
 
     private func endDrag() {
         guard dragging else { return }

@@ -173,6 +173,14 @@ final class AppModel {
         }
     }
 
+    @ObservationIgnored private var contextMenu: PhotoContextMenu?
+
+    func photoContextMenu(clicking url: URL? = nil, inGrid: Bool = false) -> NSMenu? {
+        let menuBuilder = contextMenu ?? PhotoContextMenu(model: self)
+        contextMenu = menuBuilder
+        return menuBuilder.menu(clicking: url, inGrid: inGrid)
+    }
+
     func deactivateInspector() { inspectorActive = false }
 
     /// Keys while the inspector is active; true when consumed.
@@ -236,6 +244,8 @@ final class AppModel {
         loupe.compareCanvases = { [compare] in compare.canvases }
         loupe.onLensCorrectionChange = { [compare] in compare.lensCorrectionChanged() }
         grid.onOpen = { [unowned self] in commands.mode = .loupe }
+        grid.onContextMenu = { [unowned self] url in photoContextMenu(clicking: url, inGrid: true) }
+        filmStrip.onContextMenu = { [unowned self] url in photoContextMenu(clicking: url, inGrid: false) }
         commands.register("file.open") { [unowned self] _ in chooseFolder() }
         commands.register("file.reload") { [unowned self] _ in folder.reload() }
         commands.register("file.saveDecisions", isAvailable: { [unowned self] in folder.unsavedCount > 0 }) { [unowned self] _ in
@@ -279,6 +289,14 @@ final class AppModel {
             let urls = folder.revealURLs   // a RAW+JPEG pair reveals both files (V-10)
             NSWorkspace.shared.activateFileViewerSelecting(urls)
             announce(urls.count == 1 ? "Revealed 1 file in Finder" : "Revealed \(urls.count.formatted()) files in Finder")
+        }
+        commands.register("file.copyPath", isAvailable: { [unowned self] in !folder.cullTargets.isEmpty }) { [unowned self] _ in
+            let paths = folder.cullTargets.map(\.path)
+            guard !paths.isEmpty else { return }
+            copyToPasteboard(paths.joined(separator: "\n"))
+            let phrase = paths.count == 1 ? "Copied path" : "Copied \(paths.count.formatted()) paths"
+            HUD.shared.show(phrase)
+            announce(phrase)
         }
         registerFilter()
         commands.modalActive = { [unowned self] in showCheatSheet || showEditorChooser }

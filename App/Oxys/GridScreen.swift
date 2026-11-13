@@ -82,6 +82,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     }()
 
     var onOpen: (() -> Void)?
+    var onContextMenu: ((URL) -> NSMenu?)?
 
     init(folder: FolderModel, loupe: LoupeController) {
         self.folder = folder
@@ -472,6 +473,7 @@ final class GridCellView: NSView {
     private(set) var url: URL?
     /// What a click does: the file, whether it was a double-click, and the modifier keys.
     private var onClick: ((URL, Bool, NSEvent.ModifierFlags) -> Void)?
+    private var onContextMenu: ((URL) -> NSMenu?)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -520,13 +522,17 @@ final class GridCellView: NSView {
     }
 
     func configure(from controller: GridController, index: Int) {
-        configure(controller.presentation(at: index)) { [weak controller] url, open, modifiers in
+        configure(controller.presentation(at: index), onClick: { [weak controller] url, open, modifiers in
             controller?.clicked(url, open: open, modifiers: modifiers)
-        }
+        }, onContextMenu: { [weak controller] url in
+            controller?.onContextMenu?(url)
+        })
     }
 
-    func configure(_ content: Content, onClick: @escaping (URL, Bool, NSEvent.ModifierFlags) -> Void) {
+    func configure(_ content: Content, onClick: @escaping (URL, Bool, NSEvent.ModifierFlags) -> Void,
+                   onContextMenu: ((URL) -> NSMenu?)? = nil) {
         self.onClick = onClick
+        self.onContextMenu = onContextMenu
         url = content.url
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -554,6 +560,14 @@ final class GridCellView: NSView {
         }
         guard let url else { return }
         onClick?(url, event.clickCount >= 2, event.modifierFlags)
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        if let editor = window?.firstResponder as? NSTextView, editor.isFieldEditor {
+            window?.makeFirstResponder(nil)
+        }
+        guard let url else { return nil }
+        return onContextMenu?(url)
     }
 
     override func accessibilityPerformPress() -> Bool {

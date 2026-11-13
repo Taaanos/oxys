@@ -285,6 +285,9 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     #expect(actions(.l, [.option], t: 13) == [.perform("zoom.lensCorrection")])
     #expect(actions(.l, [.option], mode: .compare, t: 14) == [.perform("zoom.lensCorrection")])
     #expect(actions(.l, [.option], mode: .grid, t: 15).isEmpty)
+    // ⌥⌘C copies path in every mode.
+    #expect(actions(.c, [.command, .option], t: 16) == [.perform("file.copyPath")])
+    #expect(actions(.c, [.command, .option], mode: .grid, t: 17) == [.perform("file.copyPath")])
 }
 
 @Test func fKeyTogglesPeakingAndHoldReleases() {

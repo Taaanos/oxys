@@ -278,6 +278,9 @@ public struct CommandTable: Sendable {
         // Reveal (M-21): one Finder window with the selection (or the active photo) highlighted.
         Command("file.reveal", "Reveal in Finder", menu: .init(.photo, group: 4), requires: .photos,
                 keys: [Shortcut(.position(.r), [.command])]),
+        // Copy Path (V-32): `⌥⌘C` copies newline-separated POSIX paths of the selection or active photo.
+        Command("file.copyPath", "Copy Path", menu: .init(.photo, group: 4), requires: .photos,
+                keys: [Shortcut(.position(.c), [.command, .option])]),
 
         // External editors (V-12): `⌘E` opens in the default one, `⌥⌘E` picks. The "Edit In" submenu is built by the app.
         Command("file.edit", "Edit in External Editor", menu: .init(.photo, group: 4), requires: .photos,

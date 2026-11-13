@@ -140,7 +140,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-29 | Shortcut for lens correction (I11) | V-19, M-05 | done |
 | V-30 | Export format labels and JPEG/HEIC quality sliders (I12, I13) | V-21 | done |
 | V-31 | Spotlight-style searchable and executable shortcut panel (I14) | M-23, D-03 | todo |
-| V-32 | Photo context menu, Copy Path, and AirDrop (I5, I10, I3) | M-19, M-21, V-12, V-21 | todo |
+| V-32 | Photo context menu, Copy Path, and AirDrop (I5, I10, I3) | M-19, M-21, V-12, V-21 | done |
 | V-33 | Clean color label circles respecting Differentiate Without Color (I16) | M-06, D-13 | todo |
 | V-34 | Trackpad swipe and pinch navigation (I18) | M-12, M-15 | todo |
 
@@ -3245,10 +3245,10 @@ Collected from real culling sessions (Tier 1).
   - `Export…` (`⇧⌘E`)
 
 **Acceptance criteria**
-- [ ] Right-clicking any photo in Grid, Loupe, Compare, or FilmStrip opens the context menu and acts on the clicked photo or current selection.
-- [ ] `Copy Path` (and `⌥⌘C`) copies the file path(s) to the pasteboard and shows a HUD confirmation (`"Copied path"` / `"Copied N paths"`).
-- [ ] `Share via AirDrop…` opens the macOS AirDrop sheet with the original file URL(s) on disk.
-- [ ] `file.copyPath` is in `CommandTable` and appears in the File/Photo menu and Cheat Sheet.
+- [x] Right-clicking any photo in Grid, Loupe, Compare, or FilmStrip opens the context menu and acts on the clicked photo or current selection.
+- [x] `Copy Path` (and `⌥⌘C`) copies the file path(s) to the pasteboard and shows a HUD confirmation (`"Copied path"` / `"Copied N paths"`).
+- [x] `Share via AirDrop…` opens the macOS AirDrop sheet with the original file URL(s) on disk.
+- [x] `file.copyPath` is in `CommandTable` and appears in the File/Photo menu and Cheat Sheet.
 
 ### V-33 · Clean color label circles respecting Differentiate Without Color (I16)
 

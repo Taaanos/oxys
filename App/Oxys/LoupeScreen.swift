@@ -14,7 +14,7 @@ struct LoupeScreen: View {
         let folder = model.folder
         let loupe = model.loupe
         ZStack(alignment: .bottom) {
-            LoupeCanvas(controller: loupe)
+            LoupeCanvas(controller: loupe) { model.photoContextMenu() }
             if let failure = loupe.failure {
                 ErrorTile(name: loupe.shown?.name ?? "", message: failure)
             }
@@ -70,14 +70,18 @@ private struct LoadKey: Equatable {
 
 private struct LoupeCanvas: NSViewRepresentable {
     let controller: LoupeController
+    let onContextMenu: @MainActor () -> NSMenu?
 
     func makeNSView(context: Context) -> LoupeView {
         let view = LoupeView()
         controller.canvas = view
+        view.onContextMenu = onContextMenu
         return view
     }
 
-    func updateNSView(_ view: LoupeView, context: Context) {}
+    func updateNSView(_ view: LoupeView, context: Context) {
+        view.onContextMenu = onContextMenu
+    }
 }
 
 /// The EXIF values at the top left on a backing plate. A click or `↑`/`↓` focuses a value; `⌘C` copies it.

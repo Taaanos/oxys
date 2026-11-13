@@ -103,6 +103,7 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
     private var refreshToken: Perf.Token?
     /// The active cell's thumbnail seen through the glass lens, made once per photo that becomes active (V-20).
     private let glass = GlassCellLens()
+    var onContextMenu: ((URL) -> NSMenu?)?
 
     init(folder: FolderModel) {
         self.folder = folder
@@ -325,7 +326,11 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
             isCurrent: isCurrent, isSelected: false,
             label: isCurrent ? "\(photo.cellLabel), current photo" : photo.cellLabel, isPair: photo.isPair,
             glass: lens != nil)
-        cell.configure(content) { [weak self] url, _, _ in self?.folder.setCurrent(url) }
+        cell.configure(content, onClick: { [weak self] url, _, _ in
+            self?.folder.setCurrent(url)
+        }, onContextMenu: { [weak self] url in
+            self?.onContextMenu?(url)
+        })
     }
 
     // MARK: NSCollectionViewDataSource
