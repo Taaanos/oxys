@@ -369,16 +369,24 @@ private struct LabelSlot: View {
     }
 }
 
-/// A colored rounded square carrying the label's letter. Black on all five colors is at least 5:1; white fails on green and red.
+/// A colored circle by default (V-33), showing the label's letter when Differentiate Without Color is enabled.
+/// Black on all five colors is at least 5:1; white fails on green and red.
 private struct LabelChip: View {
     let label: ColorLabel
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     var body: some View {
-        Text(String(label.letter))
-            .font(.caption.bold().monospaced())
-            .foregroundStyle(.black)
-            .frame(width: 18, height: 18)
-            .background(label.color, in: RoundedRectangle(cornerRadius: 4))
+        if differentiateWithoutColor {
+            Text(String(label.letter))
+                .font(.caption.bold().monospaced())
+                .foregroundStyle(.black)
+                .frame(width: 18, height: 18)
+                .background(label.color, in: Circle())
+        } else {
+            Circle()
+                .fill(label.color)
+                .frame(width: 14, height: 14)
+        }
     }
 }
 

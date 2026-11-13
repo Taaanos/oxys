@@ -595,9 +595,24 @@ final class GridBadgeView: NSView {
     var failed = false { didSet { if failed != oldValue { needsDisplay = true } } }
     /// A RAW+JPEG pair (V-10): a "R+J" chip at the right end of the strip.
     var isPair = false { didSet { if isPair != oldValue { needsDisplay = true } } }
+    private var accessibilityObserver: NSObjectProtocol?
 
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil, accessibilityObserver == nil {
+            accessibilityObserver = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.needsDisplay = true }
+            }
+        } else if window == nil, let observer = accessibilityObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+            accessibilityObserver = nil
+        }
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         if failed {
@@ -666,10 +681,17 @@ final class GridBadgeView: NSView {
             x += chip * 2 + level.gap
         }
         if let label = decision.label {
-            let rect = NSRect(x: x, y: markY, width: chip, height: chip)
-            label.nsColor.setFill()
-            NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4).fill()
-            draw(String(label.letter), in: rect, color: .black, font: font(size: letterSize, weight: .bold, monospaced: true))
+            if NSWorkspace.shared.accessibilityDisplayShouldDifferentiateWithoutColor {
+                let rect = NSRect(x: x, y: markY, width: chip, height: chip)
+                label.nsColor.setFill()
+                NSBezierPath(ovalIn: rect).fill()
+                draw(String(label.letter), in: rect, color: .black, font: font(size: letterSize, weight: .bold, monospaced: true))
+            } else {
+                let dotSize = min(chip, max(10, round(chip * 0.78)))
+                let dotRect = NSRect(x: x + (chip - dotSize) / 2, y: markY + (chip - dotSize) / 2, width: dotSize, height: dotSize)
+                label.nsColor.setFill()
+                NSBezierPath(ovalIn: dotRect).fill()
+            }
         }
     }
 

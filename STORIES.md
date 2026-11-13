@@ -141,7 +141,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-30 | Export format labels and JPEG/HEIC quality sliders (I12, I13) | V-21 | done |
 | V-31 | Spotlight-style searchable and executable shortcut panel (I14) | M-23, D-03 | todo |
 | V-32 | Photo context menu, Copy Path, and AirDrop (I5, I10, I3) | M-19, M-21, V-12, V-21 | done |
-| V-33 | Clean color label circles respecting Differentiate Without Color (I16) | M-06, D-13 | todo |
+| V-33 | Clean color label circles respecting Differentiate Without Color (I16) | M-06, D-13 | done |
 | V-34 | Trackpad swipe and pinch navigation (I18) | M-12, M-15 | todo |
 
 ### Dependency map (foundations and MVP)
@@ -3262,9 +3262,9 @@ Collected from real culling sessions (Tier 1).
 - Keep VoiceOver labels unchanged (announcing the color name).
 
 **Acceptance criteria**
-- [ ] With Differentiate Without Color off, color labels render as clean colored circles in Loupe, Compare, Grid, and FilmStrip.
-- [ ] With Differentiate Without Color on, color labels render with their letter (`R`, `Y`, `G`, `B`, `P`).
-- [ ] Contrast on dark glass (`Plate.glassOpacity`) and Grid/FilmStrip capsules remains readable.
+- [x] With Differentiate Without Color off, color labels render as clean colored circles in Loupe, Compare, Grid, and FilmStrip.
+- [x] With Differentiate Without Color on, color labels render with their letter (`R`, `Y`, `G`, `B`, `P`).
+- [x] Contrast on dark glass (`Plate.glassOpacity`) and Grid/FilmStrip capsules remains readable.
 
 ### V-34 · Trackpad swipe and pinch navigation (I18)
 
