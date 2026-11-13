@@ -189,6 +189,9 @@ public struct CommandTable: Sendable {
         // `⇧R` (V-03): develop every RAW this session, and back to On demand. Never mode turns `R` and `⇧R` off.
         Command("zoom.rawAlways", "Always Show RAW", menu: .init(.view, group: 1), modes: loupe, requires: .photos,
                 kind: .toggle, keys: [Shortcut(.position(.r), [.shift])]),
+        // Lens correction (V-29). `⌥L` toggles RAW lens correction in UserDefaults and re-develops the current RAW.
+        Command("zoom.lensCorrection", "Lens Correction", menu: .init(.view, group: 1), modes: loupeAndCompare, requires: .photos,
+                kind: .toggle, keys: [Shortcut(.position(.l), [.option])]),
 
         // Focus peaking (V-06). `F` toggles the overlay and shows it only while held; `⇧F` switches between Edges and
         // Fine detail (and turns the overlay on if it is off). Color and sensitivity are in Settings.

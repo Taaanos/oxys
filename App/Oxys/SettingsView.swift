@@ -85,7 +85,7 @@ private struct RawPane: View {
             note("In On demand mode, 1:1 decodes the RAW when the preview has fewer pixels than the sensor.")
             Toggle("Lens correction for RAW", isOn: $lensCorrection)
                 .disabled(rawMode == RawMode.never.rawValue)
-            note("Applies only to cameras that the system decoder supports. Other cameras are not changed.")
+            note("Applies only to cameras that the system decoder supports. Other cameras are not changed. Use \(center.keyPhrase("zoom.lensCorrection", menu: "Lens Correction in the View menu")).")
         }
         .formStyle(.grouped)
         .fixedSize(horizontal: false, vertical: true)

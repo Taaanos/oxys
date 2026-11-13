@@ -137,7 +137,7 @@ Every module except `App` is a local Swift package, so it can be tested without 
 | V-26 | Standard text editing and defocus in filter search (I7) | M-20, M-05 | built (needs live check) |
 | V-27 | Rename "Keep Zoom Between Photos" to "Sticky Zoom" (I19) | M-15 | done |
 | V-28 | Spike + fix: ZV-1 ARW edge distortion with lens correction (Bug 1) | V-19 | todo (waiting for `DSC00170.ARW` sample) |
-| V-29 | Shortcut for lens correction (I11) | V-19, M-05 | todo |
+| V-29 | Shortcut for lens correction (I11) | V-19, M-05 | done |
 | V-30 | Export format labels and JPEG/HEIC quality sliders (I12, I13) | V-21 | todo |
 | V-31 | Spotlight-style searchable and executable shortcut panel (I14) | M-23, D-03 | todo |
 | V-32 | Photo context menu, Copy Path, and AirDrop (I5, I10, I3) | M-19, M-21, V-12, V-21 | todo |
@@ -3185,9 +3185,9 @@ Collected from real culling sessions (Tier 1).
 - Update `Settings → RAW` note to mention the shortcut via `center.keyPhrase`.
 
 **Acceptance criteria**
-- [ ] Pressing `⌥L` (or choosing View → Lens Correction) toggles RAW lens correction, re-develops the current RAW in place, and updates the Inspector's Lens correction row.
-- [ ] Command appears in the View menu, Cheat Sheet (`?`), and `Settings → Keys` for remapping.
-- [ ] Disabled/no-op when `RAW decode` is set to `Never`.
+- [x] Pressing `⌥L` (or choosing View → Lens Correction) toggles RAW lens correction, re-develops the current RAW in place, and updates the Inspector's Lens correction row.
+- [x] Command appears in the View menu, Cheat Sheet (`?`), and `Settings → Keys` for remapping.
+- [x] Disabled/no-op when `RAW decode` is set to `Never`.
 
 ### V-30 · Export format labels and JPEG/HEIC quality sliders (I12, I13)
 

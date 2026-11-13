@@ -281,6 +281,10 @@ private func keys(_ r: ResolvedKeymap, _ id: CommandID) -> [Shortcut] { r.keymap
     // ⌥Z is sticky zoom, not Z's toggle.
     #expect(actions(.z, [.option], t: 11) == [.perform("zoom.sticky")])
     #expect(actions(.z, [], t: 12) == [.perform("zoom.toggle")])
+    // ⌥L toggles lens correction in Loupe and Compare, not Grid.
+    #expect(actions(.l, [.option], t: 13) == [.perform("zoom.lensCorrection")])
+    #expect(actions(.l, [.option], mode: .compare, t: 14) == [.perform("zoom.lensCorrection")])
+    #expect(actions(.l, [.option], mode: .grid, t: 15).isEmpty)
 }
 
 @Test func fKeyTogglesPeakingAndHoldReleases() {

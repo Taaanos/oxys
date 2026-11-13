@@ -354,6 +354,16 @@ final class AppModel {
                           title: { [unowned self] in loupe.canDevelop ? "Always Show RAW" : "Always Show RAW (off: RAW decode is Never in Settings)" }) { [unowned self] _ in
             loupe.toggleAlwaysRaw()
         }
+        commands.register("zoom.lensCorrection", isOn: { LoupeController.lensCorrection },
+                          isAvailable: { [unowned self] in loupe.canDevelop },
+                          title: { [unowned self] in loupe.canDevelop ? "Lens Correction" : "Lens Correction (off: RAW decode is Never in Settings)" }) { [unowned self] _ in
+            guard loupe.canDevelop else { return }
+            let next = !LoupeController.lensCorrection
+            UserDefaults.standard.set(next, forKey: "rawLensCorrection")
+            let phrase = next ? "Lens correction on" : "Lens correction off"
+            HUD.shared.show(phrase)
+            announce(phrase)
+        }
         commands.register("cull.autoAdvance", isOn: { [unowned self] in autoAdvance }) { [unowned self] _ in
             autoAdvance.toggle()
             announce(autoAdvance ? "Auto-advance on" : "Auto-advance off")
