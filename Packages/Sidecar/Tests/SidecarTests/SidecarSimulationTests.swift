@@ -210,17 +210,18 @@ private func generateRandomXMP(rng: inout SeededRNG) -> Data {
             attrs.append("crs:Note=\"A &amp; B &lt;C&gt; &quot;D&quot;\"")
         }
 
-        // Optionally place initial XMP properties as attributes (using double quotes; single quotes tested separately).
+        // Optionally place initial XMP properties as attributes (both double- and single-quoted).
         if hasXMPInScope && rng.bool(probability: 1, outOf: 2) {
+            let q = rng.bool(probability: 1, outOf: 4) ? "'" : "\""
             if rng.bool() {
-                attrs.append("\(xmpPrefix):Rating=\"\(rng.int(in: -1...5))\"")
+                attrs.append("\(xmpPrefix):Rating=\(q)\(rng.int(in: -1...5))\(q)")
             }
             if rng.bool() {
                 let lbl = rng.pick(["Red", "Yellow", "Green", "Blue", "Purple", "Select", "Custom &amp; Label"])
-                attrs.append("\(xmpPrefix):Label=\"\(lbl)\"")
+                attrs.append("\(xmpPrefix):Label=\(q)\(lbl)\(q)")
             }
             if rng.bool() {
-                attrs.append("\(xmpPrefix):MetadataDate=\"2025-01-01T00:00:00+00:00\"")
+                attrs.append("\(xmpPrefix):MetadataDate=\(q)2025-01-01T00:00:00+00:00\(q)")
             }
         }
 
@@ -275,12 +276,13 @@ private func generateRandomXMP(rng: inout SeededRNG) -> Data {
 
 private func randomEdit(rng: inout SeededRNG) -> SidecarEdit {
     let rating = rng.int(in: -2...7) // Intentionally outside [-1, 5] to verify clamping.
-    let label: SidecarEdit.LabelChange = switch rng.int(in: 0...4) {
+    let label: SidecarEdit.LabelChange = switch rng.int(in: 0...5) {
     case 0: .keep
     case 1: .remove
     case 2: .set(rng.pick(["Red", "Yellow", "Green", "Blue", "Purple"]))
     case 3: .set(rng.pick(["Select", "Second", "Approved", "Client Pick"]))
-    default: .set("A & B <\"C\">")
+    case 4: .set("A & B <\"C\">")
+    default: .set("Bob's Pick")
     }
     return SidecarEdit(rating: rating, label: label)
 }
@@ -338,6 +340,23 @@ private func randomEdit(rng: inout SeededRNG) -> SidecarEdit {
                 current = patched
             }
         }
+    }
+
+    /// Regression test for a bug discovered by `XMPDifferentialTests` (seeds 0x1001, 0x4004, 0x6006):
+    /// `XMPPatcher.escape` must escape `'` as `&apos;` so patching a single-quoted attribute with an apostrophe
+    /// (e.g. `"Bob's Pick"`) produces valid XML that round-trips through `XMPReader` and `XMLDocument`.
+    @Test func singleQuotedAttributeWithApostropheValueRoundTrips() throws {
+        let singleQuoted = Data("""
+            <x:xmpmeta xmlns:x='adobe:ns:meta/'>
+             <rdf:RDF xmlns:rdf='\(rdfURI)'>
+              <rdf:Description rdf:about='' xmlns:xmp='\(xmpURI)' xmp:Rating='2' xmp:Label='Red'/>
+             </rdf:RDF>
+            </x:xmpmeta>
+            """.utf8)
+        let patched = try XMPPatcher.patch(singleQuoted, edit: SidecarEdit(rating: 3, label: .set("Bob's Pick")),
+                                           date: Date(timeIntervalSince1970: 1_800_000_000))
+        let parsed = try XMPReader.parse(patched)
+        #expect(parsed == XMPProperties(rating: 3, label: "Bob's Pick"))
     }
 
     @Test(arguments: [UInt64(0xA11CE), 0xB0B0, 0xCAFE, 0xDEAD])
@@ -684,6 +703,78 @@ private func randomEdit(rng: inout SeededRNG) -> SidecarEdit {
                     var st = stat()
                     #expect(lstat(t.sidecarURL.path, &st) == 0 && (st.st_mode & S_IFMT) == S_IFIFO,
                             "seed=\(hex(seed)) round=\(round) photo=\(i): FIFO was altered!")
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Suite 3: SidecarIndex Differential Oracle (Case-Insensitive & Style Fallback)
+
+@Suite struct SidecarIndexDifferentialTests {
+    @Test(arguments: [UInt64(0x5101), 0x5102, 0x5103, 0x5104])
+    func indexMatchesNaiveDirectoryLookupOracle(seed: UInt64) throws {
+        var rng = SeededRNG(seed: seed)
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("oxys-idx-\(hex(seed))-\(UUID().uuidString)")
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: dir) }
+
+        let stems = (0..<12).map { "IMG_\($0)" }
+        let exts = ["ARW", "CR3", "NEF", "dng", "JPG"]
+        var photoNames: [String] = []
+        var createdFiles: Set<String> = []
+
+        for stem in stems {
+            let ext = rng.pick(exts)
+            let photo = "\(stem).\(ext)"
+            photoNames.append(photo)
+            try Data().write(to: dir.appendingPathComponent(photo))
+            createdFiles.insert(photo)
+
+            // Randomly create stem.xmp, stem.ext.xmp (with varied casing), and non-sidecar decoy files.
+            if rng.bool(probability: 1, outOf: 2) {
+                let name = rng.bool() ? "\(stem).xmp" : "\(stem).XMP"
+                try Data().write(to: dir.appendingPathComponent(name))
+                createdFiles.insert(name)
+            }
+            if rng.bool(probability: 1, outOf: 2) {
+                let name = rng.bool() ? "\(photo).xmp" : "\(stem).\(ext.lowercased()).XMP"
+                try Data().write(to: dir.appendingPathComponent(name))
+                createdFiles.insert(name)
+            }
+            if rng.bool(probability: 1, outOf: 3) {
+                let decoy = "\(photo).arp"
+                try Data().write(to: dir.appendingPathComponent(decoy))
+                createdFiles.insert(decoy)
+            }
+        }
+
+        let index = SidecarIndex(folder: dir)
+        let actualNames = try fm.contentsOfDirectory(atPath: dir.path)
+        let lowerToActual = Dictionary(actualNames.map { ($0.lowercased(), $0) }, uniquingKeysWith: { a, _ in a })
+
+        for photo in photoNames {
+            let photoURL = dir.appendingPathComponent(photo)
+            for style in SidecarNaming.allCases {
+                let got = index.files(for: photoURL, preferring: style)
+                let prefKey = style.fileName(for: photo).lowercased()
+                let altKey = style.other.fileName(for: photo).lowercased()
+                let prefActual = lowerToActual[prefKey].map { dir.appendingPathComponent($0) }
+                let altActual = lowerToActual[altKey].map { dir.appendingPathComponent($0) }
+
+                if let prefActual {
+                    #expect(got?.primary.lastPathComponent.lowercased() == prefActual.lastPathComponent.lowercased(),
+                            "seed=\(hex(seed)) \(photo) \(style): preferred primary mismatch")
+                    #expect(got?.alsoPresent?.lastPathComponent.lowercased() == altActual?.lastPathComponent.lowercased(),
+                            "seed=\(hex(seed)) \(photo) \(style): alsoPresent mismatch")
+                } else if let altActual {
+                    #expect(got?.primary.lastPathComponent.lowercased() == altActual.lastPathComponent.lowercased(),
+                            "seed=\(hex(seed)) \(photo) \(style): fallback primary mismatch")
+                    #expect(got?.alsoPresent == nil,
+                            "seed=\(hex(seed)) \(photo) \(style): fallback should have nil alsoPresent")
+                } else {
+                    #expect(got == nil, "seed=\(hex(seed)) \(photo) \(style): expected nil sidecar")
                 }
             }
         }

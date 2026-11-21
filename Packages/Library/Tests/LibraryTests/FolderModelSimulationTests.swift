@@ -494,3 +494,262 @@ private struct FolderModelOracle {
         }
     }
 }
+
+// MARK: - Suite 2: ComparePair Stateful Simulation
+
+@Suite struct ComparePairSimulationTests {
+    @Test(arguments: [UInt64(0xC201), 0xC202, 0xC203, 0xC204, 0xC205, 0xC206])
+    func comparePairNeverCollapsesOrPointsOutsideVisibleList(seed: UInt64) throws {
+        var rng = SeededRNG(seed: seed)
+        let pool = (0..<20).map { URL(fileURLWithPath: "/sim/IMG_\($0).ARW") }
+        var urls = pool
+
+        var pair = try #require(ComparePair.start(selected: [], current: urls[0], in: urls))
+
+        for step in 0..<300 {
+            switch rng.int(in: 0...8) {
+            case 0...1:
+                let s = rng.pick([FolderModel.Step.next, .previous, .first, .last])
+                let expectedDest = pair.destination(s, in: urls)
+                let moved = pair.step(s, in: urls)
+                #expect(moved == (expectedDest != nil),
+                        "seed=\(hex(seed)) step=\(step): step(\(s)) disagreed with destination()")
+                if let expectedDest {
+                    #expect(pair.activeURL == expectedDest,
+                            "seed=\(hex(seed)) step=\(step): activeURL did not match destination()")
+                }
+
+            case 2:
+                _ = pair.advance(in: urls)
+
+            case 3:
+                let oldSelect = pair.select, oldCand = pair.candidate, oldSide = pair.active
+                pair.swap()
+                #expect(pair.select == oldCand && pair.candidate == oldSelect && pair.active == oldSide,
+                        "seed=\(hex(seed)) step=\(step): swap invariant violated")
+
+            case 4:
+                let oldSide = pair.active
+                pair.switchSide()
+                #expect(pair.active == oldSide.other)
+
+            case 5:
+                let side: ComparePair.Side = rng.bool() ? .select : .candidate
+                pair.activate(side)
+                #expect(pair.active == side)
+
+            case 6:
+                let target = rng.pick(pool)
+                let wasOther = target == pair.url(of: pair.active.other)
+                let inList = urls.contains(target)
+                let changed = pair.show(target, in: urls)
+                if wasOther || !inList {
+                    #expect(!changed, "seed=\(hex(seed)) step=\(step): show() accepted invalid/other-side URL")
+                }
+
+            case 7:
+                // Remove 1..3 photos from the visible list (simulating filter/reject hiding or file deletion) and reconcile.
+                if urls.count > 2 {
+                    let dropCount = min(urls.count - 2, rng.int(in: 1...3))
+                    for _ in 0..<dropCount {
+                        let idx = rng.int(in: 0...(urls.count - 1))
+                        urls.remove(at: idx)
+                    }
+                    pair = try #require(pair.reconciled(in: urls),
+                                        "seed=\(hex(seed)) step=\(step): reconciled returned nil with \(urls.count) urls")
+                } else {
+                    // Restore full pool and restart ComparePair with random selection.
+                    urls = pool
+                    var sel: [URL] = []
+                    for _ in 0..<rng.int(in: 0...3) { sel.append(rng.pick(urls)) }
+                    pair = try #require(ComparePair.start(selected: sel, current: rng.pick(urls), in: urls))
+                }
+
+            default:
+                // Re-sort / reverse the visible list and reconcile.
+                urls.reverse()
+                pair = try #require(pair.reconciled(in: urls))
+            }
+
+            // Core ComparePair invariants after every single step:
+            #expect(pair.select != pair.candidate,
+                    "seed=\(hex(seed)) step=\(step): select and candidate collapsed onto same URL!")
+            #expect(urls.contains(pair.select) && urls.contains(pair.candidate),
+                    "seed=\(hex(seed)) step=\(step): pair references URL outside visible list!")
+            #expect(pair.activeURL == pair.url(of: pair.active))
+        }
+
+        // Degenerate lists (< 2 photos) always return nil from start & reconciled.
+        #expect(ComparePair.start(selected: [], current: nil, in: []) == nil)
+        #expect(ComparePair.start(selected: [], current: pool[0], in: [pool[0]]) == nil)
+        #expect(pair.reconciled(in: [pool[0]]) == nil)
+    }
+}
+
+// MARK: - Suite 3: RawJpegPairing Property Tests
+
+@Suite struct RawJpegPairingPropertyTests {
+    @Test(arguments: [UInt64(0xAA01), 0xAA02, 0xAA03, 0xAA04, 0xAA05, 0xAA06])
+    func pairingConservesAllFilesAndFollowsPrecedenceRules(seed: UInt64) {
+        var rng = SeededRNG(seed: seed)
+        let rawExts: [(String, PhotoFormat)] = [("ARW", .arw), ("arw", .arw), ("CR3", .cr3), ("NEF", .nef), ("RAF", .raf), ("DNG", .dng)]
+        let otherExts: [(String, PhotoFormat)] = [("JPG", .jpeg), ("jpg", .jpeg), ("HEIC", .heic), ("heic", .heic), ("TIF", .tiff)]
+        let stems = ["IMG_001", "img_001", "IMG_002", "IMG_003", "DSC_100", "dsc_100", "A01", "B02"]
+
+        for iter in 0..<100 {
+            var seenNames: Set<String> = []
+            var input: [Photo] = []
+            let count = rng.int(in: 1...16)
+            for idx in 0..<count {
+                let stem = rng.pick(stems)
+                let (ext, fmt) = rng.bool() ? rng.pick(rawExts) : rng.pick(otherExts)
+                let name = "\(stem).\(ext)"
+                guard seenNames.insert(name.lowercased()).inserted else { continue }
+                input.append(Photo(url: URL(fileURLWithPath: "/pair/\(name)"), format: fmt, fileSize: 1000 + idx,
+                                   modificationDate: Date(timeIntervalSince1970: 1_800_000_000)))
+            }
+
+            let paired = RawJpegPairing.pair(input)
+
+            // 1. Exact file conservation: every input URL appears in exactly one output photo's `files`.
+            let inputURLs = Set(input.map(\.url))
+            let outputURLs = paired.flatMap(\.files)
+            #expect(outputURLs.count == input.count,
+                    "seed=\(hex(seed)) iter=\(iter): file count not conserved (\(outputURLs.count) != \(input.count))")
+            #expect(Set(outputURLs) == inputURLs,
+                    "seed=\(hex(seed)) iter=\(iter): URL set mismatch after pairing")
+
+            // 2. Every companion is a JPEG or HEIC paired onto a RAW with matching lowercased stem.
+            for photo in paired {
+                if let comp = photo.companion {
+                    #expect(photo.format.isRaw, "seed=\(hex(seed)) iter=\(iter): non-RAW received a companion")
+                    #expect(comp.format == .jpeg || comp.format == .heic,
+                            "seed=\(hex(seed)) iter=\(iter): companion is not JPEG/HEIC")
+                    let rawStem = (photo.name as NSString).deletingPathExtension.lowercased()
+                    let compStem = (comp.url.lastPathComponent as NSString).deletingPathExtension.lowercased()
+                    #expect(rawStem == compStem, "seed=\(hex(seed)) iter=\(iter): stem mismatch in pair")
+                }
+            }
+
+            // 3. Groups with >= 2 RAWs never pair; groups with 1 RAW + JPEG + HEIC always pick JPEG as companion.
+            let byStem = Dictionary(grouping: input) { ($0.name as NSString).deletingPathExtension.lowercased() }
+            for (stem, group) in byStem {
+                let raws = group.filter { $0.format.isRaw }
+                let jpegs = group.filter { $0.format == .jpeg }
+                let heics = group.filter { $0.format == .heic }
+                if raws.count >= 2 {
+                    for r in raws {
+                        let out = paired.first { $0.url == r.url }
+                        #expect(out?.companion == nil, "seed=\(hex(seed)) iter=\(iter): ambiguous multi-RAW stem \(stem) paired!")
+                    }
+                } else if raws.count == 1, !jpegs.isEmpty {
+                    let out = paired.first { $0.url == raws[0].url }
+                    #expect(out?.companion?.format == .jpeg,
+                            "seed=\(hex(seed)) iter=\(iter): JPEG did not win over HEIC for stem \(stem)")
+                    if !heics.isEmpty {
+                        #expect(paired.contains { $0.url == heics[0].url },
+                                "seed=\(hex(seed)) iter=\(iter): extra HEIC disappeared for stem \(stem)")
+                    }
+                }
+            }
+
+            // 4. Relative order of surviving primary photos is preserved.
+            let inputOrder = Dictionary(uniqueKeysWithValues: input.enumerated().map { ($1.url, $0) })
+            let outputPositions = paired.compactMap { inputOrder[$0.url] }
+            #expect(outputPositions == outputPositions.sorted(),
+                    "seed=\(hex(seed)) iter=\(iter): pairing reordered primary photos")
+        }
+    }
+}
+
+// MARK: - Suite 4: FolderModel Outside-Change Simulation (M-10)
+
+@Suite @MainActor struct FolderModelOutsideChangesSimulationTests {
+    private func waitUntilLoaded(_ model: FolderModel) async {
+        for _ in 0..<500 where model.content != .photos || model.isReadingSidecars || model.isReadingCaptureTimes {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        try? await Task.sleep(for: .milliseconds(30))
+        for _ in 0..<500 where model.isReadingSidecars || model.isReadingCaptureTimes {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    @Test(arguments: [UInt64(0xE401), 0xE402, 0xE403, 0xE404])
+    func outsideDeletesArrivalsAndEditsMaintainConsistency(seed: UInt64) async throws {
+        var rng = SeededRNG(seed: seed)
+        let folder = try TempFolder()
+        defer { folder.remove() }
+
+        let initial = (0..<10).map { "IMG_\($0).ARW" }
+        for name in initial { try folder.add(name) }
+        try folder.add("IMG_2.JPG") // Companion pair
+
+        let model = FolderModel()
+        model.open(folder.url)
+        await waitUntilLoaded(model)
+
+        var expectedNewFiles = Set<String>()
+        var nextNewID = 100
+
+        for round in 0..<25 {
+            guard model.content == .photos, !model.photos.isEmpty else { break }
+
+            switch rng.int(in: 0...4) {
+            case 0:
+                // User makes a decision and flushes.
+                let target = rng.pick(model.photos).url
+                model.setCurrent(target)
+                model.apply(.setRating(rng.int(in: 1...5)))
+                model.flushSidecarWrites()
+
+            case 1:
+                // Outside program atomically rewrites a sidecar; simulate FSEvents notification.
+                let photo = rng.pick(model.photos)
+                let xmpName = SidecarNaming.stem.fileName(for: photo.name)
+                let xmpURL = folder.url.appendingPathComponent(xmpName)
+                let rating = rng.int(in: -1...5)
+                let xml = #"<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmp:Rating="\#(rating)"/></rdf:RDF></x:xmpmeta>"#
+                let tmp = folder.url.appendingPathComponent(".ext-\(round)-\(UUID().uuidString.prefix(6))")
+                try Data(xml.utf8).write(to: tmp)
+                #expect(rename(tmp.path, xmpURL.path) == 0)
+                model.handleChanges([xmpName])
+                try? await Task.sleep(for: .milliseconds(30))
+
+            case 2:
+                // Outside program adds a brand-new photo file -> counts in newFileCount, does NOT mutate photos.
+                let newName = "NEW_\(nextNewID).ARW"; nextNewID += 1
+                try folder.add(newName)
+                expectedNewFiles.insert(newName)
+                let countBefore = model.photos.count
+                model.handleChanges([newName])
+                #expect(model.photos.count == countBefore,
+                        "seed=\(hex(seed)) round=\(round): new photo should not auto-insert into list")
+
+            case 3:
+                // Outside program deletes one existing photo (while keeping at least 1 photo, or deleting all).
+                let victim = rng.pick(model.photos)
+                try? FileManager.default.removeItem(at: victim.url)
+                model.handleChanges([victim.name])
+                #expect(!model.photos.contains { $0.url == victim.url },
+                        "seed=\(hex(seed)) round=\(round): deleted photo remained in model.photos")
+
+            default:
+                // Toggle a filter or selection before next outside change.
+                if rng.bool() { model.selectAll() }
+                model.updateFilter { $0.setMinimumStars(rng.int(in: 0...4)) }
+            }
+
+            // Invariants after every outside-change round:
+            #expect(model.newFileCount == expectedNewFiles.count,
+                    "seed=\(hex(seed)) round=\(round): newFileCount=\(model.newFileCount) expected=\(expectedNewFiles.count)")
+            let shownSet = Set(model.visible.map(\.url))
+            #expect(model.selection.urls.isSubset(of: shownSet),
+                    "seed=\(hex(seed)) round=\(round): selection contains photo outside visible!")
+            if let cur = model.currentURL {
+                #expect(model.photos.contains { $0.url == cur },
+                        "seed=\(hex(seed)) round=\(round): currentURL points to deleted photo!")
+            }
+        }
+    }
+}

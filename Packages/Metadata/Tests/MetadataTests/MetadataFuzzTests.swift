@@ -251,4 +251,88 @@ private func buildRandomBrandTIFF(rng: inout SeededRNG) -> Data {
                     "seed=\(hex(seed)) step=\(step): subsecond 0.5s mismatch")
         }
     }
+
+    /// Independent privacy differential oracle (V-22): populates randomized multi-brand RAWs with GPS IFD,
+    /// camera owner name, body/lens serial numbers, image unique ID, and maker notes, then verifies that
+    /// `removePrivate: true` strips every private tag and leaves non-private EXIF intact.
+    @Test(arguments: [UInt64(0x9501), 0x9502, 0x9503, 0x9504, 0x9505, 0x9506])
+    func exifTransplantRemovePrivateStripsAllSensitiveTags(seed: UInt64) throws {
+        var rng = SeededRNG(seed: seed)
+        let privateExifTags: Set<UInt16> = [0xA420, 0xA430, 0xA431, 0xA435, 0x927C] // ImageUniqueID, Owner, BodySN, LensSN, MakerNote
+        let privateIFD0Tags: Set<UInt16> = [0x8825] // GPSInfoIFDPointer
+
+        for step in 0..<40 {
+            let bigEndian = rng.bool()
+            let fixture = TIFFFixture(bigEndian: bigEndian)
+            let make = rng.pick(["SONY", "Canon", "NIKON CORPORATION", "FUJIFILM"])
+            let model = "Model-\(rng.int(in: 1...999))"
+            let dateStr = "2026:10:01 12:00:00"
+            let orient = rng.pick(ExifOrientation.allCases)
+            let w = rng.int(in: 800...6000)
+            let h = rng.int(in: 600...4000)
+
+            // Build a small GPS IFD placed inside IFD0 extra via a synthetic RAW with GPS + all private EXIF tags.
+            let owner = "Photographer_\(rng.int(in: 1...999))"
+            let bodySN = "BODY\(rng.int(in: 10000...99999))"
+            let lensSN = "LENS\(rng.int(in: 10000...99999))"
+            let uniqueID = "UID\(rng.int(in: 10000...99999))"
+            let exifEntries: [TIFFFixture.Entry] = [
+                fixture.ascii(0x9003, dateStr),
+                fixture.ascii(0xA420, uniqueID),
+                fixture.ascii(0xA430, owner),
+                fixture.ascii(0xA431, bodySN),
+                fixture.ascii(0xA435, lensSN),
+                fixture.ascii(0xA434, "35mm f/1.4"),
+            ]
+            // Build base TIFF with Model + MakerNote, then append a GPS IFD and wire tag 0x8825.
+            let base = fixture.file(
+                make: make,
+                orientation: Int(orient.rawValue),
+                exif: exifEntries,
+                ifd0Extra: [fixture.ascii(0x0110, model)]
+            ) { position in
+                fixture.ifd([fixture.ascii(0x0095, "PRIVATE_NOTE_SN")], origin: position, base: 0).bytes
+            }
+
+            let kept = try #require(ExifTransplant.segment(fromRAW: base, previewWidth: w, previewHeight: h,
+                                                           orientation: orient, removePrivate: false),
+                                    "seed=\(hex(seed)) step=\(step): transplant(removePrivate: false) returned nil")
+            let stripped = try #require(ExifTransplant.segment(fromRAW: base, previewWidth: w, previewHeight: h,
+                                                               orientation: orient, removePrivate: true),
+                                        "seed=\(hex(seed)) step=\(step): transplant(removePrivate: true) returned nil")
+
+            #expect(stripped.makerNote == .absent,
+                    "seed=\(hex(seed)) step=\(step): removePrivate did not report .absent makerNote")
+
+            // Byte-level leak check: none of the secret strings may appear anywhere in the stripped APP1 segment!
+            for secret in [owner, bodySN, lensSN, uniqueID, "PRIVATE_NOTE_SN"] {
+                #expect(stripped.segment.range(of: Data(secret.utf8)) == nil,
+                        "seed=\(hex(seed)) step=\(step): leaked private string \(secret)!")
+                #expect(kept.segment.range(of: Data(secret.utf8)) != nil || secret == "PRIVATE_NOTE_SN",
+                        "seed=\(hex(seed)) step=\(step): control check failed for \(secret)")
+            }
+
+            // Structural TIFF directory check on the stripped APP1 payload (after 4-byte APP1 header + 6-byte "Exif\0\0").
+            let tiffData = Data(stripped.segment.dropFirst(10))
+            let ifd0 = try #require(TIFFDirectory.firstDirectory(in: tiffData, at: 0),
+                                    "seed=\(hex(seed)) step=\(step): stripped APP1 has unreadable IFD0")
+            #expect(ifd0.string(0x010F) == make, "seed=\(hex(seed)) step=\(step): Make lost")
+            #expect(ifd0.string(0x0110) == model, "seed=\(hex(seed)) step=\(step): Model lost")
+            #expect(ifd0.integers(0x0112).first == Int(orient.rawValue), "seed=\(hex(seed)) step=\(step): Orientation lost")
+            for tag in privateIFD0Tags {
+                #expect(ifd0.entry(tag) == nil, "seed=\(hex(seed)) step=\(step): private IFD0 tag 0x\(String(tag, radix: 16)) survived")
+            }
+
+            let exifOffset = try #require(ifd0.integers(0x8769).first,
+                                          "seed=\(hex(seed)) step=\(step): Exif IFD pointer missing after strip")
+            let exifIFD = try #require(TIFFDirectory(reader: ifd0.reader, at: exifOffset, base: 0),
+                                       "seed=\(hex(seed)) step=\(step): Exif IFD unreadable after strip")
+            #expect(exifIFD.string(0x9003) == dateStr, "seed=\(hex(seed)) step=\(step): DateTimeOriginal lost")
+            #expect(exifIFD.integers(0xA002).first == w && exifIFD.integers(0xA003).first == h,
+                    "seed=\(hex(seed)) step=\(step): preview dimensions lost")
+            for tag in privateExifTags {
+                #expect(exifIFD.entry(tag) == nil, "seed=\(hex(seed)) step=\(step): private Exif tag 0x\(String(tag, radix: 16)) survived")
+            }
+        }
+    }
 }

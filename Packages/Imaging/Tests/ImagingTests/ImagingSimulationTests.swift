@@ -1,4 +1,6 @@
+import CoreGraphics
 import Foundation
+import ImageIO
 import Synchronization
 import Testing
 @testable import Imaging
@@ -485,5 +487,119 @@ private final class GatedLoader: Sendable {
         #expect(await pipeline.cachedBytes <= (await pipeline.budgetForCache),
                 "seed=\(hex(seed)): final cachedBytes exceeds cache budget")
         #expect(gate.startedCount > 0, "seed=\(hex(seed)): simulation exercised no loads")
+    }
+}
+
+// MARK: - Suite 4: PrefetchPlan Property Tests
+
+@Suite struct PrefetchPlanPropertyTests {
+    @Test(arguments: [UInt64(0x7101), 0x7102, 0x7103, 0x7104, 0x7105, 0x7106])
+    func prefetchPlanObeysBoundsUniquenessAndDirectionBias(seed: UInt64) {
+        var rng = SeededRNG(seed: seed)
+        let plan = PrefetchPlan()
+
+        for step in 0..<300 {
+            let count = rng.int(in: 0...500)
+            let current = count == 0 ? 0 : rng.int(in: 0...(count - 1))
+            let dir: PrefetchPlan.Direction = rng.bool() ? .forward : .backward
+            let slow = rng.bool()
+
+            let indices = plan.indices(current: current, count: count, direction: dir, slow: slow)
+
+            // 1. All indices strictly in 0..<count, never includes current, and zero duplicates.
+            #expect(Set(indices).count == indices.count,
+                    "seed=\(hex(seed)) step=\(step): duplicate indices in prefetch plan")
+            for idx in indices {
+                #expect(idx >= 0 && idx < count && idx != current,
+                        "seed=\(hex(seed)) step=\(step): invalid index \(idx) for current=\(current) count=\(count)")
+            }
+
+            // 2. First prefetched index is the immediate neighbor in travel direction when it exists.
+            let immediate = dir == .forward ? current + 1 : current - 1
+            if (0..<count).contains(immediate) {
+                #expect(indices.first == immediate,
+                        "seed=\(hex(seed)) step=\(step): first prefetch \(String(describing: indices.first)) != immediate \(immediate)")
+            }
+
+            // 3. Slow mode never prefetches fewer frames than normal mode.
+            let normal = plan.indices(current: current, count: count, direction: dir, slow: false)
+            let wide = plan.indices(current: current, count: count, direction: dir, slow: true)
+            #expect(wide.count >= normal.count,
+                    "seed=\(hex(seed)) step=\(step): slow mode shrank prefetch window")
+        }
+    }
+}
+
+// MARK: - Suite 5: DiskThumbnailCache Fault Injection & Cap Tests
+
+@Suite struct DiskThumbnailCacheFaultTests {
+    private func makeTestImage(width: Int, height: Int, shade: UInt8) throws -> CGImage {
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        var pixels = [UInt8](repeating: shade, count: width * height * 4)
+        let ctx = try #require(CGContext(data: &pixels, width: width, height: height, bitsPerComponent: 8,
+                                         bytesPerRow: width * 4, space: colorSpace,
+                                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        return try #require(ctx.makeImage())
+    }
+
+    @Test(arguments: [UInt64(0x7201), 0x7202, 0x7203, 0x7204])
+    func diskCacheSurvivesCorruptionAndEnforcesByteCap(seed: UInt64) throws {
+        var rng = SeededRNG(seed: seed)
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("oxys-thumb-dst-\(hex(seed))-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: dir) }
+
+        let cap = 25_000
+        let cache = DiskThumbnailCache(directory: dir, byteCap: cap)
+        let orientations: [CGImagePropertyOrientation] = [.up, .right, .down, .left, .upMirrored]
+        let variants = ["", "strip"]
+        let baseDate = Date(timeIntervalSince1970: 1_800_000_000)
+
+        for step in 0..<25 {
+            let photoID = rng.int(in: 0...11)
+            let path = "/photos/IMG_\(photoID).ARW"
+            let size = 10_000 + photoID
+            let modified = baseDate.addingTimeInterval(Double(photoID))
+            let variant = rng.pick(variants)
+            let orient = rng.pick(orientations)
+
+            switch rng.int(in: 0...3) {
+            case 0...1:
+                // Store a fresh thumbnail and verify immediate hit + orientation round-trip.
+                let img = try makeTestImage(width: 64, height: 48, shade: UInt8(rng.int(in: 20...230)))
+                cache.store(img, orientation: orient, path: path, size: size, modified: modified,
+                            longEdge: 160, variant: variant)
+                let hit = try #require(cache.thumbnail(path: path, size: size, modified: modified,
+                                                       longEdge: 160, variant: variant),
+                                       "seed=\(hex(seed)) step=\(step): immediate cache miss after store")
+                #expect(hit.orientation == orient,
+                        "seed=\(hex(seed)) step=\(step): orientation mismatch after store")
+                // Changed size or modified date must miss!
+                #expect(cache.thumbnail(path: path, size: size + 1, modified: modified,
+                                        longEdge: 160, variant: variant) == nil)
+                #expect(cache.thumbnail(path: path, size: size, modified: modified.addingTimeInterval(1),
+                                        longEdge: 160, variant: variant) == nil)
+
+            case 2:
+                // Corrupt a cached thumbnail file on disk -> thumbnail() must return nil without trapping.
+                let file = cache.fileURL(path: path, size: size, modified: modified, longEdge: 160, variant: variant)
+                try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+                let garbage = Data((0..<rng.int(in: 0...128)).map { _ in UInt8(rng.int(in: 0...255)) })
+                try garbage.write(to: file)
+                #expect(cache.thumbnail(path: path, size: size, modified: modified, longEdge: 160, variant: variant) == nil,
+                        "seed=\(hex(seed)) step=\(step): corrupt cache file unexpectedly decoded")
+
+            default:
+                // Trim and verify total disk usage is bounded by `byteCap`.
+                cache.trim()
+                let files = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+                let totalBytes = files.reduce(0) { acc, url in
+                    acc + ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+                }
+                #expect(totalBytes <= cap,
+                        "seed=\(hex(seed)) step=\(step): totalBytes=\(totalBytes) exceeded cap=\(cap) after trim()")
+            }
+        }
+        cache.waitForTrim()
     }
 }

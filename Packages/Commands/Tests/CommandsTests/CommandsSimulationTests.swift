@@ -114,9 +114,8 @@ private func hex(_ seed: UInt64) -> String { "0x" + String(seed, radix: 16, uppe
                             "seed=\(hex(seed)) step=\(step): unowned key-up was consumed")
                 }
             } else if !downKeys.isEmpty && choice == 1 {
-                // Key repeat on a currently pressed key that we already own
-                guard !consumedDowns.isEmpty else { continue }
-                let code = rng.pick(consumedDowns.sorted())
+                // Key repeat on any currently pressed key (owned OR unowned — unowned repeats must pass through!)
+                let code = rng.pick(downKeys.sorted())
                 let mods = rng.pick(modifierCombos)
                 let result = router.handle(KeyInput(keyCode: code, modifiers: mods, isDown: true, isRepeat: true, timestamp: now),
                                            mode: mode, focus: focus)
@@ -127,6 +126,8 @@ private func hex(_ seed: UInt64) -> String { "0x" + String(seed, radix: 16, uppe
                     } else {
                         #expect(result == .passThrough, "seed=\(hex(seed)) step=\(step): textInput repeat should pass through")
                     }
+                } else if !consumedDowns.contains(code) {
+                    #expect(result == .passThrough, "seed=\(hex(seed)) step=\(step): unowned key repeat was consumed")
                 } else if expectedHolds[code] != nil {
                     // toggleOrHold repeats must be swallowed silently so they don't re-toggle!
                     #expect(result == .consumed(), "seed=\(hex(seed)) step=\(step): toggleOrHold repeat fired an action")
@@ -308,8 +309,8 @@ private func hex(_ seed: UInt64) -> String { "0x" + String(seed, radix: 16, uppe
 
             case 1:
                 let p = rng.pick(Panel.allCases)
-                // Commands like ⌘F turn the panel on (`saved = true`) alongside calling `reveal`.
-                saved[p] = true
+                // Sometimes turn saved on alongside reveal (like ⌘F), sometimes leave saved as-is or close externally (× button).
+                if rng.bool() { saved[p] = rng.bool() }
                 focus.reveal(p)
                 if focus.isOn {
                     #expect(focus.revealed.contains(p))
