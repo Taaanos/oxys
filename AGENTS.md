@@ -7,6 +7,7 @@ Keyboard-first RAW culler for macOS. Swift 6, arm64 only, macOS 27+, no sandbox.
 
 - Follow "How we work through a story" in STORIES.md: read the story's open questions, settle the ones that change the design (each has a *Proposed* default, so nothing blocks), build, check every acceptance criterion, then record decisions in the story and update its status in the index.
 - Meet the Definition of done in STORIES.md (strict concurrency with no warnings, unit tests for package logic, commands in the command table, signposts on performance paths, keyboard and VoiceOver, nothing written into photo folders except sidecars).
+- For new package logic (caches, geometry, parsers, state machines): write 2–3 sharp unit tests for PRD rules, real fixtures, and bug regressions, plus a seeded differential, property, or simulation test (printing the failing seed) instead of a long list of example-based unit tests.
 - One story per commit, on `main`. Don't push unless asked.
 - Story IDs in commits and docs: `F-` foundation, `M-` MVP, `V-` v1.0, `P-` performance, `D-` design. Cross-cutting questions are `G-n`.
 
