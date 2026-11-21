@@ -62,10 +62,15 @@ public struct JPEGHeader: Sendable, Equatable {
             let body = pos + 4
             switch marker {
             case 0xC0...0xCF where marker != 0xC4 && marker != 0xC8 && marker != 0xCC:
+                guard length >= 8,
+                      let height = be.u16(body + 1).map(Int.init),
+                      let width = be.u16(body + 3).map(Int.init),
+                      let componentCount = be.u8(body + 5).map(Int.init),
+                      width > 0, height > 0, componentCount > 0 else { return nil }
                 frame = (
-                    width: Int(be.u16(body + 3) ?? 0),
-                    height: Int(be.u16(body + 1) ?? 0),
-                    componentCount: Int(be.u8(body + 5) ?? 0),
+                    width: width,
+                    height: height,
+                    componentCount: componentCount,
                     sofMarker: marker
                 )
             case 0xE1:
