@@ -335,4 +335,50 @@ private func buildRandomBrandTIFF(rng: inout SeededRNG) -> Data {
             }
         }
     }
+
+    /// Property test for Compare mode EXIF diffing (V-09): symmetry, reflexivity, and nil-peer safety.
+    @Test(arguments: [UInt64(0x9601), 0x9602, 0x9603, 0x9604, 0x9605, 0x9606])
+    func exifCompareFieldsAreSymmetricAndReflexive(seed: UInt64) {
+        var rng = SeededRNG(seed: seed)
+
+        func randomExif() -> ExifInfo {
+            var info = ExifInfo()
+            info.camera = rng.pick([nil, "Sony A7R V", "Canon R5", "Fujifilm X-T5"])
+            info.lens = rng.pick([nil, "35mm f/1.4", "50mm f/1.2", "24-70mm f/2.8"])
+            info.focalLength = rng.pick([nil, "35mm", "50mm", "85mm"])
+            info.aperture = rng.pick([nil, "f/1.4", "f/2.8", "f/8"])
+            info.shutter = rng.pick([nil, "1/1000", "1/250", "1/60"])
+            info.iso = rng.pick([nil, "ISO 100", "ISO 800", "ISO 3200"])
+            info.exposureCompensation = rng.pick([nil, "+0.3 EV", "-1.0 EV", "0 EV"])
+            info.whiteBalance = rng.pick([nil, "Auto", "Daylight", "Cloudy"])
+            info.metering = rng.pick([nil, "Pattern", "Spot", "Center"])
+            info.flash = rng.pick([nil, "Off", "Fired"])
+            return info
+        }
+
+        let coreLabels: Set<String> = ["Focal length", "Aperture", "Shutter", "ISO"]
+
+        for step in 0..<200 {
+            let a = randomExif()
+            let b = randomExif()
+
+            // 1. Reflexivity: comparing against self never marks anything as differing and never shows non-core fields.
+            let selfFields = a.compareFields(against: a)
+            #expect(selfFields.allSatisfy { !$0.differs },
+                    "seed=\(hex(seed)) step=\(step): compareFields(against: self) marked a difference")
+            #expect(selfFields.allSatisfy { coreLabels.contains($0.label) },
+                    "seed=\(hex(seed)) step=\(step): compareFields(against: self) included non-core field")
+
+            // 2. Nil peer (still loading): nothing marked differing.
+            let nilFields = a.compareFields(against: nil)
+            #expect(nilFields.allSatisfy { !$0.differs && coreLabels.contains($0.label) },
+                    "seed=\(hex(seed)) step=\(step): compareFields(against: nil) marked a difference")
+
+            // 3. Symmetry: the exact same set of labels differ in a vs b and b vs a!
+            let abDiff = Set(a.compareFields(against: b).filter(\.differs).map(\.label))
+            let baDiff = Set(b.compareFields(against: a).filter(\.differs).map(\.label))
+            #expect(abDiff == baDiff,
+                    "seed=\(hex(seed)) step=\(step): EXIF diff not symmetric (\(abDiff) != \(baDiff))")
+        }
+    }
 }

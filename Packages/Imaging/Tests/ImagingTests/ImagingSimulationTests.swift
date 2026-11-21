@@ -742,3 +742,52 @@ private final class GatedLoader: Sendable {
         #expect(!cache.contains(neighbor))
     }
 }
+
+// MARK: - Suite 7: Histogram Differential Oracle (BGRA vs Naive Rec.709)
+
+@Suite struct HistogramDifferentialTests {
+    @Test(arguments: [UInt64(0x7401), 0x7402, 0x7403, 0x7404, 0x7405, 0x7406])
+    func bgraHistogramMatchesIndependentNaiveOracle(seed: UInt64) {
+        var rng = SeededRNG(seed: seed)
+
+        for step in 0..<40 {
+            let pixelCount = rng.int(in: 1...600)
+            var bgra = [UInt8](repeating: 0, count: pixelCount * 4)
+            var expR = [UInt32](repeating: 0, count: 256)
+            var expG = [UInt32](repeating: 0, count: 256)
+            var expB = [UInt32](repeating: 0, count: 256)
+
+            for i in 0..<pixelCount {
+                let b = UInt8(rng.int(in: 0...255))
+                let g = UInt8(rng.int(in: 0...255))
+                let r = UInt8(rng.int(in: 0...255))
+                bgra[i * 4] = b
+                bgra[i * 4 + 1] = g
+                bgra[i * 4 + 2] = r
+                bgra[i * 4 + 3] = 255
+                expR[Int(r)] += 1
+                expG[Int(g)] += 1
+                expB[Int(b)] += 1
+            }
+
+            let h = Histogram.compute(bgra: bgra, pixelCount: pixelCount, source: .preview)
+            #expect(h.pixelCount == pixelCount)
+            #expect(h.red == expR, "seed=\(hex(seed)) step=\(step): red channel mismatch")
+            #expect(h.green == expG, "seed=\(hex(seed)) step=\(step): green channel mismatch")
+            #expect(h.blue == expB, "seed=\(hex(seed)) step=\(step): blue channel mismatch")
+
+            // Exact pixel conservation across every channel including luminance.
+            #expect(h.red.reduce(0, +) == UInt32(pixelCount))
+            #expect(h.green.reduce(0, +) == UInt32(pixelCount))
+            #expect(h.blue.reduce(0, +) == UInt32(pixelCount))
+            #expect(h.luminance.reduce(0, +) == UInt32(pixelCount))
+
+            // Clipped percentages match max(R, G, B) extreme bins and stay in [0, 100].
+            let expShadow = Double(max(expR[0], expG[0], expB[0])) * 100.0 / Double(pixelCount)
+            let expHighlight = Double(max(expR[255], expG[255], expB[255])) * 100.0 / Double(pixelCount)
+            #expect(abs(h.clippedShadowsPercent - expShadow) < 1e-12)
+            #expect(abs(h.clippedHighlightsPercent - expHighlight) < 1e-12)
+            #expect((0.0...100.0).contains(h.clippedShadowsPercent) && (0.0...100.0).contains(h.clippedHighlightsPercent))
+        }
+    }
+}

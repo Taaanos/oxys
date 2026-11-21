@@ -1,5 +1,6 @@
 import Foundation
 import Sidecar
+import Synchronization
 import Testing
 @testable import Library
 
@@ -864,5 +865,229 @@ private struct FolderModelOracle {
                 #expect(strip.offset(centering: 0, count: 0) == 0)
             }
         }
+    }
+}
+
+// MARK: - Suite 6: ImageIOGate Concurrency Stress & Invariants
+
+@Suite struct ImageIOGateConcurrencyTests {
+    @Test(arguments: [1, 2, 4, 8])
+    func gateNeverExceedsConcurrencyLimitAndNeverStarvesWaiters(limit: Int) async {
+        let gate = ImageIOGate(limit: limit)
+        let counters = Mutex<(active: Int, peak: Int, completed: Int)>((0, 0, 0))
+        let totalTasks = 60
+
+        await withTaskGroup(of: Int.self) { group in
+            for i in 0..<totalTasks {
+                let needed = (i % 5) != 0
+                group.addTask {
+                    await gate.run(if: needed) {
+                        if needed {
+                            counters.withLock { c in
+                                c.active += 1
+                                if c.active > c.peak { c.peak = c.active }
+                            }
+                            // Brief busy-yield to maximize concurrent overlap inside the gate slot.
+                            Thread.sleep(forTimeInterval: 0.0005)
+                            counters.withLock { c in
+                                c.active -= 1
+                                c.completed += 1
+                            }
+                        }
+                        return i
+                    }
+                }
+            }
+            var results: Set<Int> = []
+            for await v in group { results.insert(v) }
+            #expect(results.count == totalTasks, "limit=\(limit): lost or duplicated task completions")
+        }
+
+        let final = counters.withLock { $0 }
+        #expect(final.active == 0, "limit=\(limit): leaked active slot (\(final.active))")
+        #expect(final.peak <= limit, "limit=\(limit): concurrency exceeded limit (peak=\(final.peak))")
+        #expect(final.completed == totalTasks - (totalTasks + 4) / 5)
+    }
+}
+
+// MARK: - Suite 7: SessionStore Virtual-Clock & Fault Injection Simulation
+
+@Suite struct SessionStoreSimulationTests {
+    @Test(arguments: [UInt64(0x6301), 0x6302, 0x6303, 0x6304])
+    func sessionStoreVirtualClockExpiryCorruptionAndPruneOracle(seed: UInt64) throws {
+        var rng = SeededRNG(seed: seed)
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("oxys-sess-dst-\(hex(seed))-\(UUID().uuidString)")
+        let storeDir = root.appendingPathComponent("sessions")
+        try fm.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+
+        let clock = Mutex(Date(timeIntervalSince1970: 1_800_000_000))
+        let store = SessionStore(directory: storeDir, now: { clock.withLock { $0 } })
+
+        // Create 8 real folders so FolderIdentity & lastFolder directory checks work realistically.
+        var folders: [URL] = []
+        for i in 0..<8 {
+            let f = root.appendingPathComponent("shoot_\(i)", isDirectory: true)
+            try fm.createDirectory(at: f, withIntermediateDirectories: true)
+            folders.append(f)
+        }
+
+        // Reference oracle: saved SessionState per folder URL (using ISO8601 second-rounded dates).
+        var oracle: [URL: SessionState] = [:]
+
+        for step in 0..<40 {
+            let now = clock.withLock { $0 }
+            let folder = rng.pick(folders)
+
+            switch rng.int(in: 0...5) {
+            case 0...1:
+                // Save a session at current virtual time (rounded to whole seconds to match ISO8601).
+                let roundedNow = Date(timeIntervalSince1970: floor(now.timeIntervalSince1970))
+                var filter = PhotoFilter()
+                filter.setMinimumStars(rng.int(in: 0...5))
+                filter.ascending = rng.bool()
+                let state = SessionState(
+                    identity: FolderIdentity(folder),
+                    savedAt: roundedNow,
+                    mode: rng.pick(["loupe", "grid", "compare"]),
+                    currentName: "IMG_\(rng.int(in: 1...50)).ARW",
+                    filter: filter,
+                    selected: ["IMG_1.ARW", "IMG_2.ARW"],
+                    selectionAnchor: "IMG_1.ARW",
+                    unsaved: []
+                )
+                #expect(store.save(state), "seed=\(hex(seed)) step=\(step): save failed")
+                oracle[folder] = state
+                #expect(store.lastFolder?.standardizedFileURL.path == folder.standardizedFileURL.path,
+                        "seed=\(hex(seed)) step=\(step): lastFolder mismatch after save")
+
+            case 2:
+                // Advance virtual clock by 5..45 days (pushes older sessions past the 90-day maxAge!).
+                let days = Double(rng.int(in: 5...45))
+                clock.withLock { $0 = $0.addingTimeInterval(days * 24 * 3600) }
+
+            case 3:
+                // Inject corrupt JSON and wrong-version session files on disk, then prune.
+                try fm.createDirectory(at: storeDir, withIntermediateDirectories: true)
+                try Data("{not json".utf8).write(to: storeDir.appendingPathComponent("s-corrupt-\(step).json"))
+                try Data(#"{"version":999,"identity":{"path":"/x"},"savedAt":"2026-01-01T00:00:00Z","mode":"loupe","filter":{"isOn":true,"stars":[],"labels":[],"rejects":"showAll","search":"","sortKey":"captureTime","ascending":true},"selected":[],"unsaved":[]}"#.utf8)
+                    .write(to: storeDir.appendingPathComponent("s-future-\(step).json"))
+                store.prune()
+                // Corrupt and wrong-version files must be cleaned up by prune().
+                #expect(!fm.fileExists(atPath: storeDir.appendingPathComponent("s-corrupt-\(step).json").path))
+                #expect(!fm.fileExists(atPath: storeDir.appendingPathComponent("s-future-\(step).json").path))
+
+            case 4:
+                store.clearLastFolder()
+                #expect(store.lastFolder == nil)
+
+            default:
+                // Verify load(for:) matches oracle freshness for EVERY folder!
+                let currentNow = clock.withLock { $0 }
+                for f in folders {
+                    let got = store.load(for: f)
+                    if let expected = oracle[f], currentNow.timeIntervalSince(expected.savedAt) <= SessionStore.maxAge {
+                        #expect(got == expected, "seed=\(hex(seed)) step=\(step): fresh session mismatch for \(f.lastPathComponent)")
+                    } else {
+                        #expect(got == nil, "seed=\(hex(seed)) step=\(step): expired/missing session unexpectedly loaded for \(f.lastPathComponent)")
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Suite 8: ExportRunner & SafeWrite Concurrent Collision & Cancellation Simulation
+
+@Suite struct ExportRunnerSimulationTests {
+    @Test(arguments: [UInt64(0x6401), 0x6402, 0x6403, 0x6404])
+    func exportRunnerNeverOverwritesOrLeaksPartialsUnderCollisionsAndCancellation(seed: UInt64) throws {
+        var rng = SeededRNG(seed: seed)
+        let fm = FileManager.default
+        let srcDir = fm.temporaryDirectory.appendingPathComponent("oxys-expsrc-\(hex(seed))-\(UUID().uuidString)")
+        let dstDir = fm.temporaryDirectory.appendingPathComponent("oxys-expdst-\(hex(seed))-\(UUID().uuidString)")
+        try fm.createDirectory(at: srcDir, withIntermediateDirectories: true)
+        try fm.createDirectory(at: dstDir, withIntermediateDirectories: true)
+        defer {
+            try? fm.removeItem(at: srcDir)
+            try? fm.removeItem(at: dstDir)
+        }
+
+        // Create sources with deliberate stem collisions (IMG_0.ARW + IMG_0.NEF + IMG_0.CR3, etc.).
+        let stems = ["IMG_0", "IMG_1", "IMG_2", "IMG_3"]
+        let exts = ["ARW", "NEF", "CR3", "DNG"]
+        var sources: [URL] = []
+        var failMap: [URL: Int] = [:] // 0=ok, 1=notRaw, 2=noEmbeddedJPEG, 3=cannotDevelop
+        for s in stems {
+            for e in exts where rng.bool(probability: 3, outOf: 4) {
+                let url = srcDir.appendingPathComponent("\(s).\(e)")
+                try Data("SRC-\(s)-\(e)".utf8).write(to: url)
+                sources.append(url)
+                failMap[url] = rng.bool(probability: 3, outOf: 4) ? 0 : rng.int(in: 1...3)
+            }
+        }
+        guard !sources.isEmpty else { return }
+
+        // Pre-populate sentinel files in destination that MUST NEVER be overwritten!
+        var sentinels: [URL: Data] = [:]
+        for s in stems where rng.bool() {
+            let existing = dstDir.appendingPathComponent("\(s).jpg")
+            let bytes = Data("PREEXISTING-\(s)-\(hex(seed))".utf8)
+            try bytes.write(to: existing)
+            sentinels[existing] = bytes
+        }
+
+        let cancelAfter: Int? = rng.bool() ? rng.int(in: 1...max(1, sources.count - 1)) : nil
+        let doneCount = Mutex(0)
+        let parallelism = rng.pick([1, 2, 4, 8])
+        let immutableFailMap = failMap
+
+        let summary = ExportRunner.run(
+            sources,
+            into: dstDir,
+            parallelism: parallelism,
+            progress: { n in doneCount.withLock { $0 = max($0, n) } },
+            isCancelled: {
+                guard let limit = cancelAfter else { return false }
+                return doneCount.withLock { $0 >= limit }
+            },
+            perFile: { src in
+                switch immutableFailMap[src] ?? 0 {
+                case 1: throw ExportFailure.notRaw
+                case 2: throw ExportFailure.noEmbeddedJPEG
+                case 3: throw ExportFailure.cannotDevelop("simulated")
+                default:
+                    let stem = src.deletingPathExtension().lastPathComponent
+                    let payload = Data("OUT-\(src.lastPathComponent)".utf8)
+                    let placed = try SafeWrite.place(payload, in: dstDir, stem: stem, ext: "jpg", attributesFrom: src)
+                    return ExportedFile(output: placed.output, renamed: placed.renamed, exifAdded: true,
+                                        xmpAdded: false, makerNoteSkipped: false, attributeWarnings: placed.warnings)
+                }
+            }
+        )
+
+        // 1. Pre-existing sentinel files must be byte-for-byte untouched!
+        for (url, original) in sentinels {
+            #expect(try Data(contentsOf: url) == original,
+                    "seed=\(hex(seed)): SafeWrite overwrote pre-existing file \(url.lastPathComponent)!")
+        }
+
+        // 2. Zero `.oxys-partial` temp files left behind!
+        let dstFiles = try fm.contentsOfDirectory(atPath: dstDir.path)
+        let partials = dstFiles.filter { $0.contains(".oxys-partial") }
+        #expect(partials.isEmpty, "seed=\(hex(seed)): leaked partial files \(partials)")
+
+        // 3. Exact file & summary accounting!
+        let accounted = summary.written + summary.notRaw.count + summary.withoutEmbeddedJPEG.count
+            + summary.couldNotDevelop.count + summary.failed.count
+        if !summary.cancelled {
+            #expect(accounted == sources.count,
+                    "seed=\(hex(seed)): accounted=\(accounted) != sources.count=\(sources.count)")
+        } else {
+            #expect(accounted <= sources.count)
+        }
+        #expect(dstFiles.count == sentinels.count + summary.written,
+                "seed=\(hex(seed)): destination file count \(dstFiles.count) != sentinels(\(sentinels.count)) + written(\(summary.written))")
     }
 }

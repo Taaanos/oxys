@@ -160,4 +160,87 @@ private func hex(_ seed: UInt64) -> String { "0x" + String(seed, radix: 16, uppe
             _ = try? SignpostIntervalXML.parse(Data(bytes))
         }
     }
+
+    @Test(arguments: [UInt64(0x9301), 0x9302, 0x9303, 0x9304])
+    func perfGateDifferentialAndFuzzInvariants(seed: UInt64) throws {
+        var rng = SeededRNG(seed: seed)
+        let stats: [GateTarget.Statistic] = [.p50, .p95, .max, .peak]
+
+        for batch in 0..<25 {
+            var tsvLines = ["# comment line", ""]
+            var expectedTargets: [GateTarget] = []
+            let targetCount = rng.int(in: 1...8)
+            for i in 0..<targetCount {
+                let stat = rng.pick(stats)
+                let hasLimit = rng.bool(probability: 3, outOf: 4)
+                let limit: Double? = hasLimit ? Double(rng.int(in: 10...500)) : nil
+                let limitCol = limit.map { String(Int($0)) } ?? "-"
+                let folder: String? = rng.bool(probability: 1, outOf: 3) ? "bench-\(i)" : nil
+                let cols = ["scen-\(i)", "int-\(i)", stat.rawValue, limitCol, "PRD-\(i)"] + (folder.map { [$0] } ?? [])
+                tsvLines.append(cols.joined(separator: "\t"))
+                expectedTargets.append(GateTarget(scenario: "scen-\(i)", interval: "int-\(i)",
+                                                  statistic: stat, limit: limit, prdRow: "PRD-\(i)", folder: folder))
+            }
+
+            let parsed = try GateTarget.parse(tsvLines.joined(separator: "\n"))
+            #expect(parsed == expectedTargets, "seed=\(hex(seed)) batch=\(batch): GateTarget.parse mismatch")
+
+            // Build 3 randomized PerfLogs and cross-check GateResult median + verdict oracle.
+            var results: [GateResult] = []
+            for t in parsed {
+                var logs: [PerfLog] = []
+                var runValues: [Double] = []
+                for _ in 0..<3 {
+                    var lines: [String] = []
+                    if rng.bool(probability: 4, outOf: 5) {
+                        var vals: [Double] = []
+                        for _ in 0..<rng.int(in: 1...25) {
+                            let v = Double(rng.int(in: 1...800))
+                            vals.append(v)
+                            lines.append("\(t.interval)\t\(v)")
+                        }
+                        if let st = LatencyStats(samples: vals) {
+                            let runV = switch t.statistic {
+                            case .p50: st.p50
+                            case .p95: st.p95
+                            case .max, .peak: st.max
+                            }
+                            runValues.append(runV)
+                        }
+                    }
+                    logs.append(PerfLog(text: lines.joined(separator: "\n")))
+                }
+                let result = GateResult(target: t, logs: logs)
+                results.append(result)
+
+                if runValues.isEmpty {
+                    #expect(result.outcome == .noData && result.verdict == .noData)
+                } else {
+                    let sorted = runValues.sorted()
+                    let median = sorted[(sorted.count - 1) / 2]
+                    if let limit = t.limit {
+                        let expected: GateOutcome = median <= limit ? .passed(value: median, limit: limit) : .failed(value: median, limit: limit)
+                        #expect(result.outcome == expected, "seed=\(hex(seed)) batch=\(batch): outcome mismatch")
+                    } else {
+                        #expect(result.outcome == .reported(value: median))
+                    }
+                }
+            }
+
+            let expectedPass = results.allSatisfy { $0.verdict == .pass || $0.verdict == .report }
+            #expect(GateReport.passed(results) == expectedPass, "seed=\(hex(seed)) batch=\(batch): GateReport.passed mismatch")
+            let rendered = GateReport.render(results)
+            for r in results { #expect(rendered.contains(r.target.scenario)) }
+        }
+
+        // Fuzz malformed TSV / PerfLog / FrameLog lines: must never crash.
+        for _ in 0..<150 {
+            let garbage = (0..<rng.int(in: 0...6)).map { _ in
+                rng.pick(["", "# c", "a\tb", "s\ti\tbad\t10\tr", "s\ti\tp50\tnotnum\tr", "a\t12.5", "-\tfoo\tbar", "x\ty\tz"])
+            }.joined(separator: "\n")
+            _ = try? GateTarget.parse(garbage)
+            var log = PerfLog(text: garbage)
+            log.addFrameLog(text: garbage)
+        }
+    }
 }
