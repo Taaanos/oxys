@@ -49,12 +49,32 @@ public actor FramePipeline<Frame: Sendable> {
         let task: Task<Result<LoadedFrame<Frame>, any Error>, Never>
     }
 
+    private enum PrefetchState {
+        case idle
+        case holding(Task<Void, Never>)
+        case running(Task<Void, Never>)
+
+        var isHolding: Bool {
+            if case .holding = self { return true }
+            return false
+        }
+
+        mutating func cancel() {
+            switch self {
+            case .idle: break
+            case .holding(let task), .running(let task):
+                task.cancel()
+                self = .idle
+            }
+        }
+    }
+
     private var inflight: [FrameKey: Inflight] = [:]
     /// Loads whose task has not ended. A cancelled load leaves `inflight` at once but keeps its memory until it
     /// really returns (P-02), so the reservation counts these, not `inflight`.
     private(set) var running = 0
     private var nextID: UInt64 = 0
-    private var prefetchDriver: Task<Void, Never>?
+    private var prefetchState: PrefetchState = .idle
     private let maxPrefetchConcurrency: Int
     /// Smoothed load time in seconds; drives the "reads are slow" widening.
     private var averageLoad: Double = 0
@@ -67,7 +87,6 @@ public actor FramePipeline<Frame: Sendable> {
     /// P-04: the prefetch waits this long after a request, so a held key loads its target only and the window
     /// loads once the key is up. Zero starts it at once.
     private let prefetchHold: Duration
-    private var pendingPrefetch: Task<Void, Never>?
     private var lastTarget: FrameKey?
     private var lastWindow: [FrameKey] = []
     private var pressure = MemoryPressure.normal
@@ -189,10 +208,7 @@ public actor FramePipeline<Frame: Sendable> {
             inflight[key] = nil
         }
         applyBudget()
-        prefetchDriver?.cancel()
-        prefetchDriver = nil
-        pendingPrefetch?.cancel()
-        pendingPrefetch = nil
+        prefetchState.cancel()
     }
 
     /// Drops everything: a new folder was opened.
@@ -201,10 +217,7 @@ public actor FramePipeline<Frame: Sendable> {
         quickTask = nil
         for entry in inflight.values { entry.task.cancel() }
         inflight = [:]
-        prefetchDriver?.cancel()
-        prefetchDriver = nil
-        pendingPrefetch?.cancel()
-        pendingPrefetch = nil
+        prefetchState.cancel()
         reliefTask?.cancel()
         lastTarget = nil
         lastWindow = []
@@ -257,26 +270,25 @@ public actor FramePipeline<Frame: Sendable> {
 
     /// Starts the prefetch for the last request: at once, or when `prefetchHold` has passed with no newer request.
     private func schedulePrefetch() {
-        pendingPrefetch?.cancel()
-        pendingPrefetch = nil
+        prefetchState.cancel()
         let window = Array(lastWindow.prefix(pressure.prefetchLimit))
         guard prefetchHold > .zero else { startPrefetch(window); return }
         let hold = prefetchHold
-        pendingPrefetch = Task { [pipeline = self] in
+        prefetchState = .holding(Task { [pipeline = self] in
             try? await Task.sleep(for: hold)
             guard !Task.isCancelled else { return }
             await pipeline.startHeldPrefetch()
-        }
+        })
     }
 
     private func startHeldPrefetch() {
-        pendingPrefetch = nil
+        prefetchState = .idle
         startPrefetch(Array(lastWindow.prefix(pressure.prefetchLimit)))
     }
 
     /// After a scrub the allocator keeps pages it freed; give them back once nothing has run for `reliefAfter`.
     private func scheduleRelief() {
-        guard let delay = reliefAfter, isIdle, pendingPrefetch == nil else { return }
+        guard let delay = reliefAfter, canRelieve else { return }
         reliefTask?.cancel()
         reliefTask = Task { [pipeline = self] in
             try? await Task.sleep(for: delay)
@@ -291,13 +303,13 @@ public actor FramePipeline<Frame: Sendable> {
         Perf.end(token)
     }
 
-    private var canRelieve: Bool { isIdle && pendingPrefetch == nil }
+    private var canRelieve: Bool { isIdle && !prefetchState.isHolding }
 
     private func startPrefetch(_ keys: [FrameKey]) {
         let pending = keys.filter { !cache.contains($0) && inflight[$0] == nil }
         guard !pending.isEmpty else { return }
         let limit = maxPrefetchConcurrency
-        prefetchDriver = Task(priority: .utility) { [pipeline = self] in
+        prefetchState = .running(Task(priority: .utility) { [pipeline = self] in
             var next = pending.makeIterator()
             await withTaskGroup(of: Void.self) { group in
                 func launch() -> Bool {
@@ -311,7 +323,7 @@ public actor FramePipeline<Frame: Sendable> {
                     _ = launch()
                 }
             }
-        }
+        })
     }
 
     private func prefetchOne(_ key: FrameKey) async {

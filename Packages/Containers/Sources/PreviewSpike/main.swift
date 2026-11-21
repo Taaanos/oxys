@@ -20,8 +20,8 @@ let urls = args.dropFirst().map { URL(fileURLWithPath: $0) }
 
 func describe(_ p: EmbeddedJPEG) -> String {
     let icc = p.header.hasICCProfile ? "icc" : "no-icc"
-    let exif = p.header.hasExif ? "exif(orient=\(p.header.exifOrientation.map(String.init) ?? "none"))" : "no-exif"
-    let tag = p.containerOrientation.map { "tag-orient=\($0)" } ?? "tag-orient=none"
+    let exif = p.header.exif.map { "exif(orient=\($0.orientation.map { String($0.rawValue) } ?? "none"))" } ?? "no-exif"
+    let tag = p.containerOrientation.map { "tag-orient=\($0.rawValue)" } ?? "tag-orient=none"
     return "\(p.location) \(p.width)x\(p.height) @\(p.offset)+\(p.length) \(icc) \(exif) \(tag)"
 }
 
@@ -29,7 +29,7 @@ func list(_ url: URL) throws {
     print("== \(url.lastPathComponent)")
     guard let found = try PreviewLocator.locate(at: url) else { print("  no previews found"); return }
     let i = found.info
-    print("  \(found.format) \(i.make ?? "?") \(i.model ?? "?") orientation=\(i.orientation.map(String.init) ?? "none") interop=\(i.interopIndex ?? "none") colorspace=\(i.exifColorSpace.map(String.init) ?? "none")")
+    print("  \(found.format) \(i.make ?? "?") \(i.model ?? "?") orientation=\(i.orientation.map { String($0.rawValue) } ?? "none") interop=\(i.interopIndex ?? "none") colorspace=\(i.exifColorSpace.map(String.init) ?? "none")")
     for p in found.previews { print("  + " + describe(p)) }
     for s in found.skipped { print("  - \(s.location): \(s.reason)") }
 }

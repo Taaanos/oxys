@@ -25,7 +25,7 @@ import Testing
     private func tiff(_ r: ExifTransplant.Result) -> Data { Data(r.segment.dropFirst(10)) }
 
     @Test func keepsDescriptiveTagsAndDropsWhatDescribesTheRAW() throws {
-        let r = try #require(ExifTransplant.segment(fromRAW: sonyRaw(), previewWidth: 1616, previewHeight: 1080, orientation: 8))
+        let r = try #require(ExifTransplant.segment(fromRAW: sonyRaw(), previewWidth: 1616, previewHeight: 1080, orientation: .left))
         let ifd0 = try #require(TIFFDirectory.firstDirectory(in: tiff(r), at: 0))
         #expect(ifd0.string(0x010F) == "SONY" && ifd0.string(0x0110) == "ZV-1" && ifd0.string(0x8298) == "Me")
         #expect(ifd0.integers(0x0112) == [8])
@@ -37,8 +37,8 @@ import Testing
     }
 
     @Test func sonyMakerNoteIsMovedAndStillReads() throws {
-        let r = try #require(ExifTransplant.segment(fromRAW: sonyRaw(), previewWidth: 1616, previewHeight: 1080, orientation: 6))
-        #expect(r.hadMakerNote && r.makerNoteCopied)
+        let r = try #require(ExifTransplant.segment(fromRAW: sonyRaw(), previewWidth: 1616, previewHeight: 1080, orientation: .right))
+        #expect(r.makerNote == .copied)
         let info = try #require(MakerNoteReader.read(from: tiff(r)))
         let p = try #require(info.afPoints.first)
         #expect(abs(p.x - 3810.0 / 7008) < 1e-9 && abs(p.y - 2423.0 / 4672) < 1e-9)
@@ -47,7 +47,7 @@ import Testing
 
     @Test func aBrandWhoseNoteCannotBeMovedKeepsEverythingElse() throws {
         let r = try #require(ExifTransplant.segment(fromRAW: sonyRaw(make: "ACME"), previewWidth: 100, previewHeight: 100, orientation: nil))
-        #expect(r.hadMakerNote && !r.makerNoteCopied)
+        #expect(r.makerNote == .dropped)
         let ifd0 = try #require(TIFFDirectory.firstDirectory(in: tiff(r), at: 0))
         let exif = try exifIFD(ifd0)
         #expect(exif.entry(0x927C) == nil)
@@ -56,7 +56,7 @@ import Testing
     }
 
     @Test func aFileWithoutExifIsRefused() {
-        #expect(ExifTransplant.segment(fromRAW: Data("not a raw".utf8), previewWidth: 1, previewHeight: 1, orientation: 1) == nil)
+        #expect(ExifTransplant.segment(fromRAW: Data("not a raw".utf8), previewWidth: 1, previewHeight: 1, orientation: .up) == nil)
     }
 
     // MARK: V-22, remove location and serial numbers
@@ -79,17 +79,17 @@ import Testing
     }
 
     @Test func withoutTheSwitchTheLocationAndTheSerialNumbersTravel() throws {
-        let r = try #require(ExifTransplant.segment(fromRAW: rawWithPrivateFields(), previewWidth: 100, previewHeight: 100, orientation: 1))
+        let r = try #require(ExifTransplant.segment(fromRAW: rawWithPrivateFields(), previewWidth: 100, previewHeight: 100, orientation: .up))
         let ifd0 = try #require(TIFFDirectory.firstDirectory(in: tiff(r), at: 0))
         #expect(ifd0.entry(0xC62F) != nil && ifd0.entry(0x8825) != nil)
         let exif = try exifIFD(ifd0)
         for tag: UInt16 in [0xA430, 0xA431, 0xA435, 0xA420] { #expect(exif.entry(tag) != nil) }
-        #expect(r.hadMakerNote)
+        #expect(r.makerNote != .absent)
     }
 
     @Test func theSwitchTakesOutEveryPrivateTagAndTheMakerNoteAndKeepsTheRest() throws {
         let r = try #require(ExifTransplant.segment(fromRAW: rawWithPrivateFields(), previewWidth: 100, previewHeight: 100,
-                                                    orientation: 1, removePrivate: true))
+                                                    orientation: .up, removePrivate: true))
         let ifd0 = try #require(TIFFDirectory.firstDirectory(in: tiff(r), at: 0))
         #expect(ifd0.entry(0xC62F) == nil)      // camera serial
         #expect(ifd0.entry(0x8825) == nil)      // GPS IFD pointer
@@ -101,7 +101,7 @@ import Testing
         // No private text is left in the bytes, whatever IFD it was in.
         for text in ["Jane Doe", "BODY999", "LENS777", "UNIQUE1", "CAM123"] { #expect(r.segment.range(of: Data(text.utf8)) == nil) }
         // A note that is left out on purpose is not a note that failed.
-        #expect(!r.hadMakerNote && !r.makerNoteCopied)
+        #expect(r.makerNote == .absent)
     }
 
     @Test func aJPEGsOwnExifGetsTheSameCleanUp() throws {
@@ -109,10 +109,10 @@ import Testing
         let length = 2 + 6 + raw.count
         let segment = Data([0xFF, 0xE1, UInt8(length >> 8), UInt8(length & 0xFF)]) + Data("Exif\0\0".utf8) + raw
         let r = try #require(ExifTransplant.segment(fromExifSegment: segment, previewWidth: 100, previewHeight: 100,
-                                                    orientation: 1, removePrivate: true))
+                                                    orientation: .up, removePrivate: true))
         let ifd0 = try #require(TIFFDirectory.firstDirectory(in: tiff(r), at: 0))
         #expect(ifd0.entry(0x8825) == nil && ifd0.entry(0xC62F) == nil)
         #expect(try exifIFD(ifd0).entry(0xA431) == nil)
-        #expect(ExifTransplant.segment(fromExifSegment: Data("short".utf8), previewWidth: 1, previewHeight: 1, orientation: 1) == nil)
+        #expect(ExifTransplant.segment(fromExifSegment: Data("short".utf8), previewWidth: 1, previewHeight: 1, orientation: .up) == nil)
     }
 }

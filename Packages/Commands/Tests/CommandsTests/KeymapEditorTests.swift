@@ -87,7 +87,7 @@ private func press(_ key: PhysicalKey, _ keymap: Keymap, mods: KeyModifiers = []
     let editor = KeymapEditor()
     let result = editor.check(k(.e), for: "cull.reject")
     #expect(result == .conflicts([
-        KeyConflict(command: "view.loupe", title: "Open in Loupe", modes: [.grid, .compare], shortcut: k(.e), isShiftTwin: false),
+        KeyConflict(command: "view.loupe", title: "Open in Loupe", modes: [.grid, .compare], clash: .direct(k(.e))),
     ]))
 }
 

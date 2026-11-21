@@ -41,16 +41,52 @@ final class AppModel {
     var infoVisible: Bool { focus.isVisible(.info, saved: loupe.showInfoStrip) }
     var exifVisible: Bool { infoVisible && loupe.showExif }
     var histogramVisible: Bool { focus.isVisible(.histogram, saved: loupe.showHistogram) }
+    /// At most one modal overlay (Command Bar or Editor Chooser) may be open at a time, carrying only its own state.
+    enum ModalOverlay: Equatable {
+        case none
+        case cheatSheet(search: String = "", selectedID: CommandID? = nil)
+        case editorChooser(index: Int)
+    }
+
+    /// Keyboard focus inside the inspector sidebar: when active it always names a concrete row ID; when inactive
+    /// it remembers the last focused row for restoration.
+    enum InspectorFocus: Equatable {
+        case inactive(lastID: String? = nil)
+        case active(rowID: String)
+
+        var lastID: String? {
+            switch self {
+            case .inactive(let id): id
+            case .active(let id): id
+            }
+        }
+    }
+
+    private(set) var modalOverlay: ModalOverlay = .none
     /// The `⌘K` Command Bar (M-23).
-    var showCheatSheet = false
-    var cheatSearch = ""
-    var cheatSelectedID: CommandID?
+    var showCheatSheet: Bool { if case .cheatSheet = modalOverlay { true } else { false } }
+    var cheatSearch: String {
+        get { if case .cheatSheet(let search, _) = modalOverlay { search } else { "" } }
+        set {
+            if case .cheatSheet(_, let selectedID) = modalOverlay {
+                modalOverlay = .cheatSheet(search: newValue, selectedID: selectedID)
+            }
+        }
+    }
+    var cheatSelectedID: CommandID? {
+        get { if case .cheatSheet(_, let id) = modalOverlay { id } else { nil } }
+        set {
+            if case .cheatSheet(let search, _) = modalOverlay {
+                modalOverlay = .cheatSheet(search: search, selectedID: newValue)
+            }
+        }
+    }
     /// External editors (V-12) and the `⌥⌘E` chooser.
     let editors = EditorStore()
-    var showEditorChooser = false
+    var showEditorChooser: Bool { if case .editorChooser = modalOverlay { true } else { false } }
+    var editorChooserIndex: Int { if case .editorChooser(let index) = modalOverlay { index } else { 0 } }
     /// Extract embedded JPEGs (V-13).
     let extract = ExtractJob()
-    var editorChooserIndex = 0
     /// Auto-advance (V-11): rating, label and reject keys move to the next photo, and `⇧` turns that around.
     /// Set by `A` and by Settings → General; remembered across launches, off by default.
     var autoAdvance = UserDefaults.standard.bool(forKey: "autoAdvance") {
@@ -65,20 +101,25 @@ final class AppModel {
     /// True after "Move Focus to Inspector" until `Esc`: `⇥`, `⇧⇥`, `↑` and `↓` walk the inspector's rows and
     /// `⌘C` copies the focused one. Driven by our own key handling, not SwiftUI focus, which cannot take the
     /// keyboard from the image view.
-    private(set) var inspectorActive = false
-    private(set) var inspectorFocusID: String?
+    private(set) var inspectorFocus: InspectorFocus = .inactive()
+    var inspectorActive: Bool { if case .active = inspectorFocus { true } else { false } }
+    var inspectorFocusID: String? { if case .active(let id) = inspectorFocus { id } else { nil } }
     /// The inspector's rows in order, kept up to date by the view.
     var inspectorRows: [(id: String, label: String, value: String)] = []
     var inspectorValue: String? {
-        guard inspectorActive, let id = inspectorFocusID else { return nil }
+        guard case .active(let id) = inspectorFocus else { return nil }
         return inspectorRows.first { $0.id == id }?.value
     }
 
     func activateInspector(at id: String? = nil) {
         releaseKeyboardFromFilterBar()
-        inspectorActive = true
-        inspectorFocusID = id ?? inspectorFocusID.flatMap { id in inspectorRows.contains { $0.id == id } ? id : nil } ?? inspectorRows.first?.id
-        if id == nil, let row = inspectorRows.first(where: { $0.id == inspectorFocusID }) { announce("\(row.label), \(row.value)") }
+        let remembered = inspectorFocus.lastID.flatMap { last in inspectorRows.contains { $0.id == last } ? last : nil }
+        guard let target = id ?? remembered ?? inspectorRows.first?.id else {
+            inspectorFocus = .inactive(lastID: inspectorFocus.lastID)
+            return
+        }
+        inspectorFocus = .active(rowID: target)
+        if id == nil, let row = inspectorRows.first(where: { $0.id == target }) { announce("\(row.label), \(row.value)") }
     }
 
     var cheatSections: [CheatSection] {
@@ -101,16 +142,19 @@ final class AppModel {
     }
 
     func openCheatSheet() {
-        cheatSearch = ""
-        cheatSelectedID = cheatVisibleEntries.first(where: \.isEnabled)?.id
-        showCheatSheet = true
+        let initial = cheatSections.flatMap(\.entries).first(where: \.isEnabled)?.id
+        modalOverlay = .cheatSheet(search: "", selectedID: initial)
     }
 
     func closeCheatSheet() {
-        showCheatSheet = false
-        cheatSearch = ""
-        cheatSelectedID = nil
+        guard case .cheatSheet = modalOverlay else { return }
+        modalOverlay = .none
         NSApp.keyWindow?.makeFirstResponder(nil)
+    }
+
+    func closeEditorChooser() {
+        guard case .editorChooser = modalOverlay else { return }
+        modalOverlay = .none
     }
 
     func toggleCheatSheet() {
@@ -152,23 +196,23 @@ final class AppModel {
     }
 
     /// Keys while the editor chooser is up.
-    private func editorChooserKey(_ input: KeyInput) -> Bool {
+    private func editorChooserKey(_ input: KeyInput, currentIndex: Int) -> Bool {
         if input.modifiers.contains(.command) { return false }
         let code = input.keyCode
         let list = editors.editors
         func move(_ step: Int) {
             guard !list.isEmpty else { return }
-            var i = editorChooserIndex
+            var i = currentIndex
             for _ in list {
                 i = (i + step + list.count) % list.count
-                if editors.isInstalled(list[i]) { editorChooserIndex = i; return }
+                if editors.isInstalled(list[i]) { modalOverlay = .editorChooser(index: i); return }
             }
         }
         switch code {
-        case PhysicalKey.escape.rawValue: showEditorChooser = false
+        case PhysicalKey.escape.rawValue: closeEditorChooser()
         case PhysicalKey.downArrow.rawValue: move(1)
         case PhysicalKey.upArrow.rawValue: move(-1)
-        case PhysicalKey.return.rawValue, 76: chooseEditor(at: editorChooserIndex)
+        case PhysicalKey.return.rawValue, 76: chooseEditor(at: currentIndex)
         default:
             let digits: [PhysicalKey] = [.digit1, .digit2, .digit3, .digit4, .digit5, .digit6, .digit7, .digit8, .digit9]
             if let n = digits.firstIndex(where: { $0.rawValue == code }) { chooseEditor(at: n) }
@@ -180,7 +224,7 @@ final class AppModel {
     func chooseEditor(at index: Int) {
         let list = editors.editors
         guard list.indices.contains(index), editors.isInstalled(list[index]) else { return }
-        showEditorChooser = false
+        closeEditorChooser()
         edit(in: list[index])
     }
 
@@ -232,7 +276,9 @@ final class AppModel {
         return menuBuilder.menu(clicking: url, inGrid: inGrid)
     }
 
-    func deactivateInspector() { inspectorActive = false }
+    func deactivateInspector() {
+        if case .active(let id) = inspectorFocus { inspectorFocus = .inactive(lastID: id) }
+    }
 
     /// Keys while the inspector is active; true when consumed.
     func inspectorKey(code: UInt16, shift: Bool, option: Bool) -> Bool {
@@ -240,9 +286,9 @@ final class AppModel {
         // They take over Loupe's pan keys then; `⌥⇧` still pans a whole view.
         if option, !shift, inspectorVisible, commands.mode != .compare,
            code == PhysicalKey.upArrow.rawValue || code == PhysicalKey.downArrow.rawValue {
+            let step = code == PhysicalKey.downArrow.rawValue ? 1 : -1
             // A first press lands on the first or last row, as `moveInspectorFocus` does with no row focused.
-            if !inspectorActive { inspectorActive = true; inspectorFocusID = nil }
-            moveInspectorFocus(code == PhysicalKey.downArrow.rawValue ? 1 : -1, wraps: false)
+            moveInspectorFocus(step, wraps: false, startingFresh: !inspectorActive)
             return true
         }
         guard inspectorActive, !option else { return false }
@@ -255,13 +301,13 @@ final class AppModel {
         return true
     }
 
-    private func moveInspectorFocus(_ step: Int, wraps: Bool) {
+    private func moveInspectorFocus(_ step: Int, wraps: Bool, startingFresh: Bool = false) {
         let rows = inspectorRows
         guard !rows.isEmpty else { return }
-        let current = inspectorFocusID.flatMap { id in rows.firstIndex { $0.id == id } }
+        let current = startingFresh ? nil : inspectorFocusID.flatMap { id in rows.firstIndex { $0.id == id } }
         var next = current.map { $0 + step } ?? (step > 0 ? 0 : rows.count - 1)
         next = wraps ? (next + rows.count) % rows.count : min(max(next, 0), rows.count - 1)
-        inspectorFocusID = rows[next].id
+        inspectorFocus = .active(rowID: rows[next].id)
         announce("\(rows[next].label), \(rows[next].value)")
     }
 
@@ -350,9 +396,13 @@ final class AppModel {
             announce(phrase)
         }
         registerFilter()
-        commands.modalActive = { [unowned self] in showCheatSheet || showEditorChooser }
+        commands.modalActive = { [unowned self] in modalOverlay != .none }
         commands.modalKey = { [unowned self] input in
-            if showEditorChooser { editorChooserKey(input) } else { cheatSheetKey(input) }
+            switch modalOverlay {
+            case .none: false
+            case .cheatSheet: cheatSheetKey(input)
+            case .editorChooser(let index): editorChooserKey(input, currentIndex: index)
+            }
         }
         // Edit (V-12): `⌘E` opens in the default editor, `⌥⌘E` asks which.
         commands.register("file.edit", isAvailable: { [unowned self] in !folder.cullTargets.isEmpty && editors.defaultEditor != nil },
@@ -361,8 +411,8 @@ final class AppModel {
         }
         commands.register("file.editIn", isAvailable: { [unowned self] in !folder.cullTargets.isEmpty && editors.defaultEditor != nil }) { [unowned self] _ in
             let list = editors.editors
-            editorChooserIndex = editors.defaultEditor.flatMap { d in list.firstIndex { $0.id == d.id } } ?? 0
-            showEditorChooser = true
+            let index = editors.defaultEditor.flatMap { d in list.firstIndex { $0.id == d.id } } ?? 0
+            modalOverlay = .editorChooser(index: index)
         }
         // Export (V-13, V-21): `⇧⌘E` picks a folder and a format and starts; `⌘.` cancels a running job, or closes its summary.
         commands.register("file.extract", isAvailable: { [unowned self] in !folder.cullTargets.isEmpty && !extract.isRunning }) { [unowned self] _ in

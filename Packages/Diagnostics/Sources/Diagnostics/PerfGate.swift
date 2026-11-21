@@ -100,20 +100,52 @@ public struct GateTarget: Sendable, Equatable {
 
 public enum GateVerdict: String, Sendable { case pass, fail, report, noData = "no data" }
 
+/// The typed outcome of holding a target against its runs: impossible `(pass, value: nil)` or `(report, limit: some)` states cannot be constructed.
+public enum GateOutcome: Sendable, Equatable {
+    case noData
+    case reported(value: Double)
+    case passed(value: Double, limit: Double)
+    case failed(value: Double, limit: Double)
+
+    public var value: Double? {
+        switch self {
+        case .noData: nil
+        case .reported(let v), .passed(let v, _), .failed(let v, _): v
+        }
+    }
+
+    public var verdict: GateVerdict {
+        switch self {
+        case .noData: .noData
+        case .reported: .report
+        case .passed: .pass
+        case .failed: .fail
+        }
+    }
+
+    public var isAcceptable: Bool {
+        switch self {
+        case .passed, .reported: true
+        case .failed, .noData: false
+        }
+    }
+}
+
 /// A target held against the runs of its scenario. The gate value is the median of the runs' values (P-01 Q2).
 public struct GateResult: Sendable, Equatable {
     public var target: GateTarget
     public var runs: [Double?]
-    public var value: Double? {
+
+    public var outcome: GateOutcome {
         let present = runs.compactMap { $0 }.sorted()
-        guard !present.isEmpty else { return nil }
-        return present[(present.count - 1) / 2]
+        guard !present.isEmpty else { return .noData }
+        let median = present[(present.count - 1) / 2]
+        guard let limit = target.limit else { return .reported(value: median) }
+        return median <= limit ? .passed(value: median, limit: limit) : .failed(value: median, limit: limit)
     }
-    public var verdict: GateVerdict {
-        guard let value else { return .noData }
-        guard let limit = target.limit else { return .report }
-        return value <= limit ? .pass : .fail
-    }
+
+    public var value: Double? { outcome.value }
+    public var verdict: GateVerdict { outcome.verdict }
 
     public init(target: GateTarget, logs: [PerfLog]) {
         self.target = target
@@ -124,7 +156,7 @@ public struct GateResult: Sendable, Equatable {
 public enum GateReport {
     /// True when no row failed or lacks data.
     public static func passed(_ results: [GateResult]) -> Bool {
-        !results.contains { $0.verdict == .fail || $0.verdict == .noData }
+        results.allSatisfy(\.outcome.isAcceptable)
     }
 
     public static func render(_ results: [GateResult]) -> String {

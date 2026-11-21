@@ -58,13 +58,11 @@ public enum CR3PreviewLocator {
         var info = ContainerInfo(make: "Canon")
         var trackNumber = 0
 
-        func addJPEG(_ location: String, at offset: Int, length: Int?) {
+        func addJPEG(_ location: String, at offset: Int, length: Int) {
             guard let header = JPEGHeader.parse(reader, at: offset), !header.isLossless else { return }
-            let len = length ?? 0
-            let (end, overflowed) = offset.addingReportingOverflow(len)
-            guard len > 4, !overflowed, end <= reader.count else { return }
-            previews.append(EmbeddedJPEG(location: location, offset: offset, length: len,
-                                         width: header.width, height: header.height,
+            let (end, overflowed) = offset.addingReportingOverflow(length)
+            guard length > 4, !overflowed, end <= reader.count else { return }
+            previews.append(EmbeddedJPEG(location: location, offset: offset, length: length,
                                          containerOrientation: nil, header: header))
         }
 
@@ -73,7 +71,7 @@ public enum CR3PreviewLocator {
                 // The size field sits just before the JPEG in both THMB and PRVW; fall back to the box end.
                 let declared = reader.u32(box.payload + delta - 4).map(Int.init)
                 let offset = box.payload + delta
-                let length = (declared.map { $0 > 4 && $0 <= box.end - offset } == true) ? declared : box.end - offset
+                let length = declared.flatMap { $0 > 4 && $0 <= box.end - offset ? $0 : nil } ?? (box.end - offset)
                 addJPEG(box.type, at: offset, length: length)
                 return
             }

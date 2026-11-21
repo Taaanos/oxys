@@ -72,7 +72,7 @@ private struct ComparePaneView: View {
                         if let peaking = loupe.peakingLabel(for: photo, developed: pane.developState == .raw) { PeakingBadgeView(label: peaking) }
                     }
                     if !model.infoVisible, loupe.showDecision, let photo = pane.shown {
-                        RatingCorner(decision: folder.decision(for: photo.url) ?? Decision(), pulse: compare.cullPulse[pane.side] ?? 0)
+                        RatingCorner(decision: folder.decision(for: photo.url) ?? Decision(), pulse: compare.cullPulse[pane.side])
                     }
                 } right: {
                     if let badge = pane.truthBadge, !model.infoVisible, loupe.showTruthBadge { TruthBadgeView(badge: badge) }
@@ -82,7 +82,7 @@ private struct ComparePaneView: View {
                     InfoStrip(photo: pane.shown, decision: pane.shown.flatMap { folder.decision(for: $0.url) }, zoom: pane.zoomInfo,
                               truth: loupe.showTruthBadge ? pane.truthBadge : nil,
                               exifFields: model.exifVisible ? pane.exif?.compareFields(against: compare.pane(pane.side.other).exif) ?? [] : [],
-                              showsDecision: loupe.showDecision, pulse: compare.cullPulse[pane.side] ?? 0)
+                              showsDecision: loupe.showDecision, pulse: compare.cullPulse[pane.side])
                 }
             }
         }

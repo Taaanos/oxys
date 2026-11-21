@@ -12,18 +12,87 @@ public final class LoupeView: NSView {
     /// Neutral gray, the same in light and dark appearance (M-03 open question 1). Tune by eye.
     public static let canvasGray = 0x30 / 255.0
 
+    /// What the canvas holds: nothing, a stand-in (thumbnail or screen-size frame whose zoom geometry scales by
+    /// `sizeFactor`, and on which overlays wait for the real frame), or a full frame.
+    private enum DisplayedImage {
+        case none
+        case standIn(PreparedImage, sizeFactor: CGFloat)
+        case full(PreparedImage)
+
+        var prepared: PreparedImage? {
+            switch self {
+            case .none: nil
+            case .standIn(let image, _), .full(let image): image
+            }
+        }
+
+        var isStandIn: Bool {
+            if case .standIn = self { return true }
+            return false
+        }
+
+        var sizeFactor: CGFloat {
+            switch self {
+            case .standIn(_, let factor): factor
+            case .none, .full: 1
+            }
+        }
+    }
+
+    /// Fit (optionally remembering a non-1:1 zoom that Z left so the next Z round-trips) or a zoomed scale with
+    /// the image point (0...1) at the middle of the view.
+    private enum CameraState {
+        case fit(returnScale: CGFloat? = nil)
+        case zoomed(scale: CGFloat, center: CGPoint)
+
+        var zoom: ZoomLevel {
+            switch self {
+            case .fit: .fit
+            case .zoomed(let scale, _): .scale(scale)
+            }
+        }
+
+        var center: CGPoint {
+            switch self {
+            case .fit: CGPoint(x: 0.5, y: 0.5)
+            case .zoomed(_, let center): center
+            }
+        }
+    }
+
+    /// Kept clipping mask and its completed statistics: stats can only exist for the current completed mask.
+    private enum ClippingCache {
+        case empty
+        case computing(ClippingMask)
+        case ready(ClippingMask, ClippingStats)
+
+        var mask: ClippingMask? {
+            switch self {
+            case .empty: nil
+            case .computing(let mask), .ready(let mask, _): mask
+            }
+        }
+    }
+
+    private enum DragState { case idle, dragging }
+
+    private enum OverlayPass<Mask, Params, GPU> {
+        case none
+        case deferred
+        case ready(mask: Mask, params: Params, gpu: GPU)
+    }
+
     private let gpu = LoupeGPU.shared
-    private var image: PreparedImage?
+    private var displayed: DisplayedImage = .none
+    private var image: PreparedImage? { displayed.prepared }
     private var pendingToken: Perf.Token?
     private var lastDrawableSize = CGSize.zero
     private var cachedOneToOne: CGFloat?
 
     /// Fit or a scale, and the image point (0...1) at the middle of the view while zoomed in.
-    public private(set) var zoom = ZoomLevel.fit
-    private var zoomCenter = CGPoint(x: 0.5, y: 0.5)
+    private var camera: CameraState = .fit()
+    public var zoom: ZoomLevel { camera.zoom }
     private var lastInfo: ZoomInfo?
-    /// Where Z goes back to after leaving a zoom that was not 1:1 (so tap or hold of Z round-trips).
-    private var returnScale: CGFloat?
     /// Called when the zoom level the info strip shows changes.
     public var onZoomChange: ((ZoomInfo?) -> Void)?
     /// Called when a zoom or a pan moves the view (V-09): a key, a pinch, a scroll or a drag. Not called by
@@ -42,13 +111,10 @@ public final class LoupeView: NSView {
     public var focusAnchor: CGPoint?
     /// Sticky zoom (M-15): a different photo keeps the zoom level and the spot. Off, it opens at Fit.
     public var stickyZoom = true
-    /// Scales the image's size for zoom geometry. A thumbnail standing in for a preview is smaller than the
-    /// preview it stands for; this makes it cover the same area at the same zoom.
-    private var sizeFactor: CGFloat = 1
     private var spaceHeld = false {
         didSet { if spaceHeld != oldValue { window?.invalidateCursorRects(for: self) } }
     }
-    private var dragging = false
+    private var dragState: DragState = .idle
     private var swipeTracker = SwipeTracker()
     private var pinchTracker = PinchNavigationTracker()
     /// Focus peaking (V-06); nil is off. Set with ``setPeaking(_:token:)``.
@@ -59,18 +125,13 @@ public final class LoupeView: NSView {
     private var peakingMask: PeakingMask?
     /// Clipping overlays (V-07); nil is off. Set with ``setClipping(_:token:)``.
     public private(set) var clipping: ClippingStyle?
-    private var clippingMask: ClippingMask?
-    /// The numbers of `clippingMask`, once its analysis has finished: they come back when the overlay is turned on
-    /// again with the mask kept.
-    private var clippingResult: (mask: ClippingMask, stats: ClippingStats)?
+    private var clippingCache: ClippingCache = .empty
     /// Told, on the main thread, how much of the frame is clipped, or nil when there is nothing to report (overlay
     /// off, a stand-in, no picture). Called once per analysis, not per frame.
     public var onClippingStats: (@MainActor (ClippingStats?) -> Void)?
     /// False for the contrast probe (D-01): the overlays are analyzed and report their numbers, so their labels show,
     /// but their marks are not painted, and every label sits on the bare test frame.
     public static var paintsOverlays = true
-    /// A thumbnail stand-in is not the picture: peaking on it would flash marks that the real frame then replaces.
-    private var isStandIn = false
 
     private var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
 
@@ -98,27 +159,31 @@ public final class LoupeView: NSView {
 
     /// Shows `image`, or the empty canvas for nil. `keyToFrame` ends when the frame is on screen. The same
     /// photo's better frame (`sameZoom`) keeps the zoom and the spot, and so does any frame while sticky zoom
-    /// is on; otherwise a photo opens at Fit. `zoomSizeFactor` and `isStandIn` are for a stand-in (see `sizeFactor`);
-    /// focus peaking waits for the real frame.
+    /// is on; otherwise a photo opens at Fit. `zoomSizeFactor` and `isStandIn` are for a stand-in; focus peaking
+    /// waits for the real frame.
     /// `keepView` is for the same photo at another resolution (the developed RAW over its preview, V-02): a zoomed-in
     /// view is rescaled so the same part of the picture stays under the same pixels of the screen.
     public func show(_ image: PreparedImage?, keyToFrame token: Perf.Token? = nil, sameZoom: Bool = false,
                      zoomSizeFactor: CGFloat = 1, keepView: Bool = false, isStandIn: Bool = false) {
         if let stale = pendingToken { Perf.end(stale) }
         pendingToken = token
-        if keepView, let old = self.image, let image, case .scale(let s) = zoom {
-            let oldWidth = zoomSize(of: old).width, newWidth = image.displaySize.width * zoomSizeFactor
-            zoom = .scale(ZoomGeometry.scale(s, keepingSizeFrom: oldWidth, to: newWidth))
+        let nextDisplayed: DisplayedImage = if let image {
+            isStandIn ? .standIn(image, sizeFactor: zoomSizeFactor) : .full(image)
+        } else {
+            .none
+        }
+        if keepView, let old = self.image, let image, case .zoomed(let s, let center) = camera {
+            let oldWidth = zoomSize(of: old).width
+            let newWidth = image.displaySize.width * nextDisplayed.sizeFactor
+            camera = .zoomed(scale: ZoomGeometry.scale(s, keepingSizeFrom: oldWidth, to: newWidth), center: center)
         }
         let changed = image?.texture !== self.image?.texture
-        self.image = image
-        self.isStandIn = isStandIn
-        sizeFactor = zoomSizeFactor
+        displayed = nextDisplayed
         // A mask of the old picture is no use. One that an overlay still shows stays until the new analysis takes over
         // its texture (a burst allocates nothing); one of an overlay that is off goes now.
         if changed || image == nil {
             if peaking == nil || image == nil { peakingMask = nil }
-            if clipping == nil || image == nil { clippingMask = nil; clippingResult = nil }
+            if clipping == nil || image == nil { clippingCache = .empty }
         }
         if clipping != nil { onClippingStats?(nil) }
         if !stickyZoom && !(sameZoom && image != nil) { resetZoom() }
@@ -149,9 +214,9 @@ public final class LoupeView: NSView {
         clipping = style
         if style == nil || style?.marks.isEmpty == true {
             onClippingStats?(nil)
-        } else if let mask = clippingMask, mask.thresholds == style?.thresholds, mask.source === image?.texture,
-                  let result = clippingResult, result.mask === mask, !isStandIn {
-            onClippingStats?(result.stats)  // the kept mask is current: no analysis follows, so say its numbers now
+        } else if case .ready(let mask, let stats) = clippingCache,
+                  mask.thresholds == style?.thresholds, mask.source === image?.texture, !displayed.isStandIn {
+            onClippingStats?(stats)  // the kept mask is current: no analysis follows, so say its numbers now
         }
         if image != nil, window != nil {
             if let token {
@@ -167,79 +232,80 @@ public final class LoupeView: NSView {
     /// Drops the masks of overlays that are off (memory pressure, P-06). A mask that an overlay shows stays.
     public func releaseIdleMasks() {
         if peaking == nil { peakingMask = nil }
-        if clipping == nil { clippingMask = nil; clippingResult = nil }
+        if clipping == nil { clippingCache = .empty }
     }
 
     /// The mask and parameters for this frame, encoding the analysis into `buffer` when the picture or thresholds changed.
-    private func clippingPass(for image: PreparedImage, gpu: LoupeGPU, buffer: any MTLCommandBuffer, deferAnalysis: Bool) -> (mask: ClippingMask, params: ClipParams, gpu: ClippingGPU)? {
-        guard let style = clipping, !style.marks.isEmpty, !isStandIn, let clippingGPU = gpu.clipping else { return nil }
+    private func clippingPass(for image: PreparedImage, gpu: LoupeGPU, buffer: any MTLCommandBuffer,
+                              deferAnalysis: Bool) -> OverlayPass<ClippingMask, ClipParams, ClippingGPU> {
+        guard let style = clipping, !style.marks.isEmpty, !displayed.isStandIn, let clippingGPU = gpu.clipping else { return .none }
         let mask: ClippingMask
-        if let cached = clippingMask, cached.source === image.texture, cached.thresholds == style.thresholds {
+        if let cached = clippingCache.mask, cached.source === image.texture, cached.thresholds == style.thresholds {
             mask = cached
         } else if deferAnalysis {
-            needsAnalysis = true
-            return nil
-        } else if let made = clippingGPU.makeMask(for: image, thresholds: style.thresholds, reusing: clippingMask, in: buffer) {
-            clippingMask = made
+            return .deferred
+        } else if let made = clippingGPU.makeMask(for: image, thresholds: style.thresholds, reusing: clippingCache.mask, in: buffer) {
+            clippingCache = .computing(made)
             mask = made
             buffer.addCompletedHandler { [weak self] _ in
                 let stats = made.stats()
                 DispatchQueue.main.async {
-                    guard let self, self.clippingMask === made else { return }
-                    self.clippingResult = (made, stats)
+                    guard let self, case .computing(let current) = self.clippingCache, current === made else { return }
+                    self.clippingCache = .ready(made, stats)
                     if self.clipping != nil { self.onClippingStats?(stats) }
                 }
             }
         } else {
-            return nil
+            return .none
         }
         let flags: UInt32 = (style.marks.contains(.highlights) ? 1 : 0) | (style.marks.contains(.shadows) ? 2 : 0) | (style.pattern ? 4 : 0)
-        return (mask, ClipParams(highlightColor: ClippingGPU.highlightColor, shadowColor: ClippingGPU.shadowColor,
-                                 levels: UInt32(mask.levels), flags: flags), clippingGPU)
+        return .ready(mask: mask,
+                      params: ClipParams(highlightColor: ClippingGPU.highlightColor, shadowColor: ClippingGPU.shadowColor,
+                                         levels: UInt32(mask.levels), flags: flags),
+                      gpu: clippingGPU)
     }
 
     /// The mask and parameters for this frame, encoding the analysis into `buffer` when the picture or mode changed.
-    private func peakingPass(for image: PreparedImage, gpu: LoupeGPU, buffer: any MTLCommandBuffer, deferAnalysis: Bool) -> (mask: PeakingMask, params: PeakParams, gpu: PeakingGPU)? {
-        guard let style = peaking, !isStandIn, let peakingGPU = gpu.peaking else { return nil }
+    private func peakingPass(for image: PreparedImage, gpu: LoupeGPU, buffer: any MTLCommandBuffer,
+                             deferAnalysis: Bool) -> OverlayPass<PeakingMask, PeakParams, PeakingGPU> {
+        guard let style = peaking, !displayed.isStandIn, let peakingGPU = gpu.peaking else { return .none }
         let threshold = PeakingThreshold.stored(sensitivity: style.sensitivity, mode: style.mode)
         let mask: PeakingMask
         if let cached = peakingMask, cached.source === image.texture, cached.mode == style.mode {
             peakingGPU.rebuildPyramid(of: cached, threshold: threshold, in: buffer)
             mask = cached
         } else if deferAnalysis {
-            needsAnalysis = true
-            return nil
+            return .deferred
         } else if let made = peakingGPU.makeMask(for: image, mode: style.mode, threshold: threshold, reusing: peakingMask, in: buffer) {
             peakingMask = made
             mask = made
         } else {
-            return nil
+            return .none
         }
         let params = PeakParams(color: SIMD4(style.color, 1),
                                 threshold: threshold,
                                 levels: UInt32(mask.levels))
-        return (mask, params, peakingGPU)
+        return .ready(mask: mask, params: params, gpu: peakingGPU)
     }
 
     /// Back to Fit, for a new folder.
     public func resetZoom() {
-        zoom = .fit
-        zoomCenter = CGPoint(x: 0.5, y: 0.5)
-        returnScale = nil
+        camera = .fit()
         window?.invalidateCursorRects(for: self)
         render()
     }
 
     private func zoomSize(of image: PreparedImage) -> CGSize {
-        CGSize(width: image.displaySize.width * sizeFactor, height: image.displaySize.height * sizeFactor)
+        let factor = displayed.sizeFactor
+        return CGSize(width: image.displaySize.width * factor, height: image.displaySize.height * factor)
     }
 
     /// Drawable pixels per image pixel on screen now.
     private func currentScale(image: PreparedImage, size: CGSize) -> CGFloat {
         let imageSize = zoomSize(of: image)
-        switch zoom {
+        switch camera {
         case .fit: return ZoomGeometry.fitScale(imageSize: imageSize, viewSize: size)
-        case .scale(let s): return s * oneToOneScale
+        case .zoomed(let s, _): return s * oneToOneScale
         }
     }
 
@@ -250,7 +316,6 @@ public final class LoupeView: NSView {
         if let image, window != nil, level != zoom {
             if let stale = pendingToken { Perf.end(stale) }
             pendingToken = token
-            returnScale = nil
             change(to: level, image: image)
             render()
             onViewChange?(viewState)
@@ -274,11 +339,11 @@ public final class LoupeView: NSView {
 
     /// Z: Fit when zoomed, otherwise 1:1 (or the zoom Z last left, if that was not 1:1).
     public func toggleZoom(token: Perf.Token? = nil) {
-        if case .scale(let s) = zoom {
+        switch camera {
+        case .zoomed(let s, _):
             setZoom(.fit, token: token)
-            if s != 1 { returnScale = s }
-        } else {
-            let back = returnScale
+            if s != 1, case .fit = camera { camera = .fit(returnScale: s) }
+        case .fit(let back):
             setZoom(back.map(ZoomLevel.scale) ?? .actual, token: token)
         }
     }
@@ -296,14 +361,16 @@ public final class LoupeView: NSView {
         }
         let pointerSpot = pointerInPixels().flatMap { old.contains($0) ? ZoomAnchor.Spot(image: imagePoint(at: $0), view: $0) : nil }
         let middle = CGPoint(x: size.width / 2, y: size.height / 2)
-        let spot = ZoomAnchor.resolve(pointer: pointerSpot, focus: focusAnchor, leavingFit: zoom == .fit, viewSize: size)
+        let leavingFit = zoom == .fit
+        let spot = ZoomAnchor.resolve(pointer: pointerSpot, focus: focusAnchor, leavingFit: leavingFit, viewSize: size)
             ?? ZoomAnchor.Spot(image: imagePoint(at: middle), view: middle)
-        zoom = level
-        if level == .fit {
-            zoomCenter = CGPoint(x: 0.5, y: 0.5)
-        } else {
-            zoomCenter = ZoomGeometry.center(keeping: spot.image, under: spot.view, imageSize: imageSize, viewSize: size,
-                                             scale: currentScale(image: image, size: size))
+        switch level {
+        case .fit:
+            camera = .fit()
+        case .scale(let s):
+            let center = ZoomGeometry.center(keeping: spot.image, under: spot.view, imageSize: imageSize, viewSize: size,
+                                             scale: s * oneToOneScale)
+            camera = .zoomed(scale: s, center: center)
         }
         window?.invalidateCursorRects(for: self)
     }
@@ -317,7 +384,6 @@ public final class LoupeView: NSView {
         let target = min(max(currentScale(image: image, size: size) * factor, fit), max(ZoomSteps.maxScale * one, fit))
         let level: ZoomLevel = target <= fit * 1.0001 ? .fit : .scale(target / one)
         guard level != zoom else { return }
-        returnScale = nil
         change(to: level, image: image)
         render()
         onViewChange?(viewState)
@@ -326,18 +392,21 @@ public final class LoupeView: NSView {
     /// The zoom and the picture point at the middle of the view, as drawn: a center the edges clamped is reported
     /// where it really is.
     public var viewState: ViewState {
-        guard let image, window != nil, case .scale(let s) = zoom else { return ViewState(level: zoom, center: zoomCenter) }
+        guard let image, window != nil, case .zoomed(let s, let center) = camera else {
+            return ViewState(level: camera.zoom, center: camera.center)
+        }
         let size = drawableSize
-        let rect = ZoomGeometry.rect(imageSize: zoomSize(of: image), viewSize: size, scale: s * oneToOneScale, center: zoomCenter)
-        return ViewState(level: zoom, center: ZoomGeometry.center(of: rect, viewSize: size))
+        let rect = ZoomGeometry.rect(imageSize: zoomSize(of: image), viewSize: size, scale: s * oneToOneScale, center: center)
+        return ViewState(level: .scale(s), center: ZoomGeometry.center(of: rect, viewSize: size))
     }
 
     /// Shows `state` (V-09), as a linked canvas follows the other one. The center is clamped by the edges when drawn.
     public func apply(_ state: ViewState) {
         guard state != viewState else { return }
-        returnScale = nil
-        zoom = state.level
-        zoomCenter = state.level.isFit ? CGPoint(x: 0.5, y: 0.5) : state.center
+        switch state.level {
+        case .fit: camera = .fit()
+        case .scale(let s): camera = .zoomed(scale: s, center: state.center)
+        }
         window?.invalidateCursorRects(for: self)
         render()
     }
@@ -349,10 +418,11 @@ public final class LoupeView: NSView {
     }
 
     private func pan(byPixels delta: CGPoint) {
-        guard let image, window != nil, zoom != .fit else { return }
+        guard let image, window != nil, case .zoomed(let s, let center) = camera else { return }
         let size = drawableSize
-        zoomCenter = ZoomGeometry.panned(center: zoomCenter, by: delta, imageSize: zoomSize(of: image), viewSize: size,
-                                         scale: currentScale(image: image, size: size))
+        let nextCenter = ZoomGeometry.panned(center: center, by: delta, imageSize: zoomSize(of: image), viewSize: size,
+                                             scale: s * oneToOneScale)
+        camera = .zoomed(scale: s, center: nextCenter)
         render()
         onViewChange?(viewState)
     }
@@ -416,16 +486,16 @@ public final class LoupeView: NSView {
 
     private func currentRect(image: PreparedImage, size: CGSize) -> CGRect {
         let imageSize = zoomSize(of: image)
-        return switch zoom {
+        return switch camera {
         case .fit: FitGeometry.fitRect(imageSize: imageSize, viewSize: size)
-        case .scale(let s):
-            ZoomGeometry.rect(imageSize: imageSize, viewSize: size, scale: s * oneToOneScale, center: zoomCenter)
+        case .zoomed(let s, let center):
+            ZoomGeometry.rect(imageSize: imageSize, viewSize: size, scale: s * oneToOneScale, center: center)
         }
     }
 
     private func publishZoom(rect: CGRect?) {
         var info: ZoomInfo?
-        if let image, let rect, image.displaySize.width > 0, sizeFactor > 0 {
+        if let image, let rect, image.displaySize.width > 0, displayed.sizeFactor > 0 {
             let percent = Int((rect.width / zoomSize(of: image).width / oneToOneScale * 100).rounded())
             info = ZoomInfo(level: zoom, percent: percent)
         }
@@ -530,15 +600,15 @@ public final class LoupeView: NSView {
         window?.makeFirstResponder(self)
         onClick?()
         if event.clickCount == 2 {
+            endDrag()
             setZoom(zoom == .fit ? .actual : .fit, token: Perf.begin(.zoom))
             return
         }
-        dragging = zoom != .fit
-        if dragging { NSCursor.closedHand.push() }
+        if zoom != .fit { beginDrag() } else { endDrag() }
     }
 
     public override func mouseDragged(with event: NSEvent) {
-        guard dragging else { return }
+        guard dragState == .dragging else { return }
         pan(byPoints: CGPoint(x: event.deltaX, y: event.deltaY))
     }
 
@@ -549,9 +619,15 @@ public final class LoupeView: NSView {
         return onContextMenu?()
     }
 
+    private func beginDrag() {
+        guard dragState == .idle else { return }
+        dragState = .dragging
+        NSCursor.closedHand.push()
+    }
+
     private func endDrag() {
-        guard dragging else { return }
-        dragging = false
+        guard dragState == .dragging else { return }
+        dragState = .idle
         NSCursor.pop()
     }
 
@@ -577,17 +653,15 @@ public final class LoupeView: NSView {
 
     // MARK: drawing
 
-    /// Set by the overlay passes when a new picture needs its analysis and the frame went out without it.
-    private var needsAnalysis = false
-    private var analysisInFlight = false
+    private enum AnalysisState { case idle, running }
+    private var analysisState: AnalysisState = .idle
 
     /// With `deferAnalysis`, a picture that has no mask yet is drawn bare, and the analysis runs in a command buffer
     /// of its own that redraws when it is done: the photo is on screen as fast as it is without overlays, and the
     /// overlay follows. Without it (turning an overlay on), the analysis shares the frame's buffer.
     private func render(deferAnalysis: Bool = false) {
         guard let gpu, window != nil else { return }
-        let deferAnalysis = deferAnalysis || analysisInFlight
-        needsAnalysis = false
+        let deferAnalysis = deferAnalysis || analysisState == .running
         let scale = window?.backingScaleFactor ?? 1
         let pixelSize = CGSize(width: (bounds.width * scale).rounded(), height: (bounds.height * scale).rounded())
         guard pixelSize.width >= 1, pixelSize.height >= 1 else { return }
@@ -606,8 +680,12 @@ public final class LoupeView: NSView {
         guard let drawable = layer.nextDrawable(), let buffer = gpu.queue.makeCommandBuffer() else { return }
         // The analysis is a compute pass, so it is encoded before the render pass and shares its command buffer:
         // turning peaking on costs no more than one frame.
-        let peakingPass = image.flatMap { self.peakingPass(for: $0, gpu: gpu, buffer: buffer, deferAnalysis: deferAnalysis) }
-        let clippingPass = image.flatMap { self.clippingPass(for: $0, gpu: gpu, buffer: buffer, deferAnalysis: deferAnalysis) }
+        let peakingPass = image.map { self.peakingPass(for: $0, gpu: gpu, buffer: buffer, deferAnalysis: deferAnalysis) } ?? .none
+        let clippingPass = image.map { self.clippingPass(for: $0, gpu: gpu, buffer: buffer, deferAnalysis: deferAnalysis) } ?? .none
+        var needsDeferredAnalysis = false
+        if case .deferred = peakingPass { needsDeferredAnalysis = true }
+        if case .deferred = clippingPass { needsDeferredAnalysis = true }
+
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = drawable.texture
         pass.colorAttachments[0].loadAction = .clear
@@ -618,8 +696,10 @@ public final class LoupeView: NSView {
         if let image {
             let level = ZoomGeometry.normalized(zoom, imageSize: zoomSize(of: image), viewSize: pixelSize, oneToOne: oneToOneScale)
             if level != zoom {
-                zoom = level
-                zoomCenter = CGPoint(x: 0.5, y: 0.5)
+                switch level {
+                case .fit: camera = .fit()
+                case .scale(let s): camera = .zoomed(scale: s, center: CGPoint(x: 0.5, y: 0.5))
+                }
                 window?.invalidateCursorRects(for: self)
             }
             let rect = currentRect(image: image, size: pixelSize)
@@ -631,18 +711,18 @@ public final class LoupeView: NSView {
             let crisp = zoom != .fit && rect.width >= image.displaySize.width
             encoder.setFragmentSamplerState(crisp ? gpu.nearestSampler : gpu.sampler, index: 0)
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
-            if var pass = peakingPass, Self.paintsOverlays {
-                encoder.setRenderPipelineState(pass.gpu.overlay)
+            if case .ready(let mask, var params, let passGPU) = peakingPass, Self.paintsOverlays {
+                encoder.setRenderPipelineState(passGPU.overlay)
                 encoder.setVertexBytes(&quad, length: MemoryLayout<Quad>.stride, index: 0)
-                encoder.setFragmentTexture(pass.mask.texture, index: 0)
-                encoder.setFragmentBytes(&pass.params, length: MemoryLayout<PeakParams>.stride, index: 0)
+                encoder.setFragmentTexture(mask.texture, index: 0)
+                encoder.setFragmentBytes(&params, length: MemoryLayout<PeakParams>.stride, index: 0)
                 encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
             }
-            if var pass = clippingPass, Self.paintsOverlays {
-                encoder.setRenderPipelineState(pass.gpu.overlay)
+            if case .ready(let mask, var params, let passGPU) = clippingPass, Self.paintsOverlays {
+                encoder.setRenderPipelineState(passGPU.overlay)
                 encoder.setVertexBytes(&quad, length: MemoryLayout<Quad>.stride, index: 0)
-                encoder.setFragmentTexture(pass.mask.texture, index: 0)
-                encoder.setFragmentBytes(&pass.params, length: MemoryLayout<ClipParams>.stride, index: 0)
+                encoder.setFragmentTexture(mask.texture, index: 0)
+                encoder.setFragmentBytes(&params, length: MemoryLayout<ClipParams>.stride, index: 0)
                 encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
             }
         }
@@ -662,20 +742,19 @@ public final class LoupeView: NSView {
             buffer.present(drawable)
             buffer.commit()
         }
-        if needsAnalysis, let image, !analysisInFlight { analyzeThenRedraw(image, gpu: gpu) }
+        if needsDeferredAnalysis, let image, analysisState == .idle { analyzeThenRedraw(image, gpu: gpu) }
     }
 
     /// Runs the overlay analysis for `image` behind the frame already presented, then draws again.
     private func analyzeThenRedraw(_ image: PreparedImage, gpu: LoupeGPU) {
-        needsAnalysis = false
         guard let buffer = gpu.queue.makeCommandBuffer() else { return }
-        analysisInFlight = true
+        analysisState = .running
         _ = peakingPass(for: image, gpu: gpu, buffer: buffer, deferAnalysis: false)
         _ = clippingPass(for: image, gpu: gpu, buffer: buffer, deferAnalysis: false)
         buffer.addCompletedHandler { [weak self] _ in
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.analysisInFlight = false
+                self.analysisState = .idle
                 // If a newer picture arrived meanwhile, it was drawn bare and its analysis starts now.
                 self.render(deferAnalysis: self.image?.texture !== image.texture)
             }

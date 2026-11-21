@@ -45,7 +45,7 @@ public enum EmbeddedJPEGExtractor {
                                                      orientation: orientation, removePrivate: removePrivate) {
                 exif = t.segment
                 embeddedXMP = t.embeddedXMP
-                noteSkipped = t.hadMakerNote && !t.makerNoteCopied
+                noteSkipped = t.makerNote == .dropped
             } else if removePrivate, let ownExif,
                       let t = ExifTransplant.segment(fromExifSegment: ownExif, previewWidth: best.width, previewHeight: best.height,
                                                      orientation: orientation, removePrivate: true) {

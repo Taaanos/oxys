@@ -21,53 +21,76 @@ public final class SignpostIntervalXML: NSObject, XMLParserDelegate {
         return me.intervals
     }
 
+    private enum Field: String {
+        case name = "signpost-name"
+        case subsystem = "subsystem"
+        case duration = "duration"
+    }
+
+    private struct Collecting {
+        var field: Field
+        var id: String?
+        var text = ""
+    }
+
+    private struct RowState {
+        var name: String?
+        var subsystem: String?
+        var duration: Int?
+        var collecting: Collecting?
+
+        mutating func apply(_ field: Field, _ value: String) {
+            switch field {
+            case .name: name = value
+            case .subsystem: subsystem = value
+            case .duration: duration = Int(value)
+            }
+        }
+    }
+
+    private enum ParseState {
+        case outsideRow
+        case inRow(RowState)
+    }
+
     private var intervals: [SignpostInterval] = []
     private var table: [String: String] = [:]          // id → text, for the two de-duplicated elements
-    private var inRow = false
-    private var current: String?                        // element whose text we are collecting
-    private var currentID: String?
-    private var text = ""
-    private var name: String?, subsystem: String?, duration: Int?
+    private var state: ParseState = .outsideRow
 
     public func parser(_ parser: XMLParser, didStartElement element: String, namespaceURI: String?,
                        qualifiedName: String?, attributes attrs: [String: String]) {
-        switch element {
-        case "row":
-            inRow = true; name = nil; subsystem = nil; duration = nil
-        case "signpost-name", "subsystem", "duration":
-            guard inRow else { return }
-            if let ref = attrs["ref"] {
-                resolve(element, table[ref])
-            } else {
-                current = element; currentID = attrs["id"]; text = ""
-            }
-        default: break
+        if element == "row" {
+            state = .inRow(RowState())
+            return
         }
+        guard case .inRow(var row) = state, let field = Field(rawValue: element) else { return }
+        if let ref = attrs["ref"] {
+            if let value = table[ref] { row.apply(field, value) }
+        } else {
+            row.collecting = Collecting(field: field, id: attrs["id"])
+        }
+        state = .inRow(row)
     }
 
     public func parser(_ parser: XMLParser, foundCharacters string: String) {
-        if current != nil { text += string }
+        guard case .inRow(var row) = state, var collecting = row.collecting else { return }
+        collecting.text += string
+        row.collecting = collecting
+        state = .inRow(row)
     }
 
     public func parser(_ parser: XMLParser, didEndElement element: String, namespaceURI: String?, qualifiedName: String?) {
-        if element == current {
-            if let id = currentID { table[id] = text }
-            resolve(element, text)
-            current = nil; currentID = nil
-        } else if element == "row" {
-            if inRow, let name, let subsystem, let duration {
+        guard case .inRow(var row) = state else { return }
+        if element == "row" {
+            if let name = row.name, let subsystem = row.subsystem, let duration = row.duration {
                 intervals.append(SignpostInterval(name: name, subsystem: subsystem, durationNanoseconds: duration))
             }
-            inRow = false
-        }
-    }
-
-    private func resolve(_ element: String, _ value: String?) {
-        guard let value else { return }
-        switch element {
-        case "signpost-name": name = value
-        case "subsystem": subsystem = value
-        default: duration = Int(value)
+            state = .outsideRow
+        } else if let collecting = row.collecting, collecting.field.rawValue == element {
+            if let id = collecting.id { table[id] = collecting.text }
+            row.apply(collecting.field, collecting.text)
+            row.collecting = nil
+            state = .inRow(row)
         }
     }
 }

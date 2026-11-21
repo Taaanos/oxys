@@ -332,4 +332,26 @@ private let allFixtures = [
         #expect(queue.unsavedCount == 0)
         #expect(FileManager.default.fileExists(atPath: target.primary.path))
     }
+
+    @Test func aNewSubmitClearsPriorRefusedStateOnceFixed() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("oxys-q-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let real = dir.appendingPathComponent("real.xmp")
+        let link = dir.appendingPathComponent("a.xmp")
+        try Data("<x:xmpmeta/>".utf8).write(to: real)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+
+        let queue = SidecarWriteQueue()
+        queue.submit(SidecarEdit(rating: 2, label: .keep), to: SidecarTarget(primary: link))
+        queue.flush()
+        #expect(queue.unsavedCount == 1)
+
+        // Replace symlink with a normal file; submitting a new edit clears the refused status and succeeds.
+        try FileManager.default.removeItem(at: link)
+        queue.submit(SidecarEdit(rating: 4, label: .keep), to: SidecarTarget(primary: link))
+        queue.flush()
+        #expect(queue.unsavedCount == 0)
+        #expect(try XMPReader.parse(Data(contentsOf: link)).rating == 4)
+    }
 }

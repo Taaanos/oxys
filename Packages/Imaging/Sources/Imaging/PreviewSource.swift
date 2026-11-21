@@ -59,10 +59,30 @@ public struct PreviewSource: Sendable {
         case original
     }
 
+    /// The container backing this file: a RAW always carries non-empty located previews and its largest preview;
+    /// an original file is decoded directly (and may optionally have located previews).
+    public enum Backing: Sendable {
+        case raw(LocatedPreviews, largest: EmbeddedJPEG)
+        case original(LocatedPreviews?)
+    }
+
     public let url: URL
-    public let kind: Kind
-    public let located: LocatedPreviews?
+    public let backing: Backing
     private let data: Data
+
+    public var kind: Kind {
+        switch backing {
+        case .raw: .raw
+        case .original: .original
+        }
+    }
+
+    public var located: LocatedPreviews? {
+        switch backing {
+        case .raw(let located, _): located
+        case .original(let located): located
+        }
+    }
 
     /// The most pixels one decode may produce (B-8). About 1 GB as RGBA. Real previews are far smaller (a 150 MP camera
     /// makes a JPEG of that size, and Loupe decodes it at 8192 px on the long edge), and the Metal texture limit is
@@ -105,26 +125,31 @@ public struct PreviewSource: Sendable {
         let located = PreviewLocator.locate(in: data)
         let rawByContent = located?.previews.contains { $0.longEdge >= minimumRawPreviewLongEdge } == true
         if isRaw || rawByContent {
-            guard let located, !located.previews.isEmpty else { throw .noPreview }
-            return PreviewSource(url: url, kind: .raw, located: located, data: data)
+            guard let located, let largest = located.largest else { throw .noPreview }
+            return PreviewSource(url: url, backing: .raw(located, largest: largest), data: data)
         }
-        return PreviewSource(url: url, kind: .original, located: located, data: data)
+        return PreviewSource(url: url, backing: .original(located), data: data)
     }
 
     /// The embedded JPEG Loupe shows (RAW only; originals show themselves).
-    public var loupePreview: EmbeddedJPEG? { located?.largest }
+    public var loupePreview: EmbeddedJPEG? {
+        switch backing {
+        case .raw(_, let largest): largest
+        case .original(let located): located?.largest
+        }
+    }
 
     /// Long edge in pixels of the Loupe image, upright, without decoding it. Nil when unknown (an original).
     public var loupePixelSize: (width: Int, height: Int)? {
-        guard kind == .raw, let p = loupePreview else { return nil }
-        return Self.orientation(of: p, in: located?.info).swapsAxes ? (p.height, p.width) : (p.width, p.height)
+        guard case .raw(let located, let p) = backing else { return nil }
+        return Self.orientation(of: p, in: located.info).swapsAxes ? (p.height, p.width) : (p.width, p.height)
     }
 
     /// Long edge in pixels of the Loupe image as stored, read from headers only (no decode). Nil when unknown.
     public var loupeLongEdge: Int? {
-        switch kind {
-        case .raw:
-            return loupePreview?.longEdge
+        switch backing {
+        case .raw(_, let largest):
+            return largest.longEdge
         case .original:
             guard let source = CGImageSourceCreateWithData(data as CFData, nil), CGImageSourceGetCount(source) > 0,
                   let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
@@ -152,9 +177,8 @@ public struct PreviewSource: Sendable {
         let token = Perf.begin(.decode)
         defer { Perf.end(token) }
         let decoded: DecodedPreview
-        switch kind {
-        case .raw:
-            guard let located, let preview = located.largest else { throw .noPreview }
+        switch backing {
+        case .raw(let located, let preview):
             decoded = try decodeEmbedded(preview, info: located.info, maxPixelSize: nil, deferred: false, subsample: factor)
         case .original:
             decoded = try decodeOriginal(gridEdge: nil, maxPixelSize: nil, deferred: false, subsample: factor)
@@ -174,7 +198,7 @@ public struct PreviewSource: Sendable {
     /// source smaller than `sourceAtLeast`. A camera's tiny EXIF thumbnail (160 px) is often padded with black to
     /// 4:3, so a portrait frame comes out with bars; the film strip (V-20) therefore scales down a real preview.
     public func decodeGrid(longEdge: Int, sourceAtLeast: Int) throws(PreviewError) -> DecodedPreview {
-        switch kind {
+        switch backing {
         case .raw: try decode(wanting: sourceAtLeast, maxPixelSize: longEdge)
         case .original: try decodeOriginal(gridEdge: nil, maxPixelSize: longEdge, deferred: false)
         }
@@ -183,11 +207,9 @@ public struct PreviewSource: Sendable {
     private func decode(wanting gridEdge: Int?, maxPixelSize: Int?, deferred: Bool = false) throws(PreviewError) -> DecodedPreview {
         let token = Perf.begin(.decode)
         defer { Perf.end(token) }
-        switch kind {
-        case .raw:
-            guard let located else { throw .noPreview }
-            let chosen = gridEdge.map(located.smallestAdequate) ?? located.largest
-            guard let preview = chosen else { throw .noPreview }
+        switch backing {
+        case .raw(let located, let largest):
+            let preview = gridEdge.flatMap(located.smallestAdequate) ?? largest
             return try decodeEmbedded(preview, info: located.info, maxPixelSize: maxPixelSize, deferred: deferred)
         case .original:
             return try decodeOriginal(gridEdge: gridEdge, maxPixelSize: maxPixelSize, deferred: deferred)
@@ -214,8 +236,8 @@ public struct PreviewSource: Sendable {
 
     /// The preview's own Exif orientation, else its container's tag, else the main image's (DNG reduced previews).
     static func orientation(of preview: EmbeddedJPEG, in info: ContainerInfo?) -> CGImagePropertyOrientation {
-        let value = preview.header.exifOrientation ?? preview.containerOrientation ?? info?.orientation ?? 1
-        return CGImagePropertyOrientation(rawValue: UInt32(value)) ?? .up
+        let value = preview.header.exifOrientation ?? preview.containerOrientation ?? info?.orientation ?? .up
+        return CGImagePropertyOrientation(rawValue: UInt32(value.rawValue)) ?? .up
     }
 
     /// An embedded ICC profile is honored by ImageIO. Without one, `R03` means Adobe RGB and anything else sRGB.

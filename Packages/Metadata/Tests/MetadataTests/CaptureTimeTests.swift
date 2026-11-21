@@ -54,12 +54,12 @@ import Testing
     }
 
     @Test func readsTheCameraTextWithoutDecoding() throws {
-        let data = try tiff(.init(make: "SONY", orientation: 6, dateTimeOriginal: "2026:10:02 12:35:49"))
+        let data = try tiff(.init(make: "SONY", orientation: .right, dateTimeOriginal: "2026:10:02 12:35:49"))
         #expect(CaptureTime.dateTimeOriginalString(in: data) == "2026:10:02 12:35:49")
     }
 
     @Test func noDateUnsetDateAndGarbageGiveNil() throws {
-        #expect(CaptureTime.dateTimeOriginalString(in: try tiff(.init(orientation: 6))) == nil)
+        #expect(CaptureTime.dateTimeOriginalString(in: try tiff(.init(orientation: .right))) == nil)
         #expect(CaptureTime.dateTimeOriginalString(in: try tiff(.init(dateTimeOriginal: "0000:00:00 00:00:00"))) == nil)
         #expect(CaptureTime.dateTimeOriginalString(in: Data("garbage, not a TIFF".utf8)) == nil)
     }

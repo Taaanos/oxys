@@ -7,25 +7,38 @@ import Observation
 /// gone nothing runs (P-09).
 @MainActor @Observable
 final class HUD {
+    struct Visible: Equatable {
+        let phrase: String
+        let serial: Int
+    }
+
+    private enum Display {
+        case hidden
+        case showing(Visible, Task<Void, Never>)
+    }
+
     static let shared = HUD()
     static let duration: Duration = .milliseconds(1200)
 
-    /// What the HUD says now; nil when it is hidden. `serial` changes with every phrase, so the view can tell a
-    /// replacement from a repeat.
-    private(set) var phrase: String?
-    private(set) var serial = 0
-    @ObservationIgnored private var timer: Task<Void, Never>?
+    /// What the HUD says now, paired with its dismiss timer; hidden holds no phrase and no live timer.
+    private var display: Display = .hidden
+    @ObservationIgnored private var nextSerial = 0
+
+    var visible: Visible? {
+        if case .showing(let visible, _) = display { return visible }
+        return nil
+    }
 
     func show(_ phrase: String) {
-        self.phrase = phrase
-        serial += 1
-        timer?.cancel()
-        timer = Task { [weak self] in
+        if case .showing(_, let timer) = display { timer.cancel() }
+        nextSerial += 1
+        let item = Visible(phrase: phrase, serial: nextSerial)
+        let timer = Task { [weak self] in
             try? await Task.sleep(for: Self.duration)
             guard !Task.isCancelled else { return }
-            self?.phrase = nil
-            self?.timer = nil
+            self?.display = .hidden
         }
+        display = .showing(item, timer)
     }
 }
 
@@ -37,9 +50,9 @@ struct HUDView: View {
 
     var body: some View {
         ZStack {
-            if let phrase = hud.phrase {
+            if let visible = hud.visible {
                 GlassEffectContainer {
-                    Text(phrase)
+                    Text(visible.phrase)
                         .font(.callout)
                         .lineLimit(1)
                         .padding(.horizontal, 14)
@@ -47,13 +60,13 @@ struct HUDView: View {
                         .glassPlate()
                         .contrastProbe("hud", .glass, shape: .capsule, uses: [.text(.white)])
                 }
-                .id(hud.serial)
+                .id(visible.serial)
                 .transition(.asymmetric(insertion: .identity, removal: reduceMotion ? .identity : .opacity))
             }
         }
         .padding(.top, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: hud.phrase == nil)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: hud.visible == nil)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }

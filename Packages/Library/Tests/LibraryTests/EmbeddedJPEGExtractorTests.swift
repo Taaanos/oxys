@@ -62,7 +62,7 @@ private func scratch() throws -> URL {
     #expect(result.exifAdded)
     let data = try Data(contentsOf: result.output)
     let header = try #require(JPEGHeader.parse(ByteReader(data: data), at: 0))
-    #expect(header.exifOrientation == 6)
+    #expect(header.exifOrientation == .right)
     #expect(data.suffix(preview.count - 2) == preview.suffix(preview.count - 2))
 }
 
@@ -76,7 +76,7 @@ private func scratch() throws -> URL {
     let result = try EmbeddedJPEGExtractor.extract(source, into: out)
     #expect(result.exifAdded)
     let data = try Data(contentsOf: result.output)
-    #expect(try #require(JPEGHeader.parse(ByteReader(data: data), at: 0)).exifOrientation == 8)
+    #expect(try #require(JPEGHeader.parse(ByteReader(data: data), at: 0)).exifOrientation == .left)
     #expect(try #require(JPEGSegments.list(data)).filter(\.isExif).count == 1)
 }
 

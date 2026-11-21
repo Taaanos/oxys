@@ -71,10 +71,14 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     /// The active cell's glass lens (D-13).
     private let glass = GlassCellLens()
 
-    private var scrollView: NSScrollView?
-    private var collectionView: NSCollectionView?
-    private var layout: GridLayout?
-    private var boundsObserver: Any?
+    private struct AttachedView {
+        let scrollView: NSScrollView
+        let collectionView: NSCollectionView
+        let layout: GridLayout
+        let boundsObserver: Any
+    }
+
+    private var attached: AttachedView?
 
     private var photos: [Photo] = []
     private var indexByURL: [URL: Int] = [:]
@@ -87,9 +91,8 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     private var lastLowerBound = 0
     private var direction: GridPrefetch.Direction = .down
     private var firstScreenToken: Perf.Token?
-    private var isObserving = false
     private var shownSelection = Set<URL>()
-    private var shownRevision = -1
+    private var shownRevision: Int?
 
     /// 0 to 4, into `GridGeometry.itemSizes`; remembered between launches.
     private(set) var step: Int = {
@@ -137,13 +140,11 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         scroll.drawsBackground = true
         scroll.backgroundColor = NSColor(white: LoupeView.canvasGray, alpha: 1)
         scroll.contentView.postsBoundsChangedNotifications = true
-        boundsObserver = NotificationCenter.default.addObserver(
+        let observer = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.viewportChanged() }
         }
-        self.layout = layout
-        collectionView = collection
-        scrollView = scroll
+        attached = AttachedView(scrollView: scroll, collectionView: collection, layout: layout, boundsObserver: observer)
         loader.batchHost = scroll
         loupe.fallbackHost = scroll
 
@@ -152,7 +153,6 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         reindex()
         shownCurrent = folder.currentURL
         shownSelection = folder.selection.urls
-        isObserving = true
         observe()
         // The first layout pass happens once the view is in a window; scroll to the current photo then.
         DispatchQueue.main.async { [weak self] in
@@ -163,13 +163,9 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     }
 
     func detach() {
-        isObserving = false
-        if let boundsObserver { NotificationCenter.default.removeObserver(boundsObserver) }
-        boundsObserver = nil
+        if let attached { NotificationCenter.default.removeObserver(attached.boundsObserver) }
+        attached = nil
         loader.batchHost = nil
-        scrollView = nil
-        collectionView = nil
-        layout = nil
         if let token = firstScreenToken { Perf.end(token) }
         firstScreenToken = nil
     }
@@ -186,11 +182,11 @@ final class GridController: NSObject, NSCollectionViewDataSource {
 
     /// What the bench logs at the start of a pass: the columns, the document height and the clip width in points.
     var layoutSummary: (columns: Int, documentHeight: Double, clipWidth: Double) {
-        (geometry.columns, Double(collectionView?.frame.height ?? 0), Double(scrollView?.contentView.bounds.width ?? 0))
+        (geometry.columns, Double(attached?.collectionView.frame.height ?? 0), Double(attached?.scrollView.contentView.bounds.width ?? 0))
     }
 
     func scrollToTop() {
-        guard let scrollView else { return }
+        guard let scrollView = attached?.scrollView else { return }
         scrollView.contentView.scroll(to: .zero)
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }
@@ -198,7 +194,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     /// Scrolls to the bottom at a constant speed, one step per display-link tick, and reports the time between
     /// ticks in milliseconds: a tick that comes late is a frame that was dropped.
     func scrollWithDisplayLink(pointsPerSecond: CGFloat, interval report: @escaping @MainActor (Double) -> Void) async {
-        guard let scrollView else { return }
+        guard let scrollView = attached?.scrollView else { return }
         let driver = GridScroller(scrollView: scrollView, speed: pointsPerSecond, report: report)
         await driver.run()
     }
@@ -208,11 +204,11 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     private var size: CGFloat { GridGeometry.itemSizes[step] }
 
     private var geometry: GridGeometry {
-        .grid(itemSize: size, width: scrollView?.contentView.bounds.width ?? 800)
+        .grid(itemSize: size, width: attached?.scrollView.contentView.bounds.width ?? 800)
     }
 
     private var edge: Int {
-        let scale = scrollView?.window?.backingScaleFactor ?? 2
+        let scale = attached?.scrollView.window?.backingScaleFactor ?? 2
         return size * scale <= 512 ? 512 : 1024
     }
 
@@ -240,7 +236,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         guard next != step else { return }
         step = next
         UserDefaults.standard.set(step, forKey: "gridThumbnailStep")
-        layout?.itemSize = size
+        attached?.layout.itemSize = size
         scrollToCurrent()
         viewportChanged(force: true)
         refreshAllVisible()
@@ -250,7 +246,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     // MARK: observation
 
     private func observe() {
-        guard isObserving else { return }
+        guard attached != nil else { return }
         withObservationTracking {
             _ = folder.visible
             _ = folder.currentURL
@@ -262,12 +258,12 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     }
 
     private func folderChanged() {
-        guard isObserving else { return }
+        guard let attached else { return }
         defer { observe() }
         let new = folder.visible
         let old = photos
         let revision = currentRevision
-        let sameList = new.count == old.count && ((revision >= 0 && revision == shownRevision) || zip(new, old).allSatisfy { $0.url == $1.url })
+        let sameList = new.count == old.count && ((revision != nil && revision == shownRevision) || zip(new, old).allSatisfy { $0.url == $1.url })
         shownRevision = revision
         photos = new
         if !sameList {
@@ -279,7 +275,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
             reindex()
             // The same number of photos in another order (the capture times arriving): the cells on screen stay and
             // show their new photos. A reload would drop them and make about a hundred new ones, 30 ms (P-08).
-            if new.count == old.count { refreshAllVisible() } else { collectionView?.reloadData() }
+            if new.count == old.count { refreshAllVisible() } else { attached.collectionView.reloadData() }
             wantedRange = 0..<0
             shownCurrent = folder.currentURL
             shownSelection = folder.selection.urls
@@ -306,10 +302,10 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         }
     }
 
-    /// `folder.listRevision` while the list shown is all of the photos in their own order, else -1 (a filter or a sort
+    /// `folder.listRevision` while the list shown is all of the photos in their own order, else nil (a filter or a sort
     /// makes `visible` a different list, so only a comparison can tell).
-    private var currentRevision: Int {
-        folder.filter.isNarrowing || !folder.filter.isDefaultSort ? -1 : folder.listRevision
+    private var currentRevision: Int? {
+        folder.filter.isNarrowing || !folder.filter.isDefaultSort ? nil : folder.listRevision
     }
 
     private func reindex() {
@@ -327,7 +323,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     private func index(ofShown url: URL) -> Int? { indexByShownURL[url] ?? indexByURL[url] }
 
     private func scrollToCurrent() {
-        guard let collectionView, let index = folder.currentIndex else { return }
+        guard let collectionView = attached?.collectionView, let index = folder.currentIndex else { return }
         collectionView.layoutSubtreeIfNeeded()
         let g = geometry
         let rect = NSRect(x: 0, y: g.rowOrigin(of: index) - g.spacing, width: 1, height: g.itemSize + 2 * g.spacing)
@@ -337,7 +333,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     // MARK: thumbnails
 
     private func viewportChanged(force: Bool = false) {
-        guard let scrollView, !photos.isEmpty else { return }
+        guard let scrollView = attached?.scrollView, !photos.isEmpty else { return }
         let bounds = scrollView.contentView.bounds
         let g = geometry
         let range = g.visibleRange(offset: bounds.minY, height: bounds.height, count: photos.count)
@@ -371,7 +367,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     // MARK: cells
 
     private var visibleItems: [(index: Int, cell: GridCellView)] {
-        guard let collectionView else { return [] }
+        guard let collectionView = attached?.collectionView else { return [] }
         return collectionView.visibleItems().compactMap { item in
             guard let cell = item.view as? GridCellView, let path = collectionView.indexPath(for: item) else { return nil }
             return (path.item, cell)
@@ -379,7 +375,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     }
 
     private func refresh(index: Int) {
-        guard let item = collectionView?.item(at: IndexPath(item: index, section: 0)), let cell = item.view as? GridCellView
+        guard let item = attached?.collectionView.item(at: IndexPath(item: index, section: 0)), let cell = item.view as? GridCellView
         else { return }
         cell.configure(from: self, index: index)
     }
@@ -402,11 +398,13 @@ final class GridController: NSObject, NSCollectionViewDataSource {
         // A photo without a preview keeps "No preview" in the badge view, so its lens carries no marks.
         let lens = isCurrent ? glass.image(
             plain: plain, imageKey: shownKey, decision: failed ? .none : photo.decision, isPair: !failed && photo.isPair,
-            isSelected: folder.selection.contains(photo.url), points: size, scale: scrollView?.window?.backingScaleFactor ?? 2,
+            isSelected: folder.selection.contains(photo.url), points: size, scale: attached?.scrollView.window?.backingScaleFactor ?? 2,
             tile: GridCellView.tileGray, look: look, signpost: .glassLens) : nil
-        return .init(url: photo.url, image: lens ?? plain, failed: failed, decision: photo.decision,
+        let surface: GridCellView.Surface = lens.map { .glass($0, corner: look.corner) } ?? .tile(plain)
+        let status: GridCellView.Status = failed ? .failed : .normal(decision: photo.decision, isPair: photo.isPair)
+        return .init(url: photo.url, surface: surface, status: status,
                      isCurrent: isCurrent, isSelected: folder.selection.contains(photo.url),
-                     label: label(for: photo), isPair: photo.isPair, glass: lens != nil, corner: lens != nil ? look.corner : 3)
+                     label: label(for: photo))
     }
 
     private func label(for photo: Photo) -> String { photo.cellLabel }
@@ -432,7 +430,7 @@ final class GridController: NSObject, NSCollectionViewDataSource {
     }
 
     private func announce(_ phrase: String) {
-        guard let scrollView else { return }
+        guard let scrollView = attached?.scrollView else { return }
         NSAccessibility.post(element: scrollView, notification: .announcementRequested, userInfo: [
             .announcement: phrase, .priority: NSAccessibilityPriorityLevel.low.rawValue,
         ])
@@ -468,20 +466,45 @@ final class GridItem: NSCollectionViewItem {
 /// tile (D-13), with the marks drawn into it, under the glass.
 @MainActor
 final class GridCellView: NSView {
+    /// How the thumbnail is rendered: on a gray tile (optional image while loading) or inside the active glass lens
+    /// (which always carries a composited bitmap and its corner radius).
+    enum Surface {
+        case tile(CGImage?)
+        case glass(CGImage, corner: CGFloat = 3)
+
+        var image: CGImage? {
+            switch self {
+            case .tile(let image): image
+            case .glass(let image, _): image
+            }
+        }
+
+        var isGlass: Bool { if case .glass = self { true } else { false } }
+
+        var corner: CGFloat {
+            switch self {
+            case .tile: 3
+            case .glass(_, let corner): corner
+            }
+        }
+    }
+
+    /// Either the preview failed ("No preview") or the cell shows the photo's decision and pair badges.
+    enum Status {
+        case normal(decision: Decision, isPair: Bool)
+        case failed
+
+        var isFailed: Bool { if case .failed = self { true } else { false } }
+        var isReject: Bool { if case .normal(let decision, _) = self { decision.isReject } else { false } }
+    }
+
     struct Content {
         let url: URL
-        let image: CGImage?
-        let failed: Bool
-        let decision: Decision
+        let surface: Surface
+        let status: Status
         let isCurrent: Bool
         let isSelected: Bool
         let label: String
-        let isPair: Bool
-        /// The image is the glass lens of the active cell (V-20, D-13): the marks and a reject's veil are already in
-        /// it, the tile is clear, and the corners follow the glass.
-        var glass = false
-        /// The corner radius of the cell: the glass's when it wears the lens, so a selection tint follows its shape.
-        var corner: CGFloat = 3
     }
 
     /// The tile behind a thumbnail, as a gray from 0 to 1.
@@ -557,23 +580,29 @@ final class GridCellView: NSView {
         self.onClick = onClick
         self.onContextMenu = onContextMenu
         url = content.url
+        let isGlass = content.surface.isGlass
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        imageLayer.contents = content.image
+        imageLayer.contents = content.surface.image
         imageLayer.contentsScale = window?.backingScaleFactor ?? 2
         // A reject is dimmed; on the lens the bitmap carries the dimming with the marks.
-        imageLayer.opacity = content.decision.isReject && !content.glass ? 0.35 : 1
-        layer?.backgroundColor = content.glass ? nil : NSColor(white: Self.tileGray, alpha: 1).cgColor
-        layer?.cornerRadius = content.corner
+        imageLayer.opacity = content.status.isReject && !isGlass ? 0.35 : 1
+        layer?.backgroundColor = isGlass ? nil : NSColor(white: Self.tileGray, alpha: 1).cgColor
+        layer?.cornerRadius = content.surface.corner
         // On the lens the tint is in the bitmap, under the glass.
-        tintLayer.isHidden = !content.isSelected || content.glass
+        tintLayer.isHidden = !content.isSelected || isGlass
         checkLayer.isHidden = !content.isSelected
         CATransaction.commit()
-        badges.isHidden = content.glass && !content.failed
-        badges.decision = content.failed ? nil : content.decision
-        badges.failed = content.failed
-        badges.isPair = content.isPair
-        setAccessibilityLabel(content.failed ? "\(content.label), no preview" : content.label)
+        switch content.status {
+        case .failed:
+            badges.isHidden = false
+            badges.content = .failed
+            setAccessibilityLabel("\(content.label), no preview")
+        case .normal(let decision, let isPair):
+            badges.isHidden = isGlass
+            badges.content = .badges(decision: decision, isPair: isPair)
+            setAccessibilityLabel(content.label)
+        }
         setAccessibilitySelected(content.isCurrent || content.isSelected)
     }
 
@@ -614,10 +643,14 @@ final class GridBadgeView: NSView {
         NSRect(x: 0, y: cellHeight - Self.height - lift, width: cellWidth, height: Self.height)
     }
 
-    var decision: Decision? { didSet { if decision != oldValue { needsDisplay = true } } }
-    var failed = false { didSet { if failed != oldValue { needsDisplay = true } } }
-    /// A RAW+JPEG pair (V-10): a "R+J" chip at the right end of the strip.
-    var isPair = false { didSet { if isPair != oldValue { needsDisplay = true } } }
+    enum Content: Equatable {
+        case failed
+        case badges(decision: Decision, isPair: Bool)
+    }
+
+    var content: Content = .badges(decision: .none, isPair: false) {
+        didSet { if content != oldValue { needsDisplay = true } }
+    }
     private var accessibilityObserver: NSObjectProtocol?
 
     override var isFlipped: Bool { true }
@@ -638,11 +671,12 @@ final class GridBadgeView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        if failed {
+        switch content {
+        case .failed:
             if let font = Self.font(size: 11) { Self.draw("No preview", at: NSPoint(x: 6, y: 4), color: .white, font: font) }
-            return
+        case .badges(let decision, let isPair):
+            Self.drawBadges(decision: decision, isPair: isPair, in: bounds)
         }
-        Self.drawBadges(decision: decision ?? .none, isPair: isPair, in: bounds)
     }
 
     /// All the marks in one dark capsule with a faint light edge, centered in `strip` (a rectangle in a flipped

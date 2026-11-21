@@ -79,7 +79,7 @@ func aNonLatinLayoutRecordsTheSameShortcutsAsTheLatinOne(id: String) throws {
     // `[` is Decrease Rating's key: the editor says so before anything is saved.
     #expect(editor.check(shortcut, for: "cull.reject") == .conflicts([
         KeyConflict(command: "cull.rate.down", title: "Decrease Rating", modes: [.grid, .loupe, .compare],
-                    shortcut: shortcut, isShiftTwin: false),
+                    clash: .direct(shortcut)),
     ]))
     editor.assign(shortcut, to: "cull.reject", reassign: true)
     var router = KeyRouter(keymap: editor.resolved.keymap)

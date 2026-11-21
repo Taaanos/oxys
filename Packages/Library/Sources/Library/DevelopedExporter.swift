@@ -45,7 +45,7 @@ public enum DevelopedExporter {
         let properties = ExportMetadata.properties(from: sourceProperties, width: pixels.width, height: pixels.height,
                                                      removePrivate: removePrivate)
         let transplant = ExifTransplant.segment(fromRAW: data, previewWidth: pixels.width, previewHeight: pixels.height,
-                                                orientation: 1, removePrivate: removePrivate)
+                                                orientation: .up, removePrivate: removePrivate)
         let packet = sidecar.flatMap { try? Data(contentsOf: $0) } ?? transplant?.embeddedXMP
         let xmp = packet.flatMap { ExportMetadata.developedXMP(from: $0, removePrivate: removePrivate) }
         let quality = quality ?? format.defaultQuality
@@ -66,7 +66,7 @@ public enum DevelopedExporter {
                 if let rewritten = JPEGSegments.rewriting(bytes, exif: transplant?.segment, xmp: xmpSegment, icc: profile) {
                     bytes = rewritten
                 }
-                noteSkipped = transplant.map { $0.hadMakerNote && !$0.makerNoteCopied } ?? false
+                noteSkipped = transplant?.makerNote == .dropped
             }
         } catch {
             throw ExportFailure.cannotDevelop(describe(error))

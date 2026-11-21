@@ -14,7 +14,7 @@ struct EditorChooserView: View {
         ZStack {
             Color.black.opacity(0.35)
                 .contentShape(Rectangle())
-                .onTapGesture { model.showEditorChooser = false }
+                .onTapGesture { model.closeEditorChooser() }
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Edit In").font(.headline).accessibilityAddTraits(.isHeader)

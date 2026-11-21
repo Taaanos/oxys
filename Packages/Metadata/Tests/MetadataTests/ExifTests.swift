@@ -115,7 +115,7 @@ import Testing
         let url = URL(fileURLWithPath: "/nonexistent/none.jpg")
         #expect(cache.cached(url) == nil)
         #expect(cache.info(for: url) == nil)
-        #expect(cache.cached(url) != nil)   // read once, nothing there
+        #expect(cache.cached(url) == .absent)   // read once, nothing there
     }
 
     @Test func staysWithinCapacity() {

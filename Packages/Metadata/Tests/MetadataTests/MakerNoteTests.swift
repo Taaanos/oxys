@@ -1,3 +1,4 @@
+import Containers
 import Foundation
 import Testing
 @testable import Metadata
@@ -50,16 +51,16 @@ import Testing
     }
 
     @Test(arguments: [
-        (1, 0.25, 0.1), (2, 0.75, 0.1), (3, 0.75, 0.9), (4, 0.25, 0.9),
-        (5, 0.1, 0.25), (6, 0.9, 0.25), (7, 0.9, 0.75), (8, 0.1, 0.75),
+        (ExifOrientation.up, 0.25, 0.1), (.upMirrored, 0.75, 0.1), (.down, 0.75, 0.9), (.downMirrored, 0.25, 0.9),
+        (.leftMirrored, 0.1, 0.25), (.right, 0.9, 0.25), (.rightMirrored, 0.9, 0.75), (.left, 0.1, 0.75),
     ])
-    func everyOrientationMapsTheSensorPointUpright(orientation: Int, x: Double, y: Double) {
+    func everyOrientationMapsTheSensorPointUpright(orientation: ExifOrientation, x: Double, y: Double) {
         let p = AFPoint(x: 0.25, y: 0.1).upright(orientation: orientation)
         #expect(abs(p.x - x) < 1e-9 && abs(p.y - y) < 1e-9)
     }
 
     @Test func rotatedOrientationsSwapTheAreaSize() {
-        let p = AFPoint(x: 0.5, y: 0.5, width: 0.1, height: 0.2).upright(orientation: 6)
+        let p = AFPoint(x: 0.5, y: 0.5, area: AFAreaSize(width: 0.1, height: 0.2)).upright(orientation: .right)
         #expect(p.width == 0.2 && p.height == 0.1)
     }
 
@@ -213,7 +214,7 @@ import Testing
         let ftyp = box("ftyp", Array("crx ".utf8) + [0, 0, 0, 1] + Array("crx isom".utf8))
         let info = try #require(MakerNoteReader.read(from: Data(ftyp + moov)))
         #expect(info.lens == "RF24-105mm F4 L IS USM")
-        #expect(info.orientation == 6)
+        #expect(info.orientation == .right)
         let p = try #require(info.afPoints.first)
         #expect(abs(p.x - 0.5) < 1e-9 && abs(p.y - 0.5) < 1e-9)
     }
@@ -251,6 +252,7 @@ import Testing
         #expect(MakerNoteReader.lens(from: [50, 50, 0, 0]) == "50mm")
         #expect(MakerNoteReader.lens(from: [0, 0, 0, 0]) == nil)
         #expect(MakerNoteReader.lens(from: [70, 24, 2.8, 2.8]) == nil)
+        #expect(MakerNoteReader.lens(from: [nil, 70, 2.8, 2.8]) == nil)
         #expect(MakerNoteReader.lens(from: [.nan, 70, 2.8, 2.8]) == nil)
     }
 
@@ -285,5 +287,17 @@ import Testing
     @Test func notAnImageGivesNil() {
         #expect(MakerNoteReader.read(from: Data("hello".utf8)) == nil)
         #expect(MakerNoteReader.read(from: Data()) == nil)
+    }
+
+    @Test func afDetectionRejectsEmptyPointsAndCanonWithoutChosenPointsDropsFrameSize() {
+        #expect(AFDetection(points: [], frameSize: FrameDimensions(width: 100, height: 100)) == nil)
+        // Clear both in-focus and selected bitmasks -> af must be nil, never partial frame dimensions.
+        var a = canonAFInfo2(inFocus: 9)
+        let n = 19
+        for i in (8 + 4 * n)..<a.count { a[i] = 0 }
+        let info = MakerNoteReader.read(from: canonFile(afInfo: a))
+        #expect(info?.af == nil)
+        #expect(info?.afFrameWidth == nil)
+        #expect(info?.afFrameHeight == nil)
     }
 }

@@ -185,14 +185,14 @@ public final class FolderModel {
             for i in indices(forSidecar: url) { setUnsaved(false, at: i) }
             // A redo can write a sidecar an undo just removed: the photo knows its file again.
             for index in photos.indices where photos[index].sidecar.file == nil && primaryURL(for: photos[index]) == url {
-                photos[index].sidecar.file = url
+                photos[index].sidecar.markWritten(file: url)
             }
         case .removed(let url):
             for i in indices(forSidecar: url) { setUnsaved(false, at: i) }
-            for index in photos.indices where photos[index].sidecar.file == url { photos[index].sidecar.file = nil }
+            for index in photos.indices where photos[index].sidecar.file == url { photos[index].sidecar.markRemoved() }
         case .refused(let url, let reason):
             lastWriteFailure = "Not saved to \(url.lastPathComponent): \(reason)"
-            for index in photos.indices where photos[index].sidecar.file == url { photos[index].sidecar.problem = reason }
+            for index in photos.indices where photos[index].sidecar.file == url { photos[index].sidecar.markMalformed(reason: reason) }
             for i in indices(forSidecar: url) { setUnsaved(true, at: i) }
         case .failed(let url, let reason):
             lastWriteFailure = "Could not write \(url.lastPathComponent): \(reason)"
@@ -748,6 +748,6 @@ public final class FolderModel {
             writer.submit(sidecarEdit(for: photo), to: SidecarTarget(primary: target),
                           removeIfCreatedByUs: restoring && photo.decision.isUndecided && photo.sidecar.unknownLabel == nil)
         }
-        if photo.sidecar.file == nil, photo.sidecar.isRead { photos[index].sidecar.file = primary }
+        if photo.sidecar.file == nil, photo.sidecar.isRead { photos[index].sidecar.markWritten(file: primary) }
     }
 }

@@ -7,12 +7,12 @@ public enum ExifSegment {
     public struct Fields: Sendable, Equatable {
         public var make: String?
         public var model: String?
-        /// 1...8; nil when the RAW has none.
-        public var orientation: UInt16?
+        /// Valid EXIF orientation (1...8); nil when the RAW has none.
+        public var orientation: ExifOrientation?
         /// EXIF's `yyyy:MM:dd HH:mm:ss`.
         public var dateTimeOriginal: String?
 
-        public init(make: String? = nil, model: String? = nil, orientation: UInt16? = nil, dateTimeOriginal: String? = nil) {
+        public init(make: String? = nil, model: String? = nil, orientation: ExifOrientation? = nil, dateTimeOriginal: String? = nil) {
             self.make = make
             self.model = model
             self.orientation = orientation
@@ -36,8 +36,8 @@ public enum ExifSegment {
         var ifd0: [Entry] = []
         if let make = fields.make { ifd0.append(ascii(0x010F, make)) }
         if let model = fields.model { ifd0.append(ascii(0x0110, model)) }
-        if let o = fields.orientation, (1...8).contains(o) {
-            ifd0.append(Entry(tag: 0x0112, type: 3, count: 1, value: le16(o)))
+        if let o = fields.orientation {
+            ifd0.append(Entry(tag: 0x0112, type: 3, count: 1, value: le16(o.rawValue)))
         }
         var exif: [Entry] = []
         if let date = fields.dateTimeOriginal { exif.append(ascii(0x9003, date)) }

@@ -139,14 +139,15 @@ public enum Perf {
 }
 
 private final class LogFile: Sendable {
-    private let handle: Mutex<FileHandle?>
+    private let handle: Mutex<FileHandle>
 
-    init(path: String) {
+    init?(path: String) {
         FileManager.default.createFile(atPath: path, contents: nil)
-        handle = Mutex(FileHandle(forWritingAtPath: path))
+        guard let fileHandle = FileHandle(forWritingAtPath: path) else { return nil }
+        handle = Mutex(fileHandle)
     }
 
     func append(_ line: String) {
-        handle.withLock { try? $0?.write(contentsOf: Data(line.utf8)) }
+        handle.withLock { try? $0.write(contentsOf: Data(line.utf8)) }
     }
 }

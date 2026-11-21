@@ -87,4 +87,14 @@ import Testing
     @Test func malformedXMLThrows() {
         #expect(throws: (any Error).self) { try SignpostIntervalXML.parse(Data("<row><duration>".utf8)) }
     }
+
+    @Test func unknownChildElementsInsideRowDoNotOverwriteDuration() throws {
+        let xml = """
+        <?xml version="1.0"?><trace-query-result><node xpath='x'>
+        <row><duration id="2">1500000</duration><other-tag>999999</other-tag><signpost-name id="4">decode</signpost-name><subsystem id="6">com.thanosam.Oxys</subsystem></row>
+        </node></trace-query-result>
+        """
+        let all = try SignpostIntervalXML.parse(Data(xml.utf8))
+        #expect(all == [SignpostInterval(name: "decode", subsystem: "com.thanosam.Oxys", durationNanoseconds: 1_500_000)])
+    }
 }

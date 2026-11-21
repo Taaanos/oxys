@@ -70,8 +70,18 @@ public enum ExifReader {
 /// Reads are lazy and cached per file (M-16). Bounded, so a 10,000-photo folder does not keep every entry;
 /// when it is full the oldest half goes. A file that has no EXIF is remembered too.
 public final class ExifCache: Sendable {
+    /// A cached lookup result: distinguishes "read, had EXIF" from "read, no EXIF" without double optionals.
+    public enum Entry: Sendable, Equatable {
+        case info(ExifInfo)
+        case absent
+
+        public var info: ExifInfo? {
+            if case .info(let info) = self { info } else { nil }
+        }
+    }
+
     private struct State {
-        var entries: [URL: ExifInfo?] = [:]
+        var entries: [URL: Entry] = [:]
         var order: [URL] = []
     }
     private let state = Mutex(State())
@@ -79,15 +89,16 @@ public final class ExifCache: Sendable {
 
     public init(capacity: Int = 2000) { self.capacity = capacity }
 
-    /// The cached value, if the file was read before. A nested nil means "read, nothing there".
-    public func cached(_ url: URL) -> ExifInfo?? { state.withLock { $0.entries[url] } }
+    /// The cached entry, or nil when the file has not been read yet.
+    public func cached(_ url: URL) -> Entry? { state.withLock { $0.entries[url] } }
 
     /// Reads on the calling thread when not cached; call from a background task.
     public func info(for url: URL) -> ExifInfo? {
-        if let hit = cached(url) { return hit }
+        if let hit = cached(url) { return hit.info }
         let info = ExifReader.read(from: url)
+        let entry: Entry = info.map(Entry.info) ?? .absent
         state.withLock { state in
-            if state.entries.updateValue(info, forKey: url) == nil { state.order.append(url) }
+            if state.entries.updateValue(entry, forKey: url) == nil { state.order.append(url) }
             if state.order.count > capacity {
                 for old in state.order.prefix(capacity / 2) { state.entries[old] = nil }
                 state.order.removeFirst(capacity / 2)

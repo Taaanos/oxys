@@ -118,7 +118,7 @@ public enum TIFFPreviewLocator {
             if isMainIFD {
                 info.make = es.first { $0.tag == Tag.make }.flatMap(string)
                 info.model = es.first { $0.tag == Tag.model }.flatMap(string)
-                info.orientation = first(Tag.orientation).map { UInt16($0) }
+                info.orientation = first(Tag.orientation).flatMap { UInt16(exactly: $0) }.flatMap(ExifOrientation.init(rawValue:))
             }
             classify(es, name: name, first: first, reading: reading)
 
@@ -162,7 +162,7 @@ public enum TIFFPreviewLocator {
             let photometric = first(Tag.photometric)
             let subfileType = first(Tag.newSubfileType) ?? 0
             let tiled = es.contains { $0.tag == Tag.tileWidth }
-            let orientation = first(Tag.orientation).map { UInt16($0) }
+            let orientation = first(Tag.orientation).flatMap { UInt16(exactly: $0) }.flatMap(ExifOrientation.init(rawValue:))
 
             // Photometric 32803 is CFA and 34892 Linear Raw: those carry raw samples even when
             // the strips or tiles are JPEG-compressed (lossless JPEG in DNG). 52527 is a
@@ -179,21 +179,20 @@ public enum TIFFPreviewLocator {
                 return
             }
 
-            var offset: Int?
-            var length: Int?
+            var span: (offset: Int, length: Int)?
             if let blob = es.first(where: { $0.tag == Tag.panasonicJpgFromRaw && $0.type == 7 && $0.count > 4 }),
                let o = reading.reader.u32(blob.valueOffset) {
                 // RW2 keeps its JPEG as an undefined-type blob in IFD0: count is the length, the value the offset.
-                offset = Int(o); length = blob.count
+                span = (Int(o), blob.count)
             } else if let o = first(Tag.jpegInterchangeFormat), let l = first(Tag.jpegInterchangeFormatLength) {
-                offset = o; length = l
+                span = (o, l)
             } else if let compression {
                 switch compression {
                 case 6, 7, 34892:
                     guard !tiled else { skipped.append(SkippedImage(location: name, reason: "tiled JPEG (raw data)")); return }
                     let offs = es.first { $0.tag == Tag.stripOffsets }.map(values) ?? []
                     let lens = es.first { $0.tag == Tag.stripByteCounts }.map(values) ?? []
-                    if offs.count == 1, lens.count == 1 { offset = offs[0]; length = lens[0] }
+                    if offs.count == 1, lens.count == 1 { span = (offs[0], lens[0]) }
                     else if !offs.isEmpty { skipped.append(SkippedImage(location: name, reason: "multi-strip JPEG")) }
                 case 52546:
                     skipped.append(SkippedImage(location: name, reason: "JPEG XL"))
@@ -203,7 +202,7 @@ public enum TIFFPreviewLocator {
                     break
                 }
             }
-            guard let offset, let length, length > 4, offset >= 0, offset + length <= reader.count else { return }
+            guard let (offset, length) = span, length > 4, offset >= 0, offset + length <= reader.count else { return }
             guard let header = JPEGHeader.parse(reader, at: offset) else {
                 skipped.append(SkippedImage(location: name, reason: "not a JPEG at offset \(offset)"))
                 return
@@ -213,7 +212,6 @@ public enum TIFFPreviewLocator {
                 return
             }
             previews.append(EmbeddedJPEG(location: name, offset: offset, length: length,
-                                         width: header.width, height: header.height,
                                          containerOrientation: orientation, header: header))
         }
     }

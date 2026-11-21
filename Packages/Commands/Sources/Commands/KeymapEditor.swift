@@ -1,16 +1,36 @@
 /// Another command that already uses a key the user wants (V-14).
 public struct KeyConflict: Sendable, Equatable {
+    /// Whether the clash is with the command's own binding (reassignable) or with its generated `⇧` twin (cannot be taken alone).
+    public enum Clash: Sendable, Equatable {
+        case direct(Shortcut)
+        case shiftTwin(generated: Shortcut)
+    }
+
     public var command: CommandID
     public var title: String
     /// The modes where both commands would answer the key. Never empty: "every mode" is listed in full.
     public var modes: Set<ViewMode>
+    public var clash: Clash
+
     /// The other command's key that clashes (for a `⇧` twin, the generated key).
-    public var shortcut: Shortcut
-    /// The clash is with the generated `⇧` twin of a cull key. That key cannot be taken alone: change the
-    /// command's own key first.
-    public var isShiftTwin: Bool
+    public var shortcut: Shortcut {
+        switch clash {
+        case .direct(let s), .shiftTwin(let s): s
+        }
+    }
+
+    public var isShiftTwin: Bool {
+        if case .shiftTwin = clash { true } else { false }
+    }
 
     public var isReassignable: Bool { !isShiftTwin }
+
+    public init(command: CommandID, title: String, modes: Set<ViewMode>, clash: Clash) {
+        self.command = command
+        self.title = title
+        self.modes = modes
+        self.clash = clash
+    }
 }
 
 public enum KeyCheck: Sendable, Equatable {
@@ -83,8 +103,9 @@ public struct KeymapEditor: Sendable {
             guard let hit = wanted.first(where: { $0.press == press && Keymap.overlap($0.modes, other.modes) }),
                   let owner = table[other.command] else { continue }
             let overlap = Self.concrete(hit.modes).intersection(Self.concrete(other.modes))
-            let conflict = KeyConflict(command: other.command, title: owner.title, modes: overlap,
-                                       shortcut: Shortcut(other.key, other.modifiers), isShiftTwin: other.advances)
+            let otherShortcut = Shortcut(other.key, other.modifiers)
+            let clash: KeyConflict.Clash = other.advances ? .shiftTwin(generated: otherShortcut) : .direct(otherShortcut)
+            let conflict = KeyConflict(command: other.command, title: owner.title, modes: overlap, clash: clash)
             // A real key of the other command beats its twin: that is the one the user can reassign.
             if let known = found[other.command], !known.isShiftTwin || other.advances { continue }
             found[other.command] = conflict

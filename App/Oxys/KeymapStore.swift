@@ -12,15 +12,21 @@ import os
 @MainActor @Observable
 final class KeymapStore {
     enum State: Equatable {
-        case ready
-        /// Why the file cannot be used.
-        case blocked(String)
+        /// File is usable; `writeError` holds the last save failure until the next edit succeeds.
+        case ready(writeError: String? = nil)
+        /// File cannot be used (`reason`). `recoveryError` is set if "Start Over" failed to back up the file.
+        case blocked(reason: String, recoveryError: String? = nil)
     }
 
     private(set) var editor: KeymapEditor
-    private(set) var state: State = .ready
-    /// The last write failure, shown in the pane until the next edit works.
-    private(set) var writeError: String?
+    private(set) var state: State = .ready()
+    /// The last write or recovery failure, derived from `state`.
+    var writeError: String? {
+        switch state {
+        case .ready(let error): error
+        case .blocked(_, let error): error
+        }
+    }
     let url: URL
     /// Called with every new keymap, including the first read when the callback is set.
     @ObservationIgnored var onChange: (ResolvedKeymap) -> Void = { _ in }
@@ -45,7 +51,7 @@ final class KeymapStore {
 
     /// The keymap the app runs on: the editor's, or the Default keys while the file is blocked.
     var resolved: ResolvedKeymap {
-        if case .blocked(let reason) = state {
+        if case .blocked(let reason, _) = state {
             return ResolvedKeymap(keymap: Keymap.resolve(table: editor.table, file: nil).keymap, problems: [reason])
         }
         return editor.resolved
@@ -68,7 +74,7 @@ final class KeymapStore {
         let data: Data
         do { data = try Data(contentsOf: url) } catch {
             if (error as? CocoaError)?.code == .fileReadNoSuchFile || (error as? CocoaError)?.code == .fileNoSuchFile {
-                state = .ready
+                state = .ready()
                 editor.load(KeymapFile())
                 return
             }
@@ -79,7 +85,7 @@ final class KeymapStore {
             guard file.version == KeymapFile.currentVersion else {
                 return block("The file has version \(file.version). This app reads version \(KeymapFile.currentVersion).")
             }
-            state = .ready
+            state = .ready()
             editor.load(file)
         } catch {
             block("The file is not valid: \(error.localizedDescription)")
@@ -87,7 +93,7 @@ final class KeymapStore {
     }
 
     private func block(_ reason: String) {
-        state = .blocked(reason)
+        state = .blocked(reason: reason)
         editor.load(KeymapFile())
     }
 
@@ -132,12 +138,12 @@ final class KeymapStore {
         }
         do {
             try write(editor.file)
-            writeError = nil
+            state = .ready()
             publish()
             return result
         } catch {
             editor = previous
-            writeError = "The keys could not be saved: \(error.localizedDescription)"
+            state = .ready(writeError: "The keys could not be saved: \(error.localizedDescription)")
             Self.log.error("Keymap write failed: \(error.localizedDescription, privacy: .public)")
             return nil
         }
@@ -186,14 +192,13 @@ final class KeymapStore {
 
     /// The file moves to `Keymap.json.bak` (a copy from before replaces an older one) and the keys are Default again.
     func startOver() {
-        guard isBlocked else { return }
+        guard case .blocked(let reason, _) = state else { return }
         let backup = url.appendingPathExtension("bak")
         do {
             try? FileManager.default.removeItem(at: backup)
             try FileManager.default.moveItem(at: url, to: backup)
-            writeError = nil
         } catch {
-            writeError = "The old file could not be moved: \(error.localizedDescription)"
+            state = .blocked(reason: reason, recoveryError: "The old file could not be moved: \(error.localizedDescription)")
             return
         }
         reload()

@@ -10,16 +10,37 @@ import Synchronization
 
 /// What the pipeline holds per photo: the uploaded texture and the size of the preview it came from.
 nonisolated struct LoupeFrame: Sendable {
+    /// What kind of frame this is: a screen-size stand-in (P-03), a full embedded preview/original,
+    /// or a developed RAW (which always records what the decoder did about lens correction, V-19).
+    enum Kind: Sendable, Equatable {
+        case screenSize
+        case preview
+        case raw(lensCorrection: LensCorrection)
+    }
+
     let image: PreparedImage
     let width: Int
     let height: Int
     /// Computed with the frame, so a prefetched frame has its histogram ready (M-17); nil if it could not be.
     let histogram: Histogram?
+    let kind: Kind
+
+    init(image: PreparedImage, width: Int, height: Int, histogram: Histogram?, kind: Kind = .preview) {
+        self.image = image
+        self.width = width
+        self.height = height
+        self.histogram = histogram
+        self.kind = kind
+    }
+
     /// P-03: a stand-in decoded at the size of the screen. `width` and `height` are still the full preview's, so the
     /// zoom geometry and the badge talk about the picture; the texture behind `image` is smaller.
-    var isScreenSize = false
-    /// V-19: what the decoder did about the lens; nil for an embedded preview.
-    var lensCorrection: LensCorrection?
+    var isScreenSize: Bool { kind == .screenSize }
+    /// V-19: what the decoder did about the lens; nil for an embedded preview or screen-size stand-in.
+    var lensCorrection: LensCorrection? {
+        if case .raw(let correction) = kind { return correction }
+        return nil
+    }
 
     /// The upright size of the pixels in the texture.
     var pixelSize: CGSize { image.displaySize }
@@ -147,9 +168,7 @@ nonisolated enum FrameLoader {
             storeThumbnail(thumbnail, orientation: decoded.orientation, key: key, into: thumbnails)
         }
         let size = decoded.sourceDisplaySize
-        var frame = LoupeFrame(image: prepared, width: size.width, height: size.height, histogram: extras.histogram)
-        frame.isScreenSize = true
-        return frame
+        return LoupeFrame(image: prepared, width: size.width, height: size.height, histogram: extras.histogram, kind: .screenSize)
     }
 
     /// Writes the 512 px thumbnail once per file version, off the critical path.
@@ -180,8 +199,8 @@ nonisolated enum FrameLoader {
             histogram = Histogram.compute(bgra: small.bgra, pixelCount: small.width * small.height, source: .raw)
         }
         let size = prepared.displaySize
-        var frame = LoupeFrame(image: prepared, width: Int(size.width), height: Int(size.height), histogram: histogram)
-        frame.lensCorrection = LensCorrection(requested: lensCorrection, filter: filter)
+        let frame = LoupeFrame(image: prepared, width: Int(size.width), height: Int(size.height), histogram: histogram,
+                               kind: .raw(lensCorrection: LensCorrection(requested: lensCorrection, filter: filter)))
         return LoadedFrame(frame: frame, cost: prepared.byteCost)
     }
 

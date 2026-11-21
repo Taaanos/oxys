@@ -6,9 +6,13 @@ public struct SwipeTracker: Sendable {
         case began, changed, ended, cancelled
     }
 
-    private var deltaX: CGFloat = 0
-    private var absDeltaY: CGFloat = 0
-    private var triggered = false
+    private enum State: Sendable {
+        case idle
+        case tracking(deltaX: CGFloat, absDeltaY: CGFloat)
+        case triggered
+    }
+
+    private var state: State = .idle
     private let threshold: CGFloat
 
     public init(threshold: CGFloat = 40) {
@@ -16,9 +20,7 @@ public struct SwipeTracker: Sendable {
     }
 
     public mutating func reset() {
-        deltaX = 0
-        absDeltaY = 0
-        triggered = false
+        state = .idle
     }
 
     /// Feeds one trackpad scroll sample (ignoring momentum events). Returns `-1` (previous) or `+1` (next) once per gesture.
@@ -26,19 +28,26 @@ public struct SwipeTracker: Sendable {
         if isMomentum { return nil }
         switch phase {
         case .began:
-            reset()
-            deltaX = dx
-            absDeltaY = abs(dy)
+            state = .tracking(deltaX: dx, absDeltaY: abs(dy))
             return nil
         case .changed:
-            guard !triggered else { return nil }
-            deltaX += dx
-            absDeltaY += abs(dy)
-            guard abs(deltaX) >= threshold, abs(deltaX) > absDeltaY * 1.2 else { return nil }
-            triggered = true
-            return deltaX < 0 ? 1 : -1
+            let prevX: CGFloat
+            let prevY: CGFloat
+            switch state {
+            case .triggered: return nil
+            case .idle: (prevX, prevY) = (0, 0)
+            case .tracking(let x, let y): (prevX, prevY) = (x, y)
+            }
+            let x = prevX + dx
+            let y = prevY + abs(dy)
+            guard abs(x) >= threshold, abs(x) > y * 1.2 else {
+                state = .tracking(deltaX: x, absDeltaY: y)
+                return nil
+            }
+            state = .triggered
+            return x < 0 ? 1 : -1
         case .ended, .cancelled:
-            reset()
+            state = .idle
             return nil
         }
     }
@@ -46,8 +55,13 @@ public struct SwipeTracker: Sendable {
 
 /// Accumulates magnify gesture deltas and fires once when a pinch crosses `threshold` (V-34).
 public struct PinchNavigationTracker: Sendable {
-    private var total: CGFloat = 0
-    private var triggered = false
+    private enum State: Sendable {
+        case idle
+        case tracking(total: CGFloat)
+        case triggered
+    }
+
+    private var state: State = .idle
     private let threshold: CGFloat
 
     public init(threshold: CGFloat = 0.22) {
@@ -55,31 +69,35 @@ public struct PinchNavigationTracker: Sendable {
     }
 
     public mutating func reset() {
-        total = 0
-        triggered = false
+        state = .idle
     }
 
     /// Returns `-1` on pinch-in (below `-threshold`) or `+1` on pinch-out (above `+threshold`), at most once per gesture.
     public mutating func update(phase: SwipeTracker.Phase, magnification: CGFloat) -> Int? {
         switch phase {
         case .began:
-            reset()
-            total = magnification
+            state = .tracking(total: magnification)
             return nil
         case .changed:
-            guard !triggered else { return nil }
-            total += magnification
+            let prev: CGFloat
+            switch state {
+            case .triggered: return nil
+            case .idle: prev = 0
+            case .tracking(let total): prev = total
+            }
+            let total = prev + magnification
             if total <= -threshold {
-                triggered = true
+                state = .triggered
                 return -1
             }
             if total >= threshold {
-                triggered = true
+                state = .triggered
                 return 1
             }
+            state = .tracking(total: total)
             return nil
         case .ended, .cancelled:
-            reset()
+            state = .idle
             return nil
         }
     }

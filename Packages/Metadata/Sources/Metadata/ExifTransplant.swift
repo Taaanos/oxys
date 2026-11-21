@@ -11,10 +11,16 @@ import Foundation
 /// that is not known is tried as one whose IFD starts the note and whose offsets count from the TIFF header; a note
 /// that does not fit that, or whose offsets leave the note, is not copied, and the result says so.
 public enum ExifTransplant {
+    /// What happened to the RAW's maker note during transplant: eliminates impossible `(hadMakerNote: false, copied: true)`.
+    public enum MakerNoteStatus: Sendable, Equatable {
+        case absent
+        case copied
+        case dropped
+    }
+
     public struct Result: Sendable, Equatable {
         public var segment: Data
-        public var hadMakerNote: Bool
-        public var makerNoteCopied: Bool
+        public var makerNote: MakerNoteStatus
         /// The RAW's own XMP packet (tag 0x02BC), for a DNG.
         public var embeddedXMP: Data?
     }
@@ -28,6 +34,12 @@ public enum ExifTransplant {
         var sourcePosition: Int?
     }
 
+    /// The maker note's bytes paired with the offset in the source TIFF that its internal offsets count from.
+    struct RawMakerNote {
+        var data: Data
+        var sourceOffset: Int
+    }
+
     /// The pieces of a RAW's metadata, wherever the container keeps them.
     struct Source {
         var order: ByteOrder
@@ -35,16 +47,14 @@ public enum ExifTransplant {
         var exif: [Entry] = []
         var gps: [Entry] = []
         var interop: [Entry] = []
-        /// The maker note's bytes, and the offset, in the TIFF its offsets count from, where they started.
-        var note: Data?
-        var noteStart = 0
+        var makerNote: RawMakerNote?
     }
 
     /// `raw` is a whole RAW file (TIFF-based, or CR3). Nil for other containers and for files without Exif.
     /// `removePrivate` leaves out what says where the photo was taken and which gear made it (V-22): the GPS IFD, the
     /// camera owner name, the body and lens serial numbers, the image unique ID and the whole maker note (it holds
-    /// serial numbers in a form that differs from brand to brand). The result then reports no maker note.
-    public static func segment(fromRAW raw: Data, previewWidth: Int, previewHeight: Int, orientation: UInt16?,
+    /// serial numbers in a form that differs from brand to brand). The result then reports `.absent`.
+    public static func segment(fromRAW raw: Data, previewWidth: Int, previewHeight: Int, orientation: ExifOrientation?,
                                removePrivate: Bool = false) -> Result? {
         guard let source = readTIFF(raw) ?? readCR3(raw) else { return nil }
         return build(source, previewWidth: previewWidth, previewHeight: previewHeight, orientation: orientation,
@@ -53,7 +63,7 @@ public enum ExifTransplant {
 
     /// The same, from the Exif APP1 segment of a JPEG (marker and length included). It is how a JPEG's own Exif gets
     /// the clean-up of `removePrivate` when the RAW's container is not read (V-22).
-    public static func segment(fromExifSegment segment: Data, previewWidth: Int, previewHeight: Int, orientation: UInt16?,
+    public static func segment(fromExifSegment segment: Data, previewWidth: Int, previewHeight: Int, orientation: ExifOrientation?,
                                removePrivate: Bool = false) -> Result? {
         guard segment.count > 10 else { return nil }
         guard let source = readTIFF(Data(segment.dropFirst(10))) else { return nil }
@@ -120,8 +130,7 @@ public enum ExifTransplant {
         }
         if let p = pointer(ifd0, 0x8825, r) { s.gps = entries(r, at: p, base: 0) ?? [] }
         if let note = s.exif.first(where: { $0.tag == 0x927C }), let at = note.sourcePosition {
-            s.note = note.value
-            s.noteStart = at
+            s.makerNote = RawMakerNote(data: note.value, sourceOffset: at)
         }
         return s
     }
@@ -168,8 +177,7 @@ public enum ExifTransplant {
         if let (_, _, list) = tiff("CMT4") { s.gps = list }
         // The note is the IFD without the TIFF header (offsets count from the header, which is 8 bytes before the IFD).
         if let range = boxes["CMT3"], reader(data, at: range.lowerBound) != nil, range.count > 8 {
-            s.note = data.subdata(in: (range.lowerBound + 8)..<range.upperBound)
-            s.noteStart = 8
+            s.makerNote = RawMakerNote(data: data.subdata(in: (range.lowerBound + 8)..<range.upperBound), sourceOffset: 8)
         }
         return s
     }
@@ -187,12 +195,12 @@ public enum ExifTransplant {
     /// credit the photographer chose to publish.
     static let privateTags: Set<UInt16> = [0xC62F, 0xA430, 0xA431, 0xA435, 0xA420]
 
-    private static func build(_ source: Source, previewWidth: Int, previewHeight: Int, orientation: UInt16?,
+    private static func build(_ source: Source, previewWidth: Int, previewHeight: Int, orientation: ExifOrientation?,
                               removePrivate: Bool) -> Result? {
         var source = source
         if removePrivate {
             source.gps = []
-            source.note = nil
+            source.makerNote = nil
             source.ifd0.removeAll { privateTags.contains($0.tag) }
             source.exif.removeAll { privateTags.contains($0.tag) }
         }
@@ -205,33 +213,29 @@ public enum ExifTransplant {
         func long(_ tag: UInt16, _ v: Int) -> Entry { Entry(tag: tag, type: 4, count: 1, value: u32(v), sourcePosition: nil) }
 
         var ifd0 = source.ifd0.filter { ifd0Keep.contains($0.tag) }
-        if let o = orientation, (1...8).contains(o) {
-            ifd0.append(Entry(tag: 0x0112, type: 3, count: 1, value: u16(Int(o)), sourcePosition: nil))
+        if let o = orientation {
+            ifd0.append(Entry(tag: 0x0112, type: 3, count: 1, value: u16(Int(o.rawValue)), sourcePosition: nil))
         }
         // A JPEG's IFD0 must have this one; a RAW often does not.
         if !ifd0.contains(where: { $0.tag == 0x0213 }) { ifd0.append(Entry(tag: 0x0213, type: 3, count: 1, value: u16(1), sourcePosition: nil)) }
         let embeddedXMP = source.ifd0.first { $0.tag == 0x02BC }?.value
         guard !ifd0.isEmpty || !source.exif.isEmpty else { return nil }
 
-        func assemble(includeNote: Bool, userComment: Bool) -> (Data, Int?)? {
+        func assemble(includeNote: Bool, userComment: Bool) -> (tiff: Data, noteOffset: Int?) {
             var exif = source.exif.filter { !exifDrop.contains($0.tag) && (userComment || $0.tag != 0x9286) }
             if previewWidth > 0, previewHeight > 0 { exif += [long(0xA002, previewWidth), long(0xA003, previewHeight)] }
-            var noteTag: UInt16?
-            if includeNote, let n = source.note {
-                exif.append(Entry(tag: 0x927C, type: 7, count: UInt32(n.count), value: n, sourcePosition: nil))
-                noteTag = 0x927C
+            if includeNote, let note = source.makerNote {
+                exif.append(Entry(tag: 0x927C, type: 7, count: UInt32(note.data.count), value: note.data, sourcePosition: nil))
             }
-            var chain: [[Entry]] = []
             var i0 = ifd0
             var x = exif
-            var gps = source.gps
-            var interop = source.interop
+            let gps = source.gps
+            let interop = source.interop
             if !interop.isEmpty { x.append(long(0xA005, 0)) }
             if !x.isEmpty { i0.append(long(0x8769, 0)) }
             if !gps.isEmpty { i0.append(long(0x8825, 0)) }
-            chain = [i0, x, gps, interop]
+            var chain: [[Entry]] = [i0, x, gps, interop]
             for k in chain.indices { chain[k].sort { $0.tag < $1.tag } }
-            gps = chain[2]; interop = chain[3]
 
             // Layout: header, then IFD0, Exif, GPS, Interop; each IFD is followed by its out-of-line values.
             func size(_ list: [Entry]) -> Int {
@@ -259,7 +263,7 @@ public enum ExifTransplant {
                         table += e.value + Data(count: 4 - e.value.count)
                     } else {
                         let position = valuesStart + values.count
-                        if e.tag == noteTag, k == 1 { noteOffset = position }
+                        if includeNote, e.tag == 0x927C, k == 1 { noteOffset = position }
                         table += u32(position)
                         values += e.value
                         if values.count % 2 == 1 { values.append(0) }
@@ -277,16 +281,20 @@ public enum ExifTransplant {
         }
 
         let make = String(decoding: (source.ifd0.first { $0.tag == 0x010F }?.value ?? Data()).prefix { $0 != 0 }, as: UTF8.self).uppercased()
-        let hadNote = source.note != nil
-        if let note = source.note, let (placed, offset) = assemble(includeNote: true, userComment: true), let offset,
-           let moved = rebase(note, make: make, order: order, from: source.noteStart, to: offset),
-           let final = replacingNote(in: placed, at: offset, with: moved), let segment = wrap(final) {
-            return Result(segment: segment, hadMakerNote: true, makerNoteCopied: true, embeddedXMP: embeddedXMP)
+        if let makerNote = source.makerNote {
+            let (placed, offset) = assemble(includeNote: true, userComment: true)
+            if let offset,
+               let moved = rebase(makerNote.data, make: make, order: order, from: makerNote.sourceOffset, to: offset),
+               let final = replacingNote(in: placed, at: offset, with: moved), let segment = wrap(final) {
+                return Result(segment: segment, makerNote: .copied, embeddedXMP: embeddedXMP)
+            }
         }
         // Without the note, and then without the user comment, until the segment fits in 64 KB.
+        let fallbackStatus: MakerNoteStatus = source.makerNote == nil ? .absent : .dropped
         for userComment in [true, false] {
-            if let (tiff, _) = assemble(includeNote: false, userComment: userComment), let segment = wrap(tiff) {
-                return Result(segment: segment, hadMakerNote: hadNote, makerNoteCopied: false, embeddedXMP: embeddedXMP)
+            let (tiff, _) = assemble(includeNote: false, userComment: userComment)
+            if let segment = wrap(tiff) {
+                return Result(segment: segment, makerNote: fallbackStatus, embeddedXMP: embeddedXMP)
             }
         }
         return nil

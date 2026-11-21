@@ -65,8 +65,13 @@ struct FolderView: View {
             }
         }
         .overlay { HUDView(hud: .shared) }
-        .overlay { if model.showCheatSheet { CheatSheetView(model: model) } }
-        .overlay { if model.showEditorChooser { EditorChooserView(model: model) } }
+        .overlay {
+            switch model.modalOverlay {
+            case .none: EmptyView()
+            case .cheatSheet: CheatSheetView(model: model)
+            case .editorChooser: EditorChooserView(model: model)
+            }
+        }
         .overlay(alignment: .bottomLeading) { if model.extract.isShowing { ExtractPlate(job: model.extract) } }
         // The panels materialize (D-03); with Reduce Motion they cut, both by their transition and by no animation.
         .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: model.showCheatSheet)

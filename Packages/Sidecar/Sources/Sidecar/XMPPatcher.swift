@@ -110,25 +110,30 @@ public enum XMPPatcher {
     }
 
     struct Element {
+        /// A finalized XML element is either self-closing (`<tag/>`) or paired with an explicit closing tag (`</tag>`).
+        enum Closing {
+            case selfClosing
+            case paired(Range<Int>)
+        }
+
         var name: String
         var parent: Int?
         /// Prefix to namespace URI in force on this element, the default namespace under "".
         var scope: [String: String]
-        var attributes: [Attribute] = []
+        var attributes: [Attribute]
         var open: Range<Int>
         /// Where a new attribute goes: the `>` or `/>` that ends the start tag.
         var insertAt: Int
-        var selfClosing: Bool
-        var close: Range<Int>?
-
-        var isRDFDescription = false
+        var closing: Closing
+        var isRDFDescription: Bool
 
         func setText(_ text: String) -> Edit {
-            if selfClosing {
-                let qname = name
-                return Edit(range: open, text: "<\(qname)>\(text)</\(qname)>")
+            switch closing {
+            case .selfClosing:
+                Edit(range: open, text: "<\(name)>\(text)</\(name)>")
+            case .paired(let close):
+                Edit(range: open.upperBound..<close.lowerBound, text: text)
             }
-            return Edit(range: open.upperBound..<(close?.lowerBound ?? open.upperBound), text: text)
         }
 
         /// The element, and the indentation before it, so removing it leaves no blank line behind.
@@ -136,7 +141,11 @@ public enum XMPPatcher {
             var start = open.lowerBound
             while start > 0, bytes[start - 1] == 0x20 || bytes[start - 1] == 0x09 { start -= 1 }
             if start > 0, bytes[start - 1] == 0x0A { start -= 1; if start > 0, bytes[start - 1] == 0x0D { start -= 1 } }
-            return start..<(selfClosing ? open.upperBound : (close?.upperBound ?? open.upperBound))
+            let end = switch closing {
+            case .selfClosing: open.upperBound
+            case .paired(let close): close.upperBound
+            }
+            return start..<end
         }
     }
 
@@ -181,7 +190,7 @@ public enum XMPPatcher {
                 return Edit(range: element.insertAt..<element.insertAt, text: declare + attributes(prefix))
             }
             guard let rdf = elements.first(where: { resolve($0.name, in: $0, isAttribute: false) == (rdfNamespace, "RDF") }),
-                  let close = rdf.close else { throw XMPPatchError(message: "no rdf:RDF element to add a description to") }
+                  case .paired(let close) = rdf.closing else { throw XMPPatchError(message: "no rdf:RDF element to add a description to") }
             let rdfPrefix = rdf.name.split(separator: ":").dropLast().first.map { $0 + ":" } ?? ""
             let text = "<\(rdfPrefix)Description \(rdfPrefix)about=\"\" xmlns:xmp=\"\(xmpNamespace)\"\(attributes("xmp"))/>\n"
             return Edit(range: close.lowerBound..<close.lowerBound, text: text)
@@ -190,12 +199,23 @@ public enum XMPPatcher {
 
     /// One pass over the bytes. UTF-8 (or ASCII) only: a UTF-16 packet is refused rather than guessed at.
     struct Scanner {
+        private struct PendingElement {
+            var name: String
+            var parent: Int?
+            var scope: [String: String]
+            var attributes: [Attribute]
+            var open: Range<Int>
+            var insertAt: Int
+            var closing: Element.Closing?
+            var isRDFDescription: Bool
+        }
+
         let b: [UInt8]
         init(_ bytes: [UInt8]) { b = bytes }
 
         func scan() throws -> Document {
             guard !b.prefix(512).contains(0) else { throw XMPPatchError(message: "not a UTF-8 XMP packet") }
-            var elements: [Element] = []
+            var pending: [PendingElement] = []
             var stack: [Int] = []
             var i = 0
             while i < b.count {
@@ -207,18 +227,23 @@ public enum XMPPatcher {
                 else if starts(i, "</") {
                     let end = try find(">", from: i)
                     guard let top = stack.popLast() else { throw XMPPatchError(message: "unbalanced end tag") }
-                    elements[top].close = i..<(end + 1)
+                    pending[top].closing = .paired(i..<(end + 1))
                     i = end + 1
                 } else {
-                    var (element, next) = try startTag(at: i, parent: stack.last, scope: stack.last.map { elements[$0].scope } ?? [:])
+                    var (element, next) = try startTag(at: i, parent: stack.last, scope: stack.last.map { pending[$0].scope } ?? [:])
                     let (uri, local) = (element.scope[prefix(of: element.name)], element.name.split(separator: ":").last.map(String.init))
                     element.isRDFDescription = uri == rdfNamespace && local == "Description"
-                    elements.append(element)
-                    if !element.selfClosing { stack.append(elements.count - 1) }
+                    pending.append(element)
+                    if element.closing == nil { stack.append(pending.count - 1) }
                     i = next
                 }
             }
             guard stack.isEmpty else { throw XMPPatchError(message: "unclosed element") }
+            let elements = try pending.map { e -> Element in
+                guard let closing = e.closing else { throw XMPPatchError(message: "unclosed element") }
+                return Element(name: e.name, parent: e.parent, scope: e.scope, attributes: e.attributes,
+                               open: e.open, insertAt: e.insertAt, closing: closing, isRDFDescription: e.isRDFDescription)
+            }
             return Document(elements: elements)
         }
 
@@ -240,7 +265,7 @@ public enum XMPPatcher {
 
         private func isSpace(_ c: UInt8) -> Bool { c == 0x20 || c == 0x09 || c == 0x0A || c == 0x0D }
 
-        private func startTag(at start: Int, parent: Int?, scope inherited: [String: String]) throws -> (Element, Int) {
+        private func startTag(at start: Int, parent: Int?, scope inherited: [String: String]) throws -> (PendingElement, Int) {
             var i = start + 1
             let nameStart = i
             while i < b.count, !isSpace(b[i]), b[i] != 0x2F, b[i] != 0x3E { i += 1 }
@@ -275,9 +300,9 @@ public enum XMPPatcher {
             let selfClosing = b[i] == 0x2F
             if selfClosing { i += 1 }
             guard i < b.count, b[i] == 0x3E else { throw XMPPatchError(message: "bad start tag end") }
-            var element = Element(name: name, parent: parent, scope: scope, open: start..<(i + 1),
-                                  insertAt: insertAt, selfClosing: selfClosing)
-            element.attributes = attributes
+            let element = PendingElement(name: name, parent: parent, scope: scope, attributes: attributes,
+                                         open: start..<(i + 1), insertAt: insertAt,
+                                         closing: selfClosing ? .selfClosing : nil, isRDFDescription: false)
             return (element, i + 1)
         }
     }

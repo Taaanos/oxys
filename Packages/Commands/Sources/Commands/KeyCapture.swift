@@ -34,22 +34,21 @@ enum USLayout {
     ]
 
     /// One press of one key: what a shortcut needs, written so equal presses compare equal.
-    struct Press: Hashable {
-        var key: PhysicalKey?
-        var character: Character?
-        var modifiers: KeyModifiers
+    enum Press: Hashable {
+        case physical(PhysicalKey, KeyModifiers)
+        case character(Character, KeyModifiers)
     }
 
     static func press(of shortcut: Shortcut) -> Press {
         switch shortcut.key {
         case .position(let key):
-            return Press(key: key, modifiers: shortcut.modifiers)
+            return .physical(key, shortcut.modifiers)
         case .character(let c):
             for (key, pair) in punctuation {
-                if pair.base == c { return Press(key: key, modifiers: shortcut.modifiers) }
-                if pair.shifted == c { return Press(key: key, modifiers: shortcut.modifiers.union(.shift)) }
+                if pair.base == c { return .physical(key, shortcut.modifiers) }
+                if pair.shifted == c { return .physical(key, shortcut.modifiers.union(.shift)) }
             }
-            return Press(character: c, modifiers: shortcut.modifiers)
+            return .character(c, shortcut.modifiers)
         }
     }
 }
@@ -78,8 +77,9 @@ public enum ReservedShortcuts {
     }
 
     private static func normalized(_ shortcut: Shortcut) -> Shortcut {
-        let press = USLayout.press(of: shortcut)
-        guard let key = press.key else { return shortcut }
-        return Shortcut(.position(key), press.modifiers)
+        switch USLayout.press(of: shortcut) {
+        case .physical(let key, let modifiers): Shortcut(.position(key), modifiers)
+        case .character: shortcut
+        }
     }
 }

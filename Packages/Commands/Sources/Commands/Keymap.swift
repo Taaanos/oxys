@@ -30,7 +30,7 @@ public enum KeySpec: Hashable, Sendable {
     case character(Character)
 }
 
-/// What a key does when held.
+/// What a key does when held. Mutually exclusive: a binding cannot be both `.toggleOrHold`/`.repeating` and `.shiftAdvancing`.
 public enum KeyBehavior: Sendable, Hashable {
     /// Fires once per physical press. Auto-repeat is swallowed (G-12): cull keys and overlay toggles.
     case once
@@ -39,6 +39,8 @@ public enum KeyBehavior: Sendable, Hashable {
     /// Tap toggles, hold is momentary: fires on key-down, and again as a release if the key was held
     /// past the threshold. Auto-repeat is swallowed.
     case toggleOrHold
+    /// The `⇧` twin of a cull key: fires once per press, running the command and advancing to the next photo (M-06).
+    case shiftAdvancing
 }
 
 public struct KeyBinding: Sendable, Hashable {
@@ -48,17 +50,17 @@ public struct KeyBinding: Sendable, Hashable {
     public var modes: Set<ViewMode>
     public var command: CommandID
     public var behavior: KeyBehavior
-    /// The `⇧` twin of a cull key: run the command, then move to the next photo (M-06).
-    public var advances: Bool
+
+    /// True for the `⇧` twin of a cull key (M-06).
+    public var advances: Bool { behavior == .shiftAdvancing }
 
     public init(_ key: KeySpec, _ modifiers: KeyModifiers = [], modes: Set<ViewMode> = [],
-                command: CommandID, behavior: KeyBehavior = .once, advances: Bool = false) {
+                command: CommandID, behavior: KeyBehavior = .once) {
         self.key = key
         self.modifiers = modifiers
         self.modes = modes
         self.command = command
         self.behavior = behavior
-        self.advances = advances
     }
 }
 

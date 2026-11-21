@@ -16,24 +16,45 @@ final class KeysModel {
     }
 
     /// A key that clashes with another command's, waiting for the user to say "Reassign" or cancel.
-    struct Pending {
+    struct Pending: Equatable {
         var shortcut: Shortcut
         var target: Target
     }
 
-    struct Notice {
+    struct Notice: Equatable {
         var command: CommandID
         var text: String
         var pending: Pending?
     }
 
+    /// The single editing interaction active in Settings → Keys: idle, recording a key (optionally with an inline
+    /// rejection message while still recording), or waiting for confirmation to reassign a conflicting shortcut.
+    enum Interaction: Equatable {
+        case idle
+        case recording(Target, error: String? = nil)
+        case confirmingReassign(Pending, message: String)
+    }
+
     let store: KeymapStore
     let center: CommandCenter
-    private(set) var recording: Target?
-    private(set) var notice: Notice?
+    private(set) var interaction: Interaction = .idle
     /// What the search field holds; the list shows the commands that match every word.
     var search = ""
     @ObservationIgnored private var observers: [Any] = []
+
+    var recording: Target? {
+        if case .recording(let target, _) = interaction { return target }
+        return nil
+    }
+
+    var notice: Notice? {
+        switch interaction {
+        case .idle: nil
+        case .recording(let target, let error): error.map { Notice(command: target.command, text: $0) }
+        case .confirmingReassign(let pending, let message):
+            Notice(command: pending.target.command, text: message, pending: pending)
+        }
+    }
 
     init(store: KeymapStore, center: CommandCenter) {
         self.store = store
@@ -41,9 +62,8 @@ final class KeysModel {
     }
 
     func startRecording(_ target: Target) {
-        stopRecording()
-        notice = nil
-        recording = target
+        releaseCapture()
+        interaction = .recording(target)
         center.keyCapture = { [weak self] input in self?.captured(input) }
         // A key press the window never sees (another window, another app) must not leave the keyboard captured.
         let names: [Notification.Name] = [NSWindow.didResignKeyNotification, NSApplication.didResignActiveNotification]
@@ -55,57 +75,67 @@ final class KeysModel {
     }
 
     func stopRecording() {
-        recording = nil
+        releaseCapture()
+        if case .recording = interaction { interaction = .idle }
+    }
+
+    private func releaseCapture() {
         center.keyCapture = nil
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers = []
     }
 
-    func dismissNotice() { notice = nil }
+    func dismissNotice() {
+        switch interaction {
+        case .idle: break
+        case .recording(let target, _): interaction = .recording(target)
+        case .confirmingReassign: interaction = .idle
+        }
+    }
 
     private func captured(_ input: KeyInput) {
-        guard let target = recording else { return }
+        guard case .recording(let target, _) = interaction else { return }
         switch Shortcut.capture(input) {
         case .cancel:
             stopRecording()
-            notice = nil
         case .unsupported:
-            notice = Notice(command: target.command, text: "Oxys cannot use this key. Press another key.")
+            interaction = .recording(target, error: "Oxys cannot use this key. Press another key.")
         case .shortcut(let shortcut):
             attempt(shortcut, target: target, reassign: false)
         }
     }
 
     func reassign() {
-        guard let pending = notice?.pending else { return }
+        guard case .confirmingReassign(let pending, _) = interaction else { return }
         attempt(pending.shortcut, target: pending.target, reassign: true)
     }
 
     private func attempt(_ shortcut: Shortcut, target: Target, reassign: Bool) {
         // Nil: the file is blocked or could not be written. The banner above the list says why.
         guard let result = store.assign(shortcut, to: target.command, replacing: target.replacing, reassign: reassign) else {
-            stopRecording()
+            releaseCapture()
+            interaction = .idle
             return
         }
         let key = KeyLabels.label(for: shortcut)
         let name = center.table[target.command]?.title ?? target.command.rawValue
         switch result {
         case .ok:
-            stopRecording()
-            notice = nil
+            releaseCapture()
+            interaction = .idle
         case .duplicate:
-            notice = Notice(command: target.command, text: "\(name) already has \(key). Press another key.")
+            interaction = .recording(target, error: "\(name) already has \(key). Press another key.")
         case .reserved(let reason):
-            notice = Notice(command: target.command, text: "\(reason) Press another key.")
+            interaction = .recording(target, error: "\(reason) Press another key.")
         case .conflicts(let list):
             let owners = list.map { "\($0.title) (\(Self.modesText($0.modes)))" }.formatted(.list(type: .and))
             if let twin = list.first(where: \.isShiftTwin) {
                 // The twin is made from the other command's own key. Only that key can free it.
-                notice = Notice(command: target.command, text: "\(key) is the apply-and-move key of \(twin.title). Change its own key first, or press another key.")
+                interaction = .recording(target, error: "\(key) is the apply-and-move key of \(twin.title). Change its own key first, or press another key.")
             } else {
-                stopRecording()
-                notice = Notice(command: target.command, text: "\(key) already runs \(owners).",
-                                pending: Pending(shortcut: shortcut, target: target))
+                releaseCapture()
+                interaction = .confirmingReassign(Pending(shortcut: shortcut, target: target),
+                                                  message: "\(key) already runs \(owners).")
             }
         }
     }
@@ -126,10 +156,20 @@ final class KeysModel {
 /// another command has in the same modes is offered for reassignment before anything is saved.
 struct KeysPane: View {
     @Bindable var keys: KeysModel
-    @State private var askResetAll = false
-    @State private var importRequest: ImportRequest?
-    @State private var importError: String?
-    @State private var presetChoice: PresetChoice?
+    /// At most one alert or confirmation dialog can be presented at a time.
+    @State private var dialog: ActiveDialog?
+
+    private enum ActiveDialog {
+        case resetAll
+        case importConfirm(ImportRequest)
+        case importError(String)
+        case presetConfirm(PresetChoice)
+
+        var importRequest: ImportRequest? { if case .importConfirm(let r) = self { r } else { nil } }
+        var importError: String? { if case .importError(let msg) = self { msg } else { nil } }
+        var presetChoice: PresetChoice? { if case .presetConfirm(let c) = self { c } else { nil } }
+        var isResetAll: Bool { if case .resetAll = self { true } else { false } }
+    }
 
     /// A preset the user picked while own changes exist: waits for the confirmation. `id` nil is the Default keys.
     private struct PresetChoice { var id: String?; var name: String }
@@ -174,25 +214,29 @@ struct KeysPane: View {
         }
         .frame(height: 470)
         .onDisappear { keys.stopRecording() }
-        .alert("Import \(importRequest?.name ?? "keys")?", isPresented: Binding(get: { importRequest != nil }, set: { if !$0 { importRequest = nil } }),
-               presenting: importRequest) { request in
+        .alert("Import \(dialog?.importRequest?.name ?? "keys")?",
+               isPresented: Binding(get: { dialog?.importRequest != nil }, set: { if !$0 { dialog = nil } }),
+               presenting: dialog?.importRequest) { request in
             Button("Import") { store.commitImport(request.preview) }
             Button("Cancel", role: .cancel) {}
         } message: { request in
             Text(importMessage(request, current: store.editor.customizedCount))
         }
-        .alert("The file cannot be imported", isPresented: Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })) {
+        .alert("The file cannot be imported",
+               isPresented: Binding(get: { dialog?.importError != nil }, set: { if !$0 { dialog = nil } })) {
             Button("OK") {}
         } message: {
-            Text(importError ?? "")
+            Text(dialog?.importError ?? "")
         }
-        .confirmationDialog("Reset all keys?", isPresented: $askResetAll) {
+        .confirmationDialog("Reset all keys?",
+                            isPresented: Binding(get: { dialog?.isResetAll == true }, set: { if !$0 { dialog = nil } })) {
             Button("Reset All", role: .destructive) { store.resetAll() }
         } message: {
             Text("\(store.editor.customizedCount.formatted()) changed commands go back to the \(store.editor.presetID == nil ? "Default" : "preset") keys. Export the keys first to keep them.")
         }
-        .confirmationDialog("Use \(presetChoice?.name ?? "this key set")?", isPresented: Binding(get: { presetChoice != nil }, set: { if !$0 { presetChoice = nil } }),
-                            presenting: presetChoice) { choice in
+        .confirmationDialog("Use \(dialog?.presetChoice?.name ?? "this key set")?",
+                            isPresented: Binding(get: { dialog?.presetChoice != nil }, set: { if !$0 { dialog = nil } }),
+                            presenting: dialog?.presetChoice) { choice in
             Button("Use \(choice.name)", role: .destructive) { store.selectPreset(choice.id) }
         } message: { _ in
             Text("Your \(store.editor.customizedCount.formatted()) changed commands are removed. Export the keys first to keep them.")
@@ -227,7 +271,7 @@ struct KeysPane: View {
         if store.editor.customizedCount == 0 {
             store.selectPreset(id)
         } else {
-            presetChoice = PresetChoice(id: id, name: id.flatMap { names[$0] } ?? "the Default keys")
+            dialog = .presetConfirm(PresetChoice(id: id, name: id.flatMap { names[$0] } ?? "the Default keys"))
         }
     }
 
@@ -240,7 +284,7 @@ struct KeysPane: View {
                 .disabled(store.isBlocked)
             Button("Show File in Finder") { store.revealInFinder() }
             Divider()
-            Button("Reset All…", role: .destructive) { askResetAll = true }
+            Button("Reset All…", role: .destructive) { dialog = .resetAll }
                 .disabled(store.editor.customizedCount == 0 || store.isBlocked)
         } label: {
             Label("Keymap file", systemImage: "ellipsis.circle")
@@ -252,11 +296,15 @@ struct KeysPane: View {
 
     /// What is wrong with the file, or with the last save. Nothing shows when all is well.
     @ViewBuilder private func banner(_ store: KeymapStore) -> some View {
-        if case .blocked(let reason) = store.state {
+        switch store.state {
+        case .blocked(let reason, let recoveryError):
             VStack(alignment: .leading, spacing: 6) {
                 Label("Oxys cannot use Keymap.json, so the Default keys are on.", systemImage: "exclamationmark.triangle")
                     .font(.callout.bold())
                 Text(reason).font(.callout).foregroundStyle(.secondary)
+                if let recoveryError {
+                    Text(recoveryError).font(.callout).foregroundStyle(.red)
+                }
                 HStack {
                     Button("Show File in Finder") { store.revealInFinder() }
                     Button("Start Over") { store.startOver() }
@@ -267,14 +315,16 @@ struct KeysPane: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.quaternary, in: .rect(cornerRadius: 8))
             .accessibilityElement(children: .combine)
-        } else if let error = store.writeError {
+        case .ready(let error?) :
             Label(error, systemImage: "exclamationmark.triangle").font(.callout)
-        } else if !store.problems.isEmpty {
-            DisclosureGroup {
-                ForEach(store.problems, id: \.self) { Text($0).font(.callout).foregroundStyle(.secondary) }
-            } label: {
-                Label("Oxys ignored \(store.problems.count.formatted()) \(store.problems.count == 1 ? "entry" : "entries") of Keymap.json.",
-                      systemImage: "exclamationmark.triangle").font(.callout)
+        case .ready(nil):
+            if !store.problems.isEmpty {
+                DisclosureGroup {
+                    ForEach(store.problems, id: \.self) { Text($0).font(.callout).foregroundStyle(.secondary) }
+                } label: {
+                    Label("Oxys ignored \(store.problems.count.formatted()) \(store.problems.count == 1 ? "entry" : "entries") of Keymap.json.",
+                          systemImage: "exclamationmark.triangle").font(.callout)
+                }
             }
         }
     }
@@ -315,8 +365,8 @@ struct KeysPane: View {
             guard response == .OK, let url = panel.url else { return }
             MainActor.assumeIsolated {
                 switch keys.store.previewImport(from: url) {
-                case .success(let preview): importRequest = ImportRequest(name: url.lastPathComponent, preview: preview)
-                case .failure(let error): importError = error.message
+                case .success(let preview): dialog = .importConfirm(ImportRequest(name: url.lastPathComponent, preview: preview))
+                case .failure(let error): dialog = .importError(error.message)
                 }
             }
         }
@@ -329,7 +379,7 @@ struct KeysPane: View {
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             MainActor.assumeIsolated {
-                do { try keys.store.export(to: url) } catch { importError = "The keys could not be exported: \(error.localizedDescription)" }
+                do { try keys.store.export(to: url) } catch { dialog = .importError("The keys could not be exported: \(error.localizedDescription)") }
             }
         }
     }

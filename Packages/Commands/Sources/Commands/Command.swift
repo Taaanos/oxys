@@ -16,13 +16,26 @@ public struct MenuPlacement: Sendable, Hashable {
     }
 }
 
-public enum CommandKind: Sendable {
+/// How a non-toggle action behaves when pressed with auto-repeat or `⇧`.
+/// Mutually exclusive by construction: a command cannot both repeat and generate `⇧`-advancing twins.
+public enum ActionBehavior: Sendable, Equatable {
+    /// Fires once per physical press; auto-repeat is swallowed (G-12).
+    case once
+    /// Navigation and zoom steps: repeats while held.
+    case repeating
+    /// Cull actions (M-06): fires once per press and generates a `⇧` twin that also advances.
+    case shiftAdvancing
+}
+
+public enum CommandKind: Sendable, Equatable {
     /// Runs and is done.
-    case action
-    /// Flips a state; the menu item shows a checkmark.
+    case action(ActionBehavior)
+    /// Flips a state; the menu item shows a checkmark. Never repeats (G-12).
     case toggle
-    /// A toggle that is momentary when its key is held (`Z` for 1:1); the handler gets `.releaseHold`.
+    /// A toggle that is momentary when its key is held (`Z` for 1:1); the handler gets `.releaseHold`. Never repeats.
     case toggleOrHold
+
+    public static let action = CommandKind.action(.once)
 }
 
 /// What a command needs before it can run. Items whose needs are not met are disabled, never hidden.
@@ -66,33 +79,36 @@ public struct Command: Sendable, Identifiable {
     public var modes: Set<ViewMode>
     public var requires: Requirements
     public var kind: CommandKind
-    /// Navigation and zoom steps: the key repeats while held. Everything else ignores auto-repeat (G-12).
-    public var repeats: Bool
     /// The bundled Default preset's keys for this command. The first one is shown in the menu.
     public var defaultKeys: [Shortcut]
-    /// Every key of this command also has a `⇧` twin that runs it and then moves to the next photo (M-06).
-    public var shiftAdvances: Bool
     /// An SF Symbol name for the menu item, the same one the screen shows for this command (D-10). Nil shows none.
     public var symbol: String?
 
+    /// Navigation and zoom steps: the key repeats while held. Everything else ignores auto-repeat (G-12).
+    public var repeats: Bool { kind == .action(.repeating) }
+    /// Every key of this command also has a `⇧` twin that runs it and then moves to the next photo (M-06).
+    public var shiftAdvances: Bool { kind == .action(.shiftAdvancing) }
+
     public init(_ id: CommandID, _ title: String, menu: MenuPlacement?, modes: Set<ViewMode> = [],
-                requires: Requirements = [], kind: CommandKind = .action, repeats: Bool = false,
-                shiftAdvances: Bool = false, symbol: String? = nil, keys: [Shortcut] = []) {
+                requires: Requirements = [], kind: CommandKind = .action,
+                symbol: String? = nil, keys: [Shortcut] = []) {
         self.id = id
         self.title = title
         self.menu = menu
         self.modes = modes
         self.requires = requires
         self.kind = kind
-        self.repeats = repeats
         self.defaultKeys = keys
-        self.shiftAdvances = shiftAdvances
         self.symbol = symbol
     }
 
     public var behavior: KeyBehavior {
-        if kind == .toggleOrHold { return .toggleOrHold }
-        return repeats ? .repeating : .once
+        switch kind {
+        case .action(.once), .toggle: .once
+        case .action(.repeating): .repeating
+        case .action(.shiftAdvancing): .once
+        case .toggleOrHold: .toggleOrHold
+        }
     }
 
     public func isEnabled(in context: CommandContext) -> Bool {
@@ -111,7 +127,7 @@ public struct Command: Sendable, Identifiable {
         }
         if let twin {
             let modifiers: KeyModifiers = if case .position = twin { shortcut.modifiers.union(.shift) } else { shortcut.modifiers }
-            result.append(KeyBinding(twin, modifiers, modes: modes, command: id, behavior: behavior, advances: true))
+            result.append(KeyBinding(twin, modifiers, modes: modes, command: id, behavior: .shiftAdvancing))
         }
         return result
     }

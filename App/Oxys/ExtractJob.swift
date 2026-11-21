@@ -12,13 +12,11 @@ import SwiftUI
 final class ExtractJob {
     enum State {
         case idle
-        case running(done: Int, total: Int, folder: URL)
-        case finished(ExportSummary)
+        case running(format: ExportFormat, done: Int, total: Int, folder: URL)
+        case finished(format: ExportFormat, summary: ExportSummary)
     }
 
     private(set) var state = State.idle
-    /// What the current (or last) job writes.
-    private(set) var format = ExportFormat.embeddedJPEG
     @ObservationIgnored private let cancelFlag = Flag()
 
     /// Set by the main actor, read between files by the worker.
@@ -36,8 +34,7 @@ final class ExtractJob {
                removePrivate: Bool = false, finished: @escaping @MainActor @Sendable (String) -> Void) {
         guard !isRunning, !sources.isEmpty else { return }
         cancelFlag.set(false)
-        self.format = format
-        state = .running(done: 0, total: sources.count, folder: folder)
+        state = .running(format: format, done: 0, total: sources.count, folder: folder)
         let flag = cancelFlag
         Task.detached(priority: .utility) { [weak self] in
             let lastReport = Mutex(ContinuousClock.now)
@@ -49,7 +46,7 @@ final class ExtractJob {
                     last = now
                     return true
                 }
-                if due { Task { @MainActor in self?.report(done, of: sources.count, folder: folder) } }
+                if due { Task { @MainActor in self?.report(done) } }
             }
             let cancelled: @Sendable () -> Bool = { flag.isSet }
             let summary: ExportSummary
@@ -61,16 +58,16 @@ final class ExtractJob {
                                                     removePrivate: removePrivate, progress: progress, isCancelled: cancelled)
             }
             await MainActor.run {
-                self?.state = .finished(summary)
+                self?.state = .finished(format: format, summary: summary)
                 finished(Self.spoken(summary, format: format))
             }
         }
     }
 
-    private func report(_ done: Int, of total: Int, folder: URL) {
+    private func report(_ done: Int) {
         // A late update must not overwrite the summary.
-        guard case .running = state else { return }
-        state = .running(done: done, total: total, folder: folder)
+        guard case .running(let format, _, let total, let folder) = state else { return }
+        state = .running(format: format, done: done, total: total, folder: folder)
     }
 
     /// `⌘.` and the Cancel button. The file being written ends whole; the next one is not started.
@@ -107,9 +104,9 @@ struct ExtractPlate: View {
             switch job.state {
             case .idle:
                 EmptyView()
-            case .running(let done, let total, let folder):
+            case .running(let format, let done, let total, let folder):
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("\(job.format.isDeveloped ? "Developing" : "Extracting") \(ExtractJob.noun(job.format, plural: true)) to \(folder.lastPathComponent)")
+                    Text("\(format.isDeveloped ? "Developing" : "Extracting") \(ExtractJob.noun(format, plural: true)) to \(folder.lastPathComponent)")
                         .font(.callout.weight(.semibold))
                     ProgressView(value: Double(done), total: Double(max(total, 1)))
                         .tint(.white)
@@ -122,8 +119,8 @@ struct ExtractPlate: View {
                     }
                     .font(.callout)
                 }
-            case .finished(let summary):
-                SummaryView(summary: summary, job: job)
+            case .finished(let format, let summary):
+                SummaryView(format: format, summary: summary, job: job)
             }
         }
         .padding(12)
@@ -137,6 +134,7 @@ struct ExtractPlate: View {
 }
 
 private struct SummaryView: View {
+    let format: ExportFormat
     let summary: ExportSummary
     let job: ExtractJob
     /// Height of the lists, so the scroll area is no taller than they are.
@@ -182,7 +180,6 @@ private struct SummaryView: View {
 
     /// What the written files carry, in one paragraph.
     private var note: String {
-        let format = job.format
         let what = summary.removedPrivate
             ? ["EXIF"] + (summary.xmpAdded > 0 ? ["XMP (rating and label)"] : [])
             : ["EXIF"] + (format.isDeveloped ? ["GPS"] : []) + (summary.xmpAdded > 0 ? ["XMP (rating and label)"] : [])

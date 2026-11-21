@@ -4,12 +4,34 @@ import Foundation
 /// every other segment are copied byte for byte.
 public enum JPEGSegments {
     public struct Segment: Sendable, Equatable {
-        public var marker: UInt8
+        /// Mutually exclusive segment classification: eliminates impossible combinations like `(isExif: true, isXMP: true)`.
+        public enum Kind: Sendable, Equatable {
+            case jfif
+            case exif
+            case xmp
+            case icc
+            case photoshopIPTC
+            case other(marker: UInt8)
+
+            public var marker: UInt8 {
+                switch self {
+                case .jfif: 0xE0
+                case .exif, .xmp: 0xE1
+                case .icc: 0xE2
+                case .photoshopIPTC: 0xED
+                case .other(let m): m
+                }
+            }
+        }
+
+        public var kind: Kind
         /// Offsets of the whole segment, marker included.
         public var range: Range<Int>
-        public var isExif: Bool
-        public var isXMP: Bool
-        public var isICC = false
+
+        public var marker: UInt8 { kind.marker }
+        public var isExif: Bool { kind == .exif }
+        public var isXMP: Bool { kind == .xmp }
+        public var isICC: Bool { kind == .icc }
     }
 
     static let xmpHeader = Data("http://ns.adobe.com/xap/1.0/\0".utf8)
@@ -29,10 +51,21 @@ public enum JPEGSegments {
             let length = Int(jpeg[base + pos + 2]) << 8 | Int(jpeg[base + pos + 3])
             guard length >= 2, pos + 2 + length <= jpeg.count else { break }
             let body = base + pos + 4
-            let exif = marker == 0xE1 && length >= 8 && jpeg[body..<(body + 6)].elementsEqual(Data("Exif\0\0".utf8))
-            let xmp = marker == 0xE1 && length >= 2 + xmpHeader.count && jpeg[body..<(body + xmpHeader.count)].elementsEqual(xmpHeader)
-            let icc = marker == 0xE2 && length >= 2 + iccHeader.count && jpeg[body..<(body + iccHeader.count)].elementsEqual(iccHeader)
-            out.append(Segment(marker: marker, range: pos..<(pos + 2 + length), isExif: exif, isXMP: xmp, isICC: icc))
+            let kind: Segment.Kind = switch marker {
+            case 0xE0:
+                .jfif
+            case 0xE1 where length >= 8 && jpeg[body..<(body + 6)].elementsEqual(Data("Exif\0\0".utf8)):
+                .exif
+            case 0xE1 where length >= 2 + xmpHeader.count && jpeg[body..<(body + xmpHeader.count)].elementsEqual(xmpHeader):
+                .xmp
+            case 0xE2 where length >= 2 + iccHeader.count && jpeg[body..<(body + iccHeader.count)].elementsEqual(iccHeader):
+                .icc
+            case 0xED:
+                .photoshopIPTC
+            default:
+                .other(marker: marker)
+            }
+            out.append(Segment(kind: kind, range: pos..<(pos + 2 + length)))
             pos += 2 + length
         }
         return out
@@ -47,8 +80,8 @@ public enum JPEGSegments {
     public static func rewriting(_ jpeg: Data, exif: Data?, xmp: Data?, icc: Data? = nil, droppingXMPAndIPTC: Bool = false) -> Data? {
         guard let segments = list(jpeg) else { return nil }
         let base = jpeg.startIndex
-        let hasXMP = !droppingXMPAndIPTC && segments.contains { $0.isXMP }
-        let hasICC = segments.contains { $0.isICC }
+        let hasXMP = !droppingXMPAndIPTC && segments.contains { $0.kind == .xmp }
+        let hasICC = segments.contains { $0.kind == .icc }
         var out = Data(capacity: jpeg.count + (exif?.count ?? 0) + (xmp?.count ?? 0) + (icc?.count ?? 0))
         out.append(jpeg[base..<(base + 2)])
         var cursor = 2
@@ -61,14 +94,19 @@ public enum JPEGSegments {
             if let icc, !hasICC { out.append(icc) }
         }
         for (i, s) in segments.enumerated() {
-            if i == 0, s.marker == 0xE0 {
+            if i == 0, s.kind == .jfif {
                 out.append(jpeg[(base + cursor)..<(base + s.range.upperBound)])
                 cursor = s.range.upperBound
                 insert()
                 continue
             }
             insert()
-            if s.isExif || (droppingXMPAndIPTC && (s.isXMP || s.marker == 0xED)) {
+            let drop: Bool = switch s.kind {
+            case .exif: true
+            case .xmp, .photoshopIPTC: droppingXMPAndIPTC
+            case .jfif, .icc, .other: false
+            }
+            if drop {
                 out.append(jpeg[(base + cursor)..<(base + s.range.lowerBound)])
                 cursor = s.range.upperBound
             }

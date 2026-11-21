@@ -5,25 +5,40 @@ import Synchronization
 /// burst of keys on one photo costs one write, and `submit` never waits for the disk.
 public final class SidecarWriteQueue: Sendable {
     private struct Job { var target: SidecarTarget; var edit: SidecarEdit; var removeIfCreated: Bool }
+
+    /// Mutually exclusive worker states: cannot be idle while a file is in flight.
+    private enum Worker {
+        case idle
+        case draining(inFlight: URL?)
+    }
+
     private struct State {
         var pending: [URL: Job] = [:]
         var order: [URL] = []
-        var scheduled = false
-        var inFlight: URL?
+        var worker: Worker = .idle
+    }
+
+    /// Mutually exclusive failure states for a sidecar URL (replaces two separate mutexes that could race or overlap).
+    private enum UnsavedStatus {
+        case retryable(Job)
+        case refused
+    }
+
+    /// What a sidecar looked like right after our last write or removal, without a `[URL: FileSignature?]` double-optional trap.
+    private enum RecordedFileState {
+        case exists(FileSignature?)
+        case removed
     }
 
     private let state = Mutex(State())
     /// The exact bytes of each sidecar this queue created and has not seen changed since (touched only on the
     /// write queue). An undo may delete such a file; any other file is patched instead (M-09/Q1).
     private let created = Mutex<[URL: Data]>([:])
-    /// What each sidecar looked like right after our last write or removal of it (nil: the file is gone).
+    /// What each sidecar looked like right after our last write or removal of it.
     /// FSEvents echoes our own writes back; a file that still looks like this was not touched by anyone else (M-10).
-    private let signatures = Mutex<[URL: FileSignature?]>([:])
-    /// Writes that failed for a reason that may pass (read-only folder, full disk, card gone), kept so `retryFailed`
-    /// can try them again (M-11). A newer decision for the same sidecar replaces its entry.
-    private let failed = Mutex<[URL: Job]>([:])
-    /// Sidecars whose latest write was refused (cannot be patched safely). Not retried; counted as unsaved.
-    private let refused = Mutex<Set<URL>>([])
+    private let signatures = Mutex<[URL: RecordedFileState]>([:])
+    /// Sidecars whose latest write failed (retryable) or was refused (unpatchable), in one lock so counts and transitions are atomic.
+    private let unsaved = Mutex<[URL: UnsavedStatus]>([:])
     private let queue = DispatchQueue(label: "com.thanosam.oxys.sidecar-write", qos: .utility)
     private let onOutcome: @Sendable (SidecarWriteOutcome) -> Void
     private let now: @Sendable () -> Date
@@ -37,15 +52,18 @@ public final class SidecarWriteQueue: Sendable {
     /// `removeIfCreatedByUs` is for an undo that returns a photo to "no decision": if the sidecar is one this
     /// queue created and nobody has touched, it is deleted rather than rewritten with rating 0.
     public func submit(_ edit: SidecarEdit, to target: SidecarTarget, removeIfCreatedByUs: Bool = false) {
-        // A newer decision supersedes an older failed one; if it fails too it is recorded again.
-        failed.withLock { $0[target.primary] = nil }
+        // A newer decision supersedes an older failure or refusal; if it fails too it is recorded again.
+        unsaved.withLock { $0[target.primary] = nil }
         let schedule = state.withLock { state -> Bool in
             let job = Job(target: target, edit: edit, removeIfCreated: removeIfCreatedByUs)
             if state.pending.updateValue(job, forKey: target.primary) == nil {
                 state.order.append(target.primary)
             }
-            defer { state.scheduled = true }
-            return !state.scheduled
+            if case .idle = state.worker {
+                state.worker = .draining(inFlight: nil)
+                return true
+            }
+            return false
         }
         if schedule { queue.async { [self] in drain() } }
     }
@@ -54,45 +72,55 @@ public final class SidecarWriteQueue: Sendable {
     /// on top of a user edit that has not reached the disk yet (M-10/Q2).
     public func hasPendingWrite(for url: URL) -> Bool {
         state.withLock { state in
-            state.inFlight == url || state.pending.contains { $0.key == url || $0.value.target.fallback == url }
+            if case .draining(let current) = state.worker, current == url { return true }
+            return state.pending.contains { $0.key == url || $0.value.target.fallback == url }
         }
     }
 
     /// True when `url` is exactly as our last write (or removal) left it, so a change event for it is an echo.
     public func isOwnWrite(_ url: URL) -> Bool {
         guard let recorded = signatures.withLock({ $0[url] }) else { return false }
-        return recorded == FileSignature(of: url)
-    }
-
-    private func clearFailure(_ job: Job) {
-        failed.withLock { $0[job.target.primary] = nil }
-        refused.withLock { _ = $0.remove(job.target.primary) }
+        let current = FileSignature(of: url)
+        switch recorded {
+        case .exists(let expected): return current == expected
+        case .removed: return current == nil
+        }
     }
 
     /// How many sidecars have a decision that is not on disk: the last write failed or was refused (M-11).
     /// Exact once `flush()` has returned, which is what the quit prompt relies on.
-    public var unsavedCount: Int { failed.withLock { $0.count } + refused.withLock { $0.count } }
+    public var unsavedCount: Int { unsaved.withLock { $0.count } }
 
     /// Drops the failed write for a sidecar whose decision has been saved somewhere else (M-11).
     public func forgetFailure(for primary: URL) {
-        failed.withLock { $0[primary] = nil }
-        refused.withLock { _ = $0.remove(primary) }
+        unsaved.withLock { $0[primary] = nil }
     }
 
     /// Submits every failed write again, unless a newer decision for that sidecar is already queued.
     /// Returns how many were resubmitted.
     @discardableResult
     public func retryFailed() -> Int {
+        let retryable: [(URL, Job)] = unsaved.withLock { map in
+            var jobs: [(URL, Job)] = []
+            for (url, status) in map {
+                if case .retryable(let job) = status {
+                    jobs.append((url, job))
+                    map[url] = nil
+                }
+            }
+            return jobs
+        }
         var count = 0
-        for key in failed.withLock({ Array($0.keys) }) {
-            // Taking the entry out first means a decision made meanwhile (which clears it) is never overwritten.
-            guard let job = failed.withLock({ $0.removeValue(forKey: key) }) else { continue }
+        for (key, job) in retryable {
             let schedule = state.withLock { state -> Bool? in
                 guard state.pending[key] == nil else { return nil }
                 state.pending[key] = job
                 state.order.append(key)
-                defer { state.scheduled = true }
-                return !state.scheduled
+                if case .idle = state.worker {
+                    state.worker = .draining(inFlight: nil)
+                    return true
+                }
+                return false
             }
             guard let schedule else { continue }
             count += 1
@@ -104,26 +132,24 @@ public final class SidecarWriteQueue: Sendable {
     private func drain() {
         while true {
             let job = state.withLock { state -> Job? in
-                guard !state.order.isEmpty else { state.scheduled = false; state.inFlight = nil; return nil }
+                guard !state.order.isEmpty else { state.worker = .idle; return nil }
                 let job = state.pending.removeValue(forKey: state.order.removeFirst())
-                state.inFlight = job.map { SidecarWriter.resolve($0.target) }
+                state.worker = .draining(inFlight: job.map { SidecarWriter.resolve($0.target) })
                 return job
             }
             guard let job else { return }
             let outcome = run(job)
             switch outcome {
             case .written(let url):
-                signatures.withLock { $0[url] = .some(FileSignature(of: url)) }
-                clearFailure(job)
+                signatures.withLock { $0[url] = .exists(FileSignature(of: url)) }
+                unsaved.withLock { $0[job.target.primary] = nil }
             case .removed(let url):
-                signatures.withLock { $0[url] = .some(nil) }
-                clearFailure(job)
+                signatures.withLock { $0[url] = .removed }
+                unsaved.withLock { $0[job.target.primary] = nil }
             case .failed:
-                refused.withLock { _ = $0.remove(job.target.primary) }
-                failed.withLock { $0[job.target.primary] = job }
+                unsaved.withLock { $0[job.target.primary] = .retryable(job) }
             case .refused:
-                failed.withLock { $0[job.target.primary] = nil }
-                refused.withLock { _ = $0.insert(job.target.primary) }
+                unsaved.withLock { $0[job.target.primary] = .refused }
             }
             onOutcome(outcome)
         }

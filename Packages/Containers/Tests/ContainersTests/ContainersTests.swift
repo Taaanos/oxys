@@ -66,7 +66,7 @@ private struct TIFFBuilder {
     #expect(p.location == "IFD1")
     #expect(p.width == 160 && p.height == 120)
     #expect(p.offset == blob && p.length == thumb.count)
-    #expect(found.info.orientation == 6)
+    #expect(found.info.orientation == .right)
 }
 
 @Test func tiffSkipsRawSamplesMasksAndTiledJPEG() throws {
@@ -99,7 +99,7 @@ private struct TIFFBuilder {
     let found = try #require(TIFFPreviewLocator.locate(in: t.data))
     #expect(found.previews.map(\.location) == ["SubIFD1"])
     #expect(found.previews.first?.header.hasICCProfile == true)
-    #expect(found.previews.first?.header.exifOrientation == 8)
+    #expect(found.previews.first?.header.exifOrientation == .left)
     #expect(found.skipped.map(\.location) == ["SubIFD", "SubIFD2"])
     #expect(found.skipped.map(\.reason) == ["raw samples", "semantic mask"])
 }
@@ -122,8 +122,8 @@ private struct TIFFBuilder {
 
 @Test func previewChoice() {
     func p(_ loc: String, _ w: Int, _ h: Int) -> EmbeddedJPEG {
-        EmbeddedJPEG(location: loc, offset: 0, length: 1, width: w, height: h, containerOrientation: nil,
-                     header: JPEGHeader(width: w, height: h, componentCount: 3, sofMarker: 0xC0, hasICCProfile: false, hasExif: false, exifOrientation: nil, hasAdobeMarker: false))
+        EmbeddedJPEG(location: loc, offset: 0, length: 1, containerOrientation: nil,
+                     header: JPEGHeader(width: w, height: h, componentCount: 3, sofMarker: 0xC0))
     }
     let found = LocatedPreviews(format: "TIFF", info: ContainerInfo(),
                                 previews: [p("IFD1", 160, 120), p("IFD0", 1616, 1080), p("IFD2", 7008, 4672)], skipped: [])
@@ -139,7 +139,7 @@ private struct TIFFBuilder {
     let data = makeJPEG(width: 4032, height: 3024, orientation: 6, icc: true)
     let h = try #require(JPEGHeader.parse(ByteReader(data: data), at: 0))
     #expect(h.width == 4032 && h.height == 3024 && h.componentCount == 1)
-    #expect(h.hasICCProfile && h.hasExif && h.exifOrientation == 6)
+    #expect(h.hasICCProfile && h.hasExif && h.exifOrientation == .right)
     #expect(JPEGHeader.parse(ByteReader(data: Data([1, 2, 3])), at: 0) == nil)
 }
 
@@ -242,11 +242,11 @@ private struct TIFFBuilder {
 
 @Test func exifSegmentRoundTripsThroughTheHeaderReader() throws {
     let jpeg = makeJPEG(width: 160, height: 120)
-    let segment = try #require(ExifSegment.build(.init(make: "SONY", model: "ZV-1", orientation: 6, dateTimeOriginal: "2026:10:02 12:35:49")))
+    let segment = try #require(ExifSegment.build(.init(make: "SONY", model: "ZV-1", orientation: .right, dateTimeOriginal: "2026:10:02 12:35:49")))
     let out = try #require(ExifSegment.insert(segment, into: jpeg))
     let header = try #require(JPEGHeader.parse(ByteReader(data: out), at: 0))
     #expect(header.hasExif)
-    #expect(header.exifOrientation == 6)
+    #expect(header.exifOrientation == .right)
     #expect(header.width == 160 && header.height == 120)
     // Only a segment was added: the rest of the stream is the same bytes.
     #expect(out.count == jpeg.count + segment.count)
@@ -255,13 +255,13 @@ private struct TIFFBuilder {
 
 @Test func exifSegmentNeedsSomethingToSayAndFitsTheMarker() throws {
     #expect(ExifSegment.build(.init()) == nil)
-    #expect(ExifSegment.build(.init(orientation: 9)) == nil)
+    #expect(ExifOrientation(rawValue: 9) == nil)
     #expect(ExifSegment.build(.init(make: String(repeating: "x", count: 70_000))) == nil)
 }
 
 @Test func exifIsInsertedAfterJFIFAndRefusesNonJPEG() throws {
     let jfif = Data([0xFF, 0xD8, 0xFF, 0xE0, 0, 4, 0x4A, 0x46, 0xFF, 0xDA, 0, 2, 0xFF, 0xD9])
-    let segment = try #require(ExifSegment.build(.init(orientation: 3)))
+    let segment = try #require(ExifSegment.build(.init(orientation: .down)))
     let out = try #require(ExifSegment.insert(segment, into: jfif))
     #expect(out.prefix(8) == jfif.prefix(8))
     #expect(out.dropFirst(8).prefix(segment.count) == segment)
@@ -270,11 +270,11 @@ private struct TIFFBuilder {
 
 @Test func rewritingReplacesExifAddsXMPAndKeepsTheRest() throws {
     let jpeg = makeJPEG(width: 160, height: 120, orientation: 8, icc: true)
-    let exif = try #require(ExifSegment.build(.init(make: "SONY", orientation: 6)))
+    let exif = try #require(ExifSegment.build(.init(make: "SONY", orientation: .right)))
     let xmp = try #require(JPEGSegments.xmpSegment(Data("<x:xmpmeta/>".utf8)))
     let out = try #require(JPEGSegments.rewriting(jpeg, exif: exif, xmp: xmp))
     let header = try #require(JPEGHeader.parse(ByteReader(data: out), at: 0))
-    #expect(header.exifOrientation == 6)          // the old Exif is gone, the new one is in
+    #expect(header.exifOrientation == .right)          // the old Exif is gone, the new one is in
     #expect(header.hasICCProfile)
     let segments = try #require(JPEGSegments.list(out))
     #expect(segments.filter(\.isExif).count == 1)
@@ -383,5 +383,17 @@ private func onSmallStack(_ work: @escaping @Sendable () -> Void) {
     let kept = try #require(JPEGSegments.rewriting(Data(withIPTC), exif: nil, xmp: new))
     #expect(try #require(JPEGSegments.list(kept)).contains { $0.marker == 0xED })
     #expect(kept.range(of: Data("Munich".utf8)) != nil)
+}
+
+@Test func secondMalformedExifSegmentDoesNotClobberValidOrientation() throws {
+    let jpeg = makeJPEG(width: 160, height: 120, orientation: 6, icc: false)
+    // Append a malformed second APP1 Exif segment right after the valid first APP1 Exif segment.
+    let segments = try #require(JPEGSegments.list(jpeg))
+    let firstExif = try #require(segments.first { $0.isExif })
+    let badExif = Data([0xFF, 0xE1, 0, 12]) + Data("Exif\0\0BAD!".utf8)
+    let combined = jpeg.prefix(firstExif.range.upperBound) + badExif + jpeg.dropFirst(firstExif.range.upperBound)
+    let header = try #require(JPEGHeader.parse(ByteReader(data: Data(combined)), at: 0))
+    #expect(header.hasExif)
+    #expect(header.exifOrientation == .right)
 }
 

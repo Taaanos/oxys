@@ -1,26 +1,34 @@
 import CryptoKit
 import Foundation
 import ImageIO
+import Synchronization
 import UniformTypeIdentifiers
 
 /// Small decoded previews kept on disk so a frame can be shown at once while the full preview loads, and so
 /// Grid never re-reads the RAW (M-04). Entries are keyed by path, size and modification date (a changed file
 /// misses), live in the caches directory (never the photo folder, G-7) and are evicted least recently used
 /// first once the total passes the cap.
-public final class DiskThumbnailCache: @unchecked Sendable {
+public final class DiskThumbnailCache: Sendable {
     public struct Thumbnail: @unchecked Sendable {
         public let image: CGImage
         public let orientation: CGImagePropertyOrientation
     }
 
+    private enum TrimState {
+        case counting(writes: Int)
+        case scheduled
+    }
+
+    private struct State {
+        var trim: TrimState = .counting(writes: 0)
+        /// Files whose use date was set in this session. A hit sets it once: reading the same file again in an hour
+        /// changes nothing the eviction can use, and each write is a file-system call in a loader slot (P-08).
+        var touched: Set<String> = []
+    }
+
     public let directory: URL
     public let byteCap: Int
-    private let lock = NSLock()
-    private var writesSinceTrim = 0
-    private var isTrimScheduled = false
-    /// Files whose use date was set in this session. A hit sets it once: reading the same file again in an hour
-    /// changes nothing the eviction can use, and each write is a file-system call in a loader slot (P-08).
-    private var touched: Set<String> = []
+    private let state = Mutex(State())
     private let trimQueue = DispatchQueue(label: "com.thanosam.Oxys.thumbnail-trim", qos: .utility)
 
     /// `directory` is created on demand. `byteCap` defaults to 2 GB (M-04 open question 2).
@@ -56,9 +64,7 @@ public final class DiskThumbnailCache: @unchecked Sendable {
     }
 
     private func touchOnce(_ file: URL) {
-        lock.lock()
-        let first = touched.insert(file.path).inserted
-        lock.unlock()
+        let first = state.withLock { $0.touched.insert(file.path).inserted }
         if first { try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path) }
     }
 
@@ -76,16 +82,21 @@ public final class DiskThumbnailCache: @unchecked Sendable {
         CGImageDestinationAddImage(destination, image, props as CFDictionary)
         guard CGImageDestinationFinalize(destination) else { return }
         try? (data as Data).write(to: file, options: .atomic)
-        lock.lock()
-        // A new file carries today's date, so it counts as used in this session.
-        touched.insert(file.path)
-        writesSinceTrim += 1
-        let due = writesSinceTrim >= 64 && !isTrimScheduled
-        if due {
-            writesSinceTrim = 0
-            isTrimScheduled = true
+        let due = state.withLock { state -> Bool in
+            // A new file carries today's date, so it counts as used in this session.
+            state.touched.insert(file.path)
+            switch state.trim {
+            case .scheduled:
+                return false
+            case .counting(let writes):
+                if writes + 1 >= 64 {
+                    state.trim = .scheduled
+                    return true
+                }
+                state.trim = .counting(writes: writes + 1)
+                return false
+            }
         }
-        lock.unlock()
         if due { scheduleTrim() }
     }
 
@@ -94,9 +105,7 @@ public final class DiskThumbnailCache: @unchecked Sendable {
     private func scheduleTrim() {
         trimQueue.async { [self] in
             trim()
-            lock.lock()
-            isTrimScheduled = false
-            lock.unlock()
+            state.withLock { $0.trim = .counting(writes: 0) }
         }
     }
 
@@ -134,10 +143,10 @@ public final class DiskThumbnailCache: @unchecked Sendable {
             let size = (try? url.resourceValues(forKeys: Set(keys)).fileSize) ?? 0
             if (try? FileManager.default.removeItem(at: url)) != nil { freed += size }
         }
-        lock.lock()
-        writesSinceTrim = 0
-        touched.removeAll()
-        lock.unlock()
+        state.withLock { state in
+            if case .counting = state.trim { state.trim = .counting(writes: 0) }
+            state.touched.removeAll()
+        }
         return freed
     }
 

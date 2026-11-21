@@ -89,30 +89,30 @@ public enum CheatSheet {
         let entries = sections.flatMap(\.entries)
         guard !tokens.isEmpty else { return entries }
 
-        var ranked: [(tier: Int, index: Int, entry: CheatSection.Entry)] = []
+        enum MatchTier: Int, Comparable {
+            case titlePrefix, wordPrefix, titleContains, groupOrKey
+            static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+        }
+
+        var ranked: [(tier: MatchTier, index: Int, entry: CheatSection.Entry)] = []
         for (index, entry) in entries.enumerated() {
             let foldedTitle = fold(entry.title)
             let foldedGroup = fold(entry.group.title)
             let foldedKeys = entry.shortcuts.map { fold(KeyLabels.label(for: $0)) }
             let words = foldedTitle.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
 
-            var worstTier = 0
-            var matched = true
+            var worstTier: MatchTier? = .titlePrefix
             for token in tokens {
-                if foldedTitle.hasPrefix(token) {
-                    worstTier = max(worstTier, 0)
-                } else if words.contains(where: { $0.hasPrefix(token) }) {
-                    worstTier = max(worstTier, 1)
-                } else if foldedTitle.contains(token) {
-                    worstTier = max(worstTier, 2)
-                } else if foldedGroup.contains(token) || foldedKeys.contains(where: { $0.contains(token) }) {
-                    worstTier = max(worstTier, 3)
-                } else {
-                    matched = false
-                    break
-                }
+                let tier: MatchTier? =
+                    if foldedTitle.hasPrefix(token) { .titlePrefix }
+                    else if words.contains(where: { $0.hasPrefix(token) }) { .wordPrefix }
+                    else if foldedTitle.contains(token) { .titleContains }
+                    else if foldedGroup.contains(token) || foldedKeys.contains(where: { $0.contains(token) }) { .groupOrKey }
+                    else { nil }
+                guard let tier, let current = worstTier else { worstTier = nil; break }
+                worstTier = max(current, tier)
             }
-            if matched {
+            if let worstTier {
                 ranked.append((worstTier, index, entry))
             }
         }

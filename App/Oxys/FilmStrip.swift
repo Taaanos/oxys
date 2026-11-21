@@ -82,15 +82,18 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
     /// How long after the last key press the strip's loads may start again.
     private static let resumeDelay: Duration = .milliseconds(100)
 
+    private struct AttachedView {
+        let scrollView: FilmStripScrollView
+        let collectionView: NSCollectionView
+        let layout: NSCollectionViewFlowLayout
+        let boundsObserver: Any
+    }
+
     private let folder: FolderModel
     private let loader = GridThumbnailLoader(store: FrameLoader.sharedThumbnails, concurrency: 2,
                                              priority: .utility, budget: 16 << 20,
                                              sourceAtLeast: 512)
-    private var scrollView: FilmStripScrollView?
-    private var collectionView: NSCollectionView?
-    private var layout: NSCollectionViewFlowLayout?
-    private var boundsObserver: Any?
-    private var isObserving = false
+    private var attached: AttachedView?
 
     private var photos: [Photo] = []
     private var indexByURL: [URL: Int] = [:]
@@ -139,20 +142,17 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
         scroll.drawsBackground = true
         scroll.backgroundColor = NSColor(white: LoupeView.canvasGray, alpha: 1)
         scroll.contentView.postsBoundsChangedNotifications = true
-        boundsObserver = NotificationCenter.default.addObserver(
+        let observer = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshWanted() }
         }
-        self.layout = layout
-        collectionView = collection
-        scrollView = scroll
+        attached = AttachedView(scrollView: scroll, collectionView: collection, layout: layout, boundsObserver: observer)
 
         photos = folder.visible
         reindex()
         shownCurrent = folder.currentURL
         if shownFolder != folder.folder { loader.reset(); shownFolder = folder.folder }
         applyInsets()
-        isObserving = true
         observe()
         DispatchQueue.main.async { [weak self] in
             self?.recenter()
@@ -162,17 +162,13 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
     }
 
     func detach() {
-        isObserving = false
         resumeTask?.cancel()
         resumeTask = nil
         loader.setPaused(false)
-        if let boundsObserver { NotificationCenter.default.removeObserver(boundsObserver) }
-        boundsObserver = nil
+        if let attached { NotificationCenter.default.removeObserver(attached.boundsObserver) }
+        attached = nil
         if let token = refreshToken { Perf.end(token) }
         refreshToken = nil
-        scrollView = nil
-        collectionView = nil
-        layout = nil
         wantedRange = 0..<0
     }
 
@@ -181,7 +177,7 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
     /// Every key press, held keys included: strip loads wait until the keys stop, so they never compete with the
     /// frame load (V-20). A scrolled strip goes back to the active photo.
     func keyPressed() {
-        guard scrollView != nil else { return }
+        guard attached != nil else { return }
         loader.setPaused(true)
         resumeTask?.cancel()
         resumeTask = Task { @MainActor [weak self] in
@@ -194,18 +190,19 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
 
     // MARK: geometry
 
-    private var geometry: FilmStripGeometry { FilmStripGeometry(width: scrollView?.contentView.bounds.width ?? 800) }
+    private var geometry: FilmStripGeometry { FilmStripGeometry(width: attached?.scrollView.contentView.bounds.width ?? 800) }
 
     private func applyInsets() {
+        guard let layout = attached?.layout else { return }
         let g = geometry
         let lead = g.leading(count: photos.count)
-        layout?.sectionInset = NSEdgeInsets(top: FilmStripGeometry.verticalInset, left: lead,
-                                            bottom: FilmStripGeometry.verticalInset, right: lead)
-        layout?.invalidateLayout()
+        layout.sectionInset = NSEdgeInsets(top: FilmStripGeometry.verticalInset, left: lead,
+                                           bottom: FilmStripGeometry.verticalInset, right: lead)
+        layout.invalidateLayout()
     }
 
     private func widthChanged() {
-        guard scrollView != nil else { return }
+        guard attached != nil else { return }
         applyInsets()
         if !scrolledAway { recenter() }
         refreshWanted()
@@ -213,14 +210,14 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
 
     /// A cut to the active photo: no animation.
     private func recenter() {
-        guard let scrollView, let collectionView else { return }
-        collectionView.layoutSubtreeIfNeeded()
+        guard let attached else { return }
+        attached.collectionView.layoutSubtreeIfNeeded()
         scrolledAway = false
         let g = geometry
         let x = g.offset(centering: folder.currentIndex ?? 0, count: photos.count)
-        guard x != scrollView.contentView.bounds.origin.x else { return }
-        scrollView.contentView.scroll(to: NSPoint(x: x, y: 0))
-        scrollView.reflectScrolledClipView(scrollView.contentView)
+        guard x != attached.scrollView.contentView.bounds.origin.x else { return }
+        attached.scrollView.contentView.scroll(to: NSPoint(x: x, y: 0))
+        attached.scrollView.reflectScrolledClipView(attached.scrollView.contentView)
     }
 
     // MARK: thumbnails
@@ -230,7 +227,7 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
     }
 
     private func refreshWanted(force: Bool = false) {
-        guard let scrollView, !photos.isEmpty else { return }
+        guard let scrollView = attached?.scrollView, !photos.isEmpty else { return }
         let g = geometry
         let range = g.visibleRange(offset: scrollView.contentView.bounds.origin.x, count: photos.count)
         let starved = loader.isIdle && !range.allSatisfy { loader.isResolved(key(for: photos[$0])) }
@@ -259,7 +256,7 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
     // MARK: observation
 
     private func observe() {
-        guard isObserving else { return }
+        guard attached != nil else { return }
         withObservationTracking {
             _ = folder.visible
             _ = folder.currentURL
@@ -270,7 +267,7 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
     }
 
     private func folderChanged() {
-        guard isObserving else { return }
+        guard let attached else { return }
         defer { observe() }
         let new = folder.visible
         let old = photos
@@ -280,7 +277,7 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
         if !sameList {
             reindex()
             applyInsets()
-            collectionView?.reloadData()
+            attached.collectionView.reloadData()
             shownCurrent = folder.currentURL
             recenter()
             refreshWanted(force: true)
@@ -305,7 +302,7 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
     // MARK: cells
 
     private func refresh(index: Int) {
-        guard let item = collectionView?.item(at: IndexPath(item: index, section: 0)), let cell = item.view as? GridCellView
+        guard let item = attached?.collectionView.item(at: IndexPath(item: index, section: 0)), let cell = item.view as? GridCellView
         else { return }
         configure(cell, index: index)
     }
@@ -320,12 +317,12 @@ final class FilmStripController: NSObject, NSCollectionViewDataSource {
             plain: loader.image(for: key), imageKey: key, decision: failed ? .none : photo.decision, isPair: !failed && photo.isPair,
             points: FilmStripGeometry.cellSize, scale: Self.edgeScale, tile: LoupeView.canvasGray, look: .bevel,
             signpost: .glassLens) : nil
+        let surface: GridCellView.Surface = lens.map { .glass($0) } ?? .tile(loader.image(for: key))
+        let status: GridCellView.Status = failed ? .failed : .normal(decision: photo.decision, isPair: photo.isPair)
         let content = GridCellView.Content(
-            url: photo.url, image: lens ?? loader.image(for: key), failed: failed,
-            decision: photo.decision,
+            url: photo.url, surface: surface, status: status,
             isCurrent: isCurrent, isSelected: false,
-            label: isCurrent ? "\(photo.cellLabel), current photo" : photo.cellLabel, isPair: photo.isPair,
-            glass: lens != nil)
+            label: isCurrent ? "\(photo.cellLabel), current photo" : photo.cellLabel)
         cell.configure(content, onClick: { [weak self] url, _, _ in
             self?.folder.setCurrent(url)
         }, onContextMenu: { [weak self] url in

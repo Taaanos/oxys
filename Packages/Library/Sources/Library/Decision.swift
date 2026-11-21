@@ -18,30 +18,74 @@ public enum ColorLabel: String, Sendable, CaseIterable, Codable {
     }
 }
 
-/// What the photographer decided about one photo: a rating (-1 is reject, 0 to 5 are stars) and a label.
+/// Valid star ratings (1 to 5).
+public enum StarCount: Int, Sendable, Hashable, Comparable, CaseIterable {
+    case one = 1, two, three, four, five
+
+    public static func < (a: Self, b: Self) -> Bool { a.rawValue < b.rawValue }
+}
+
+/// A photo's rating state: rejected, unrated, or 1–5 stars. Out-of-range ratings are unrepresentable.
+public enum Rating: Sendable, Hashable {
+    case rejected
+    case unrated
+    case rated(StarCount)
+
+    public var rawValue: Int {
+        switch self {
+        case .rejected: -1
+        case .unrated: 0
+        case .rated(let stars): stars.rawValue
+        }
+    }
+
+    public init(clamping value: Int) {
+        if value < 0 {
+            self = .rejected
+        } else if let stars = StarCount(rawValue: min(value, 5)) {
+            self = .rated(stars)
+        } else {
+            self = .unrated
+        }
+    }
+}
+
+/// What the photographer decided about one photo: a rating (rejected, unrated, or 1–5 stars) and a label.
 public struct Decision: Sendable, Hashable {
     public static let none = Decision()
 
-    public private(set) var rating: Int
+    public private(set) var ratingKind: Rating
     public var label: ColorLabel?
 
-    public init(rating: Int = 0, label: ColorLabel? = nil) {
-        self.rating = min(max(rating, -1), 5)
+    public var rating: Int { ratingKind.rawValue }
+
+    public init(rating: Rating, label: ColorLabel? = nil) {
+        self.ratingKind = rating
         self.label = label
     }
 
-    public var isReject: Bool { rating < 0 }
-    public var stars: Int { max(rating, 0) }
+    public init(rating: Int = 0, label: ColorLabel? = nil) {
+        self.ratingKind = Rating(clamping: rating)
+        self.label = label
+    }
+
+    public var isReject: Bool { ratingKind == .rejected }
+    public var stars: Int {
+        switch ratingKind {
+        case .rated(let stars): stars.rawValue
+        case .rejected, .unrated: 0
+        }
+    }
     public var isUndecided: Bool { self == .none }
 
     /// The state as one phrase for VoiceOver and the badge: "3 stars, red label", "Rejected", "No rating".
     public var summary: String {
         var parts: [String] = []
-        switch rating {
-        case -1: parts.append("Rejected")
-        case 0: if label == nil { parts.append("No rating") }
-        case 1: parts.append("1 star")
-        default: parts.append("\(rating) stars")
+        switch ratingKind {
+        case .rejected: parts.append("Rejected")
+        case .unrated: if label == nil { parts.append("No rating") }
+        case .rated(.one): parts.append("1 star")
+        case .rated(let stars): parts.append("\(stars.rawValue) stars")
         }
         if let label { parts.append("\(label.name.lowercased()) label") }
         return parts.joined(separator: ", ")
@@ -63,17 +107,18 @@ public enum CullAction: Sendable, Hashable {
         var d = decision
         switch self {
         case .setRating(let n):
-            d = Decision(rating: min(max(n, 0), 5), label: decision.label)
+            d = Decision(rating: Rating(clamping: max(n, 0)), label: decision.label)
         case .stepRating(let delta):
-            if decision.isReject {
-                if delta > 0 { d = Decision(rating: 1, label: decision.label) }
-            } else {
-                d = Decision(rating: min(max(decision.rating + delta, 0), 5), label: decision.label)
+            switch decision.ratingKind {
+            case .rejected:
+                if delta > 0 { d = Decision(rating: .rated(.one), label: decision.label) }
+            case .unrated, .rated:
+                d = Decision(rating: Rating(clamping: max(decision.stars + delta, 0)), label: decision.label)
             }
         case .toggleLabel(let label):
             d.label = decision.label == label ? nil : label
         case .toggleReject:
-            d = Decision(rating: decision.isReject ? 0 : -1, label: decision.label)
+            d = Decision(rating: decision.isReject ? .unrated : .rejected, label: decision.label)
         }
         return d
     }

@@ -18,7 +18,6 @@ public enum RAFPreviewLocator {
         info.make = "FUJIFILM"
         info.orientation = header.exifOrientation
         let preview = EmbeddedJPEG(location: "RAF", offset: offset, length: length,
-                                   width: header.width, height: header.height,
                                    containerOrientation: header.exifOrientation, header: header)
         return LocatedPreviews(format: "RAF", info: info, previews: [preview], skipped: [])
     }

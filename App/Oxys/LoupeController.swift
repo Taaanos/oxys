@@ -13,11 +13,96 @@ import Synchronization
 /// navigation commands (from the command table, M-05) through the image pipeline (M-04).
 @MainActor @Observable
 final class LoupeController {
+    struct PixelSize: Equatable, Sendable {
+        let width: Int
+        let height: Int
+        var longEdge: Int { max(width, height) }
+    }
+
+    /// What Loupe currently presents on screen. Updated atomically with the canvas frame so the info strip,
+    /// truth badge, histogram, stand-in flags, failure state and lens correction can never disagree.
+    enum PresentedContent {
+        case empty
+        /// Disk thumbnail standing in while the preview loads.
+        case thumbnail(photo: Photo, developing: Bool = false)
+        /// Screen-size frame (P-03) standing in while the full preview loads.
+        case screenSize(photo: Photo, pixels: PixelSize, histogram: Histogram?, developing: Bool = false)
+        /// Full embedded preview (or non-RAW original).
+        case preview(photo: Photo, pixels: PixelSize, histogram: Histogram?, developing: Bool = false)
+        /// Developed RAW (V-02) with its lens correction outcome (V-19).
+        case raw(photo: Photo, pixels: PixelSize, histogram: Histogram?, lensCorrection: LensCorrection)
+        /// Preview could not be loaded.
+        case failed(photo: Photo, message: String)
+
+        var photo: Photo? {
+            switch self {
+            case .empty: nil
+            case .thumbnail(let p, _), .screenSize(let p, _, _, _), .preview(let p, _, _, _),
+                 .raw(let p, _, _, _), .failed(let p, _): p
+            }
+        }
+
+        var pixels: PixelSize? {
+            switch self {
+            case .empty, .thumbnail, .failed: nil
+            case .screenSize(_, let px, _, _), .preview(_, let px, _, _), .raw(_, let px, _, _): px
+            }
+        }
+
+        var failure: String? {
+            if case .failed(_, let message) = self { return message }
+            return nil
+        }
+
+        var histogram: Histogram? {
+            switch self {
+            case .empty, .thumbnail, .failed: nil
+            case .screenSize(_, _, let h, _), .preview(_, _, let h, _), .raw(_, _, let h, _): h
+            }
+        }
+
+        var developState: DevelopState {
+            switch self {
+            case .raw: .raw
+            case .thumbnail(_, true), .screenSize(_, _, _, true), .preview(_, _, _, true): .developing
+            case .empty, .thumbnail(_, false), .screenSize(_, _, _, false), .preview(_, _, _, false), .failed: .preview
+            }
+        }
+
+        var lensCorrection: LensCorrection? {
+            if case .raw(_, _, _, let lc) = self { return lc }
+            return nil
+        }
+
+        var isStandIn: Bool {
+            switch self {
+            case .thumbnail, .screenSize: true
+            case .empty, .preview, .raw, .failed: false
+            }
+        }
+
+        var isScreenSize: Bool {
+            if case .screenSize = self { return true }
+            return false
+        }
+
+        mutating func setDeveloping(_ developing: Bool) {
+            switch self {
+            case .thumbnail(let p, _): self = .thumbnail(photo: p, developing: developing)
+            case .screenSize(let p, let px, let h, _): self = .screenSize(photo: p, pixels: px, histogram: h, developing: developing)
+            case .preview(let p, let px, let h, _): self = .preview(photo: p, pixels: px, histogram: h, developing: developing)
+            case .empty, .raw, .failed: break
+            }
+        }
+    }
+
+    private(set) var presented: PresentedContent = .empty
+
     /// The photo on screen and the error (if any) that replaced its image. Updated together with the frame,
     /// so the info strip never describes a different photo than the one shown.
-    private(set) var shown: Photo?
-    private(set) var shownPixels: (width: Int, height: Int)?
-    private(set) var failure: String?
+    var shown: Photo? { presented.photo }
+    var shownPixels: PixelSize? { presented.pixels }
+    var failure: String? { presented.failure }
     /// Zoom level of the frame on screen, for the info strip; nil when there is no frame.
     private(set) var zoomInfo: ZoomInfo?
 
@@ -59,7 +144,7 @@ final class LoupeController {
     /// Label of the focused value, set by `↑`/`↓` or a click; `⌘C` copies it.
     var focusedExifField: String?
     /// Histogram of the frame on screen (M-17); nil while a stand-in or no frame is shown.
-    private(set) var histogram: Histogram?
+    var histogram: Histogram? { presented.histogram }
     /// Whether the histogram is on the image; remembered across launches. The inspector reuses the same view.
     var showHistogram = UserDefaults.standard.object(forKey: "showHistogram") as? Bool ?? false {
         didSet { UserDefaults.standard.set(showHistogram, forKey: "showHistogram") }
@@ -82,24 +167,35 @@ final class LoupeController {
 
     /// The truth badge (V-05) for the photo on screen; nil until a picture and its zoom are known.
     var truthBadge: TruthBadge? {
-        guard failure == nil, let photo = shown, let pixels = shownPixels, let zoom = zoomInfo else { return nil }
-        let source: TruthBadge.Source = showingScreenSize ? .loadingFullSize : !photo.showsRaw ? (photo.isPair ? .cameraJPEG : .file) : developState == .raw ? .raw : developState == .developing ? .developing : .preview
-        return TruthBadge.make(source: source, percent: zoom.percent, isFit: zoom.level.isFit, longEdge: max(pixels.width, pixels.height),
+        guard let zoom = zoomInfo else { return nil }
+        let (pixels, source): (PixelSize, TruthBadge.Source)
+        switch presented {
+        case .empty, .thumbnail, .failed:
+            return nil
+        case .screenSize(_, let px, _, _):
+            (pixels, source) = (px, .loadingFullSize)
+        case .preview(let p, let px, _, let developing):
+            let s: TruthBadge.Source = !p.showsRaw ? (p.isPair ? .cameraJPEG : .file) : developing ? .developing : .preview
+            (pixels, source) = (px, s)
+        case .raw(_, let px, _, _):
+            (pixels, source) = (px, .raw)
+        }
+        return TruthBadge.make(source: source, percent: zoom.percent, isFit: zoom.level.isFit, longEdge: pixels.longEdge,
                                sensorLongEdge: RawPolicy.longEdge(ofDimensions: exif?.dimensions))
     }
-    private(set) var developState = DevelopState.preview
-    /// V-19: what the decoder did about the lens for the RAW on screen; read only while `developState` is `.raw`.
-    private(set) var shownLensCorrection: LensCorrection?
+    var developState: DevelopState { presented.developState }
+    /// V-19: what the decoder did about the lens for the RAW on screen; non-nil only when `presented` is `.raw`.
+    var shownLensCorrection: LensCorrection? { presented.lensCorrection }
 
     // MARK: focus peaking (V-06)
 
     /// The overlay is on. Not remembered across launches; the mode, color and sensitivity are (Settings → Peaking).
     private(set) var peakingOn = false
     private(set) var peakingMode = PeakingSettings.mode
-    /// A thumbnail stands in for the preview: peaking waits for the real frame.
-    private(set) var showingStandIn = false
+    /// A thumbnail or screen-size frame stands in for the preview: peaking waits for the real frame.
+    var showingStandIn: Bool { presented.isStandIn }
     /// The stand-in is a screen-size frame of the photo (P-03), not a disk thumbnail.
-    private(set) var showingScreenSize = false
+    var showingScreenSize: Bool { presented.isScreenSize }
 
     /// What the label over the canvas says: the mode, and which pixels were analyzed. Nil when nothing is painted.
     struct PeakingLabel: Equatable {
@@ -256,11 +352,15 @@ final class LoupeController {
         paint { view, _ in view.setClipping(clippingStyle) }
     }
 
+    private struct InflightDevelop {
+        let url: URL
+        let task: Task<Void, Never>
+    }
+
     /// Photos the user switched to RAW with `R`. A photo comes back as RAW while its decode is still in the
     /// cache (V-02/Q1); one that was evicted comes back as the preview.
     @ObservationIgnored private var rawWanted: Set<URL> = []
-    @ObservationIgnored private var developingURL: URL?
-    @ObservationIgnored private var developTask: Task<Void, Never>?
+    @ObservationIgnored private var inflightDevelop: InflightDevelop?
     /// The neighbors developing in the background (V-03, Always mode). Runs only once the photo on screen is done.
     @ObservationIgnored private var neighborTask: Task<Void, Never>?
     @ObservationIgnored private var rawNeighbors: [Photo] = []
@@ -346,14 +446,8 @@ final class LoupeController {
         isActive = active
         if !active {
             stopDeveloping()
-            developState = .preview
-            shown = nil
+            presented = .empty
             setExif(nil)
-            histogram = nil
-            shownPixels = nil
-            showingStandIn = false
-            showingScreenSize = false
-            failure = nil
             canvas?.show(nil)
         }
     }
@@ -427,8 +521,14 @@ final class LoupeController {
         sessionAlways = false
         rawWanted = []
         stopDeveloping()
-        if developState == .raw, let photo = shown, let canvas { showPreviewAgain(of: photo, canvas: canvas) }
-        developState = developState == .raw ? .raw : .preview
+        switch presented {
+        case .raw(let photo, _, _, _):
+            if let canvas { showPreviewAgain(of: photo, canvas: canvas) }
+        case .thumbnail(_, true), .screenSize(_, _, _, true), .preview(_, _, _, true):
+            presented.setDeveloping(false)
+        case .empty, .thumbnail(_, false), .screenSize(_, _, _, false), .preview(_, _, _, false), .failed:
+            break
+        }
     }
 
     /// The lens correction setting changed (V-19): no developed RAW stays in the cache, and a develop in flight is
@@ -438,15 +538,16 @@ final class LoupeController {
         let now = Self.lensCorrection
         guard now != lensCorrectionInUse else { return }
         lensCorrectionInUse = now
+        let wasRaw = developState == .raw
         let redevelop = isActive && developState != .preview ? shown : nil
         stopDeveloping()
         rawCache.removeAll()
         onLensCorrectionChange()
         guard let photo = redevelop, let canvas, failure == nil else {
-            if developState == .developing { developState = .preview }
+            presented.setDeveloping(false)
             return
         }
-        if developState == .raw {
+        if wasRaw {
             showPreviewAgain(of: photo, canvas: canvas, quiet: true) { [weak self] in self?.develop(photo, quiet: true) }
         } else {
             develop(photo, quiet: true)
@@ -491,7 +592,7 @@ final class LoupeController {
         previewHeld = []
         rawNeighbors = []
         rawCache.removeAll()
-        developState = .preview
+        presented.setDeveloping(false)
         canvas?.resetZoom()
         let pipeline = pipeline
         Task { await pipeline.reset() }
@@ -525,7 +626,7 @@ final class LoupeController {
         let target = FrameLoader.key(for: photo)
         let quickLoad = quickFrame(for: photo, key: target)
         // Moving on cancels the decode of the photo left behind (V-02).
-        if developingURL != photo.url { stopDeveloping() }
+        if inflightDevelop?.url != photo.url { stopDeveloping() }
         let index = folder.currentIndex
         let direction: PrefetchPlan.Direction = if let index, let last = lastIndex, index < last { .backward } else { .forward }
         lastIndex = index
@@ -545,16 +646,14 @@ final class LoupeController {
         if wantsRaw, rawSetting != .never, let developed = rawCache.cached(target) {
             earlyQuick?.task.cancel()
             canvas.show(developed.image, keyToFrame: takeToken(), sameZoom: shown?.url == photo.url && failure == nil)
-            shown = photo
-            previewShown(of: photo)
-            developState = .raw
+            presented = .raw(photo: photo,
+                             pixels: PixelSize(width: developed.width, height: developed.height),
+                             histogram: developed.histogram,
+                             lensCorrection: developed.lensCorrection ?? .off)
             updateExif(for: photo)
             folder.setPreview(PreviewInfo(pixelWidth: developed.width, pixelHeight: developed.height), for: photo.url)
             lastPreviewLongSide = CGFloat(max(developed.width, developed.height))
-            showingStandIn = false
-            showingScreenSize = false
-            failure = nil
-            showDevelopedState(developed, of: photo, canvas: canvas)
+            canvas.setAccessibilityLabel("\(photo.name), RAW, \(developed.width) by \(developed.height) pixels")
             FrameLog.record(cursor: folder.currentURL, displayed: photo.url, kind: "raw")
             developNeighbors(after: photo)
             return
@@ -575,17 +674,14 @@ final class LoupeController {
                 // loop, so it cannot hold up the frame's commit.
                 try? await Task.sleep(for: .milliseconds(2))
                 guard isCurrent(photo, in: folder) else { return }
-                shown = photo
-                previewShown(of: photo)
+                presented = .screenSize(photo: photo,
+                                        pixels: PixelSize(width: quick.width, height: quick.height),
+                                        histogram: quick.histogram,
+                                        developing: isDeveloping(photo))
                 updateExif(for: photo)
                 folder.setPreview(PreviewInfo(pixelWidth: quick.width, pixelHeight: quick.height), for: photo.url)
-                histogram = quick.histogram
-                shownPixels = (quick.width, quick.height)
                 lastPreviewLongSide = CGFloat(max(quick.width, quick.height))
-                showingStandIn = true
-                showingScreenSize = true
                 wantsFullSizeNow = false
-                failure = nil
                 canvas.setAccessibilityLabel("\(photo.name), \(quick.width) by \(quick.height) pixels")
                 // Wait for the cursor to stay, or for a zoom that needs the real pixels.
                 var waited = Duration.zero
@@ -608,14 +704,8 @@ final class LoupeController {
             }.value
             if let stand, !finished.withLock({ $0 }), isCurrent(photo, in: folder) {
                 let same = shown?.url == photo.url
-                shown = photo
-                previewShown(of: photo)
+                presented = .thumbnail(photo: photo, developing: isDeveloping(photo))
                 updateExif(for: photo)
-                histogram = nil
-                shownPixels = nil
-                showingStandIn = true
-                showingScreenSize = false
-                failure = nil
                 canvas.setAccessibilityLabel(photo.name)
                 let long = max(stand.displaySize.width, stand.displaySize.height)
                 let factor = lastPreviewLongSide.map { long > 0 ? $0 / long : 1 } ?? 1
@@ -637,16 +727,13 @@ final class LoupeController {
         }
         let token = takeToken()
         let same = shown?.url == photo.url && failure == nil
-        shown = photo
-        previewShown(of: photo)
+        presented = .preview(photo: photo,
+                             pixels: PixelSize(width: frame.width, height: frame.height),
+                             histogram: frame.histogram,
+                             developing: isDeveloping(photo))
         updateExif(for: photo)
         folder.setPreview(PreviewInfo(pixelWidth: frame.width, pixelHeight: frame.height), for: photo.url)
-        histogram = frame.histogram
-        shownPixels = (frame.width, frame.height)
         lastPreviewLongSide = CGFloat(max(frame.width, frame.height))
-        showingStandIn = false
-        showingScreenSize = false
-        failure = nil
         canvas.setAccessibilityLabel("\(photo.name), \(frame.width) by \(frame.height) pixels")
         // The full-size frame replaces the screen-size one in place: same picture, more pixels, the view stays put.
         canvas.show(frame.image, keyToFrame: token, sameZoom: same, keepView: quickShown)
@@ -669,11 +756,9 @@ final class LoupeController {
 
     // MARK: develop (V-02)
 
-    /// A preview (or its stand-in) of `photo` went on screen. The state goes back to "preview" unless this
-    /// photo's RAW is being developed, in which case the preview simply stays up until the RAW replaces it.
-    private func previewShown(of photo: Photo) {
-        if developState == .developing, developingURL == photo.url { return }
-        developState = .preview
+    /// True when this photo's RAW is currently being developed in the background.
+    private func isDeveloping(_ photo: Photo) -> Bool {
+        inflightDevelop?.url == photo.url
     }
 
     /// `R`: the RAW over the preview, and back. Pressed while it decodes, it cancels.
@@ -693,7 +778,7 @@ final class LoupeController {
             rawWanted.remove(photo.url)
             previewHeld.insert(photo.url)
             stopDeveloping()
-            developState = .preview
+            presented.setDeveloping(false)
             announce("RAW cancelled, showing the preview")
         case .raw:
             rawWanted.remove(photo.url)
@@ -732,7 +817,7 @@ final class LoupeController {
         guard developState == .preview, let zoom = zoomInfo, let photo = shown, failure == nil, !previewHeld.contains(photo.url),
               RawPolicy.developsAtActualSize(
                 mode: rawMode, automatic: autoRawAtActual, isRaw: photo.showsRaw, isFit: zoom.level.isFit,
-                percent: zoom.percent, previewLongEdge: shownPixels.map { max($0.width, $0.height) },
+                percent: zoom.percent, previewLongEdge: shownPixels?.longEdge,
                 sensorLongEdge: RawPolicy.longEdge(ofDimensions: exif?.dimensions)) else { return }
         rawWanted.insert(photo.url)
         develop(photo)
@@ -745,7 +830,7 @@ final class LoupeController {
         neighborTask = nil
         guard rawMode == .always, !rawNeighbors.isEmpty else { return }
         let keys = rawNeighbors.map(FrameLoader.key(for:))
-        let minLongEdge = max(512, shownPixels.map { max($0.width, $0.height) } ?? 0)
+        let minLongEdge = max(512, shownPixels?.longEdge ?? 0)
         let cache = rawCache, lens = Self.lensCorrection
         neighborTask = Task { [weak self] in
             for key in keys where !cache.contains(key) {
@@ -759,57 +844,51 @@ final class LoupeController {
     private func develop(_ photo: Photo, quiet: Bool = false) {
         guard let canvas else { return }
         stopDeveloping()
-        developState = .developing
-        developingURL = photo.url
+        presented.setDeveloping(true)
         if !quiet { announce("Developing") }
         let key = FrameLoader.key(for: photo)
-        let minLongEdge = max(512, shownPixels.map { max($0.width, $0.height) } ?? 0)
+        let minLongEdge = max(512, shownPixels?.longEdge ?? 0)
         let cache = rawCache, lens = Self.lensCorrection
-        developTask = Task { [weak self] in
+        let task = Task { [weak self] in
             let result: Result<LoupeFrame?, any Error>
             do {
                 result = .success(try await cache.develop(key) { try FrameLoader.develop($0, minLongEdge: minLongEdge, lensCorrection: lens) })
             } catch { result = .failure(error) }
-            guard let self, !Task.isCancelled, developingURL == photo.url, shown?.url == photo.url else { return }
-            developingURL = nil
+            guard let self, !Task.isCancelled, inflightDevelop?.url == photo.url, shown?.url == photo.url else { return }
+            inflightDevelop = nil
             switch result {
             case .success(let frame?):
                 present(frame, of: photo, canvas: canvas, quiet: quiet)
                 developNeighbors(after: photo)
             case .success(nil):
-                developState = .preview
+                presented.setDeveloping(false)
             case .failure:
                 rawWanted.remove(photo.url)
-                developState = .preview
+                presented.setDeveloping(false)
                 announce("This RAW cannot be developed. Showing the preview")
             }
         }
+        inflightDevelop = InflightDevelop(url: photo.url, task: task)
     }
 
     /// Cancels the decode in flight, if any. Its result is dropped when it lands.
     private func stopDeveloping() {
-        developTask?.cancel()
-        developTask = nil
+        inflightDevelop?.task.cancel()
+        inflightDevelop = nil
         neighborTask?.cancel()
         neighborTask = nil
-        developingURL = nil
         rawCache.cancelInflight()
     }
 
     private func present(_ frame: LoupeFrame, of photo: Photo, canvas: LoupeView, quiet: Bool = false) {
-        developState = .raw
-        showDevelopedState(frame, of: photo, canvas: canvas)
+        presented = .raw(photo: photo,
+                         pixels: PixelSize(width: frame.width, height: frame.height),
+                         histogram: frame.histogram,
+                         lensCorrection: frame.lensCorrection ?? .off)
+        canvas.setAccessibilityLabel("\(photo.name), RAW, \(frame.width) by \(frame.height) pixels")
         // Same photo, more pixels: the view keeps its place on screen.
         canvas.show(frame.image, sameZoom: true, keepView: true)
         if !quiet { announce("RAW") }
-    }
-
-    /// What the developed `frame` of `photo` changes besides the picture: histogram, size and the VoiceOver label.
-    private func showDevelopedState(_ frame: LoupeFrame, of photo: Photo, canvas: LoupeView) {
-        histogram = frame.histogram
-        shownPixels = (frame.width, frame.height)
-        shownLensCorrection = frame.lensCorrection
-        canvas.setAccessibilityLabel("\(photo.name), RAW, \(frame.width) by \(frame.height) pixels")
     }
 
     /// `then` runs once the preview is up (or could not be loaded), while `photo` is still on screen in preview state.
@@ -817,15 +896,18 @@ final class LoupeController {
                                   then: (@MainActor () -> Void)? = nil) {
         let key = FrameLoader.key(for: photo)
         let pipeline = pipeline
-        developState = .preview
+        if case .raw(_, let pixels, let histogram, _) = presented {
+            presented = .preview(photo: photo, pixels: pixels, histogram: histogram)
+        }
         Task { [weak self] in
             // The preview is normally still cached; if the budget pushed it out, load it again.
             var cached = await pipeline.cachedFrame(key)
             if cached == nil { cached = try? await pipeline.frame(for: key, prefetch: []) }
             guard let self, shown?.url == photo.url, developState == .preview else { return }
             if let frame = cached {
-                histogram = frame.histogram
-                shownPixels = (frame.width, frame.height)
+                presented = .preview(photo: photo,
+                                     pixels: PixelSize(width: frame.width, height: frame.height),
+                                     histogram: frame.histogram)
                 canvas.setAccessibilityLabel("\(photo.name), \(frame.width) by \(frame.height) pixels")
                 canvas.show(frame.image, sameZoom: true, keepView: true)
                 if !quiet { announce("Preview") }
@@ -843,13 +925,8 @@ final class LoupeController {
     private func showFailure(_ error: any Error, photo: Photo, canvas: LoupeView) {
         let token = takeToken()
         let message = (error as? PreviewError)?.localizedDescription ?? error.localizedDescription
-        shown = photo
+        presented = .failed(photo: photo, message: message)
         updateExif(for: photo)
-        histogram = nil
-        shownPixels = nil
-        showingStandIn = false
-        showingScreenSize = false
-        failure = message
         canvas.setAccessibilityLabel("\(photo.name). \(message)")
         canvas.show(nil, keyToFrame: token)
         FrameLog.record(cursor: photo.url, displayed: photo.url, kind: "error")
@@ -866,7 +943,7 @@ final class LoupeController {
     /// background read. A read that finishes after the photo changed is dropped.
     private func updateExif(for photo: Photo) {
         if let hit = exifCache.cached(photo.url) {
-            setExif(hit)
+            setExif(hit.info)
             return
         }
         setExif(nil)
@@ -886,7 +963,7 @@ final class LoupeController {
 
     /// EXIF of any photo, for the inspector when Grid is in front (M-18). Shares the cache with the Loupe panel.
     func exifInfo(for url: URL) async -> ExifInfo? {
-        if let hit = exifCache.cached(url) { return hit }
+        if let hit = exifCache.cached(url) { return hit.info }
         let cache = exifCache
         return await Task.detached(priority: .userInitiated) { cache.info(for: url) }.value
     }

@@ -34,11 +34,19 @@ public enum RoutedAction: Sendable, Equatable {
     case returnFocusToCanvas
 }
 
-public struct RoutingResult: Sendable, Equatable {
+/// Outcome of routing one key event: impossible to return actions while leaving the event unconsumed.
+public enum RoutingResult: Sendable, Equatable {
+    case passThrough
+    case consumed(RoutedAction? = nil)
+
     /// True when the event must not reach the menu bar or the responder chain.
-    public var consumed: Bool
-    public var actions: [RoutedAction]
-    public static let passThrough = RoutingResult(consumed: false, actions: [])
+    public var consumed: Bool {
+        if case .consumed = self { true } else { false }
+    }
+
+    public var actions: [RoutedAction] {
+        if case .consumed(let action?) = self { [action] } else { [] }
+    }
 }
 
 /// Maps key events to commands. A value type with no AppKit in it: feed events in, read actions out.
@@ -49,12 +57,16 @@ public struct KeyRouter: Sendable {
     public var keymap: Keymap
     public var holdThreshold: Double
 
-    private struct Held {
-        var command: CommandID
-        var behavior: KeyBehavior
-        var since: Double
-        var advances = false
+    /// What a pressed key needs on repeat and key-up. Eliminates sentinel `""` commands and dead fields.
+    private enum Held: Sendable {
+        /// Key-down was consumed; ignore repeats and swallow matching key-up.
+        case swallow
+        /// Repeat this action while held; swallow matching key-up.
+        case repeating(RoutedAction)
+        /// Revert this command if held at least `holdThreshold` seconds when released.
+        case toggleOrHold(command: CommandID, since: Double)
     }
+
     /// Keys whose key-down we consumed, by key code, so the matching key-up is consumed too (and so a
     /// modifier change mid-press cannot strand a hold).
     private var held: [UInt16: Held] = [:]
@@ -70,40 +82,59 @@ public struct KeyRouter: Sendable {
         if focus == .textInput {
             // The field owns every key. The one exception is Esc, which hands focus back.
             if input.keyCode == PhysicalKey.escape.rawValue, input.modifiers.isDisjoint(with: [.command, .control, .option]) {
-                if !input.isRepeat { held[input.keyCode] = Held(command: "", behavior: .once, since: input.timestamp) }
-                return RoutingResult(consumed: true, actions: input.isRepeat ? [] : [.returnFocusToCanvas])
+                if !input.isRepeat {
+                    held[input.keyCode] = .swallow
+                    return .consumed(.returnFocusToCanvas)
+                }
+                return .consumed()
             }
             return .passThrough
         }
 
         if input.isRepeat, let h = held[input.keyCode] {
             // A press we already own: repeat only if the binding asks for it.
-            return RoutingResult(consumed: true, actions: h.behavior == .repeating ? [h.advances ? .performAdvancing(h.command) : .perform(h.command)] : [])
+            switch h {
+            case .repeating(let action): return .consumed(action)
+            case .swallow, .toggleOrHold: return .consumed()
+            }
         }
 
         guard let binding = keymap.match(keyCode: input.keyCode, modifiers: input.modifiers,
                                          character: input.character, mode: mode) else {
             return .passThrough
         }
-        held[input.keyCode] = Held(command: binding.command, behavior: binding.behavior, since: input.timestamp,
-                                   advances: binding.advances)
-        return RoutingResult(consumed: true, actions: [binding.advances ? .performAdvancing(binding.command) : .perform(binding.command)])
+        switch binding.behavior {
+        case .once:
+            held[input.keyCode] = .swallow
+            return .consumed(.perform(binding.command))
+        case .repeating:
+            let act: RoutedAction = .perform(binding.command)
+            held[input.keyCode] = .repeating(act)
+            return .consumed(act)
+        case .toggleOrHold:
+            held[input.keyCode] = .toggleOrHold(command: binding.command, since: input.timestamp)
+            return .consumed(.perform(binding.command))
+        case .shiftAdvancing:
+            held[input.keyCode] = .swallow
+            return .consumed(.performAdvancing(binding.command))
+        }
     }
 
     private mutating func keyUp(_ input: KeyInput) -> RoutingResult {
         guard let h = held.removeValue(forKey: input.keyCode) else { return .passThrough }
-        if h.behavior == .toggleOrHold, input.timestamp - h.since >= holdThreshold {
-            return RoutingResult(consumed: true, actions: [.releaseHold(h.command)])
+        if case .toggleOrHold(let command, let since) = h, input.timestamp - since >= holdThreshold {
+            return .consumed(.releaseHold(command))
         }
-        return RoutingResult(consumed: true, actions: [])
+        return .consumed()
     }
 
     /// The window lost key status (or the app resigned) with keys down; no key-up will arrive.
     /// Held toggles past the threshold revert, as if released now.
     public mutating func cancelAll(at timestamp: Double) -> [RoutedAction] {
         defer { held.removeAll() }
-        return held.values.compactMap {
-            $0.behavior == .toggleOrHold && timestamp - $0.since >= holdThreshold ? .releaseHold($0.command) : nil
+        return held.values.compactMap { entry in
+            guard case .toggleOrHold(let command, let since) = entry, timestamp - since >= holdThreshold else { return nil }
+            return .releaseHold(command)
         }
     }
 }

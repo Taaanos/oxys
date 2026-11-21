@@ -91,7 +91,9 @@ public enum MakerNoteReader {
 
     private static func decode(ifd0: TIFFDirectory, exif exifOverride: TIFFDirectory? = nil, makerNote noteOverride: TIFFDirectory? = nil) -> MakerNoteInfo? {
         var info = MakerNoteInfo()
-        if let o = ifd0.integers(Tag.orientation).first, (1...8).contains(o) { info.orientation = o }
+        if let o = ifd0.integers(Tag.orientation).first.flatMap({ UInt16(exactly: $0) }).flatMap(ExifOrientation.init(rawValue:)) {
+            info.orientation = o
+        }
         let exif = exifOverride ?? ifd0.integers(Tag.exifIFD).first.flatMap {
             TIFFDirectory(reader: ifd0.reader, at: ifd0.base + $0, base: ifd0.base)
         }
@@ -175,9 +177,10 @@ public enum MakerNoteReader {
     private static func decodeSony(_ note: TIFFDirectory, into info: inout MakerNoteInfo) {
         let v = note.integers(0x2027, limit: 4)
         guard v.count == 4, v[0] > 0, v[1] > 0, v[2] >= 0, v[3] >= 0, v[2] <= v[0], v[3] <= v[1] else { return }
-        info.afFrameWidth = v[0]
-        info.afFrameHeight = v[1]
-        info.afPoints = [AFPoint(x: Double(v[2]) / Double(v[0]), y: Double(v[3]) / Double(v[1]))]
+        info.af = AFDetection(
+            points: [AFPoint(x: Double(v[2]) / Double(v[0]), y: Double(v[3]) / Double(v[1]))],
+            frameSize: FrameDimensions(width: v[0], height: v[1])
+        )
     }
 
     // MARK: Canon
@@ -207,15 +210,14 @@ public enum MakerNoteReader {
         }
         let inFocus = bits(from: 8 + 4 * n)
         let chosen = inFocus.isEmpty ? bits(from: 8 + 4 * n + words) : inFocus
-        info.afFrameWidth = frameW
-        info.afFrameHeight = frameH
-        info.afPoints = chosen.compactMap { i in
+        let points: [AFPoint] = chosen.compactMap { i in
             guard i < valid else { return nil }
             let w = Double(a[8 + i]), h = Double(a[8 + n + i])
             let x = Double(signed(a[8 + 2 * n + i])), y = Double(signed(a[8 + 3 * n + i]))
             return AFPoint(x: 0.5 + x / Double(frameW), y: 0.5 - y / Double(frameH),
-                           width: w / Double(frameW), height: h / Double(frameH))
+                           area: AFAreaSize(width: w / Double(frameW), height: h / Double(frameH)))
         }
+        info.af = AFDetection(points: points, frameSize: FrameDimensions(width: frameW, height: frameH))
     }
 
     // MARK: Nikon
@@ -230,9 +232,11 @@ public enum MakerNoteReader {
               let x = r.u16(0x14).map(Int.init), let y = r.u16(0x16).map(Int.init),
               let aw = r.u16(0x18).map(Int.init), let ah = r.u16(0x1A).map(Int.init),
               w > 0, h > 0, x <= w, y <= h, x > 0 || y > 0 else { return }
-        info.afFrameWidth = w
-        info.afFrameHeight = h
-        info.afPoints = [AFPoint(x: Double(x) / Double(w), y: Double(y) / Double(h), width: Double(aw) / Double(w), height: Double(ah) / Double(h))]
+        info.af = AFDetection(
+            points: [AFPoint(x: Double(x) / Double(w), y: Double(y) / Double(h),
+                             area: AFAreaSize(width: Double(aw) / Double(w), height: Double(ah) / Double(h)))],
+            frameSize: FrameDimensions(width: w, height: h)
+        )
     }
 
     // MARK: Fujifilm
@@ -243,23 +247,25 @@ public enum MakerNoteReader {
         guard v.count == 2, let exif,
               let w = exif.integers(Tag.exifWidth, limit: 1).first, let h = exif.integers(Tag.exifHeight, limit: 1).first,
               w > 0, h > 0, v[0] >= 0, v[1] >= 0, v[0] <= w, v[1] <= h else { return }
-        info.afFrameWidth = w
-        info.afFrameHeight = h
-        info.afPoints = [AFPoint(x: Double(v[0]) / Double(w), y: Double(v[1]) / Double(h))]
+        info.af = AFDetection(
+            points: [AFPoint(x: Double(v[0]) / Double(w), y: Double(v[1]) / Double(h))],
+            frameSize: FrameDimensions(width: w, height: h)
+        )
     }
 
     // MARK: lens text
 
     /// "24-70mm f/2.8" from EXIF LensInfo: shortest and longest focal length, then the apertures at both ends.
-    static func lens(from info: [Double]) -> String? {
-        guard info.count == 4, info[0].isFinite, info[0] > 0, info[1].isFinite, info[1] >= info[0] else { return nil }
+    static func lens(from info: [Double?]) -> String? {
+        guard info.count == 4, let minFocal = info[0], let maxFocal = info[1],
+              minFocal.isFinite, minFocal > 0, maxFocal.isFinite, maxFocal >= minFocal else { return nil }
         func num(_ v: Double) -> String {
             let one = (v * 10).rounded() / 10
             return one == one.rounded() ? String(Int(one)) : String(one)
         }
-        var text = info[0] == info[1] ? "\(num(info[0]))mm" : "\(num(info[0]))-\(num(info[1]))mm"
-        if info[2].isFinite, info[2] > 0 {
-            let wide = info[2], tele = info[3].isFinite && info[3] > 0 ? info[3] : info[2]
+        var text = minFocal == maxFocal ? "\(num(minFocal))mm" : "\(num(minFocal))-\(num(maxFocal))mm"
+        if let wide = info[2], wide.isFinite, wide > 0 {
+            let tele = info[3].flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? wide
             text += wide == tele ? " f/\(num(wide))" : " f/\(num(wide))-\(num(tele))"
         }
         return text
