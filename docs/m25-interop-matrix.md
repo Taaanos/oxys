@@ -2,7 +2,7 @@
 
 Status: **ready to run. No results yet.**
 
-Oxys must work with Lightroom Classic, RawTherapee and ART in both directions. A person must run the steps below (G-10). A person must also have a Lightroom Classic license. Do the steps in order. Write what each tool shows, not what you expect.
+Oxys must work with Lightroom Classic, RawTherapee and ART in both directions, and we also track RapidRAW here. A person must run the steps below (G-10). A person must also have a Lightroom Classic license. Do the steps in order. Write what each tool shows, not what you expect.
 
 ## Before you start
 
@@ -23,6 +23,7 @@ Do these steps for each tool and for each brand.
    - **Lightroom Classic:** *Add* the folder, then select all photos and do *Metadata > Read Metadata from Files*.
    - **RawTherapee:** *Preferences > File Browser*. Turn on "Load/Save thumbnail rank and color from/to XMP sidecars". Set the XMP sidecar style to match the file name style. Write the exact words of each setting you change.
    - **ART:** Find the equivalent setting. Write its exact path and words.
+   - **RapidRAW:** Open the folder and check whether any setting is needed to read sidecars.
 5. Write the stars, the color and the reject state that the tool shows.
 
 Also do these checks in Lightroom Classic:
@@ -67,6 +68,7 @@ Reader table (the other tool reads Oxys sidecars):
 | Lightroom Classic | | | | | |
 | RawTherapee | | | | | |
 | ART | | | | | |
+| RapidRAW | | Yes | Yes | | Reported working for stars and color labels; version, brands, and reject (-1) still to record |
 
 Writer table (Oxys reads the sidecars of the other tool):
 
@@ -75,6 +77,7 @@ Writer table (Oxys reads the sidecars of the other tool):
 | Lightroom Classic | | | | | |
 | RawTherapee | | | | | |
 | ART | | | | | |
+| RapidRAW | | | | | |
 
 Open points to close:
 
@@ -86,4 +89,4 @@ Open points to close:
 
 ## Pass rule
 
-The story passes when every cell for Lightroom Classic and RawTherapee shows the expected value. ART results must be in the table. They do not need to pass.
+The story passes when every cell for Lightroom Classic and RawTherapee shows the expected value. ART and RapidRAW results must be in the table. They do not need to pass.

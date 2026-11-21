@@ -51,6 +51,7 @@ A locked SD card, a read-only network share, or a full disk can stop the save. O
 | **RawTherapee 5.11 or later** | Yes | Yes | No | Turn on one setting. See below. |
 | **RawTherapee 5.10 or earlier** | No | No | No | Install a newer version. |
 | **ART** | Yes | Yes | Yes (as trash) | Check the metadata settings in ART. |
+| **RapidRAW** | Yes | Yes | Not confirmed | Reads Oxys `name.xmp` ratings and color labels. |
 
 ### Lightroom Classic
 
