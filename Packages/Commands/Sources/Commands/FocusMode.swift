@@ -62,7 +62,9 @@ public struct FocusMode: Equatable, Sendable {
     /// shown toggles as usual, and one turned off leaves the revealed set.
     public mutating func press(_ panel: Panel, saved: Bool) -> Outcome {
         guard case .on(var revealed) = state else { return .toggle }
-        if revealed.remove(panel) != nil {
+        // Only a panel that is on screen toggles off. One that is revealed but saved off (closed some other way)
+        // is hidden, so its key turns it on and shows it.
+        if saved, revealed.remove(panel) != nil {
             state = .on(revealed: revealed)
             return .toggle
         }
