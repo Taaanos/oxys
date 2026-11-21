@@ -91,7 +91,10 @@ public struct KeyRouter: Sendable {
             return .passThrough
         }
 
-        if input.isRepeat, let h = held[input.keyCode] {
+        if input.isRepeat {
+            // A repeat of a press we did not own (pressed in a text field, or before focus came back) is not a
+            // new press: it must never fire a binding or start a hold.
+            guard let h = held[input.keyCode] else { return .passThrough }
             // A press we already own: repeat only if the binding asks for it.
             switch h {
             case .repeating(let action): return .consumed(action)
