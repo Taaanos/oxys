@@ -122,6 +122,12 @@ public final class FolderModel {
     /// Blocks until every decision made so far is on disk. Called on quit.
     public func flushSidecarWrites() { writer.flush() }
 
+    /// Stops the live FSEvents watcher; used by tests that drive `handleChanges` directly.
+    func stopWatcher() {
+        watcher?.stop()
+        watcher = nil
+    }
+
     private func setUnsaved(_ unsaved: Bool, at index: Int) {
         guard photos[index].sidecar.unsaved != unsaved else { return }
         photos[index].sidecar.unsaved = unsaved

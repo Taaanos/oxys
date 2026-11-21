@@ -359,6 +359,10 @@ private struct FolderModelOracle {
         let model = FolderModel()
         model.open(folder.url)
         await waitUntilLoaded(model)
+        // Drive outside changes synchronously via handleChanges so background FSEvents
+        // from folder setup or orphaned companions cannot race with the simulation loop.
+        model.stopWatcher()
+        await Task.yield()
 
         var oracle = FolderModelOracle(photos: model.photos, currentURL: model.currentURL)
 
@@ -689,6 +693,10 @@ private struct FolderModelOracle {
         let model = FolderModel()
         model.open(folder.url)
         await waitUntilLoaded(model)
+        // Drive outside changes synchronously via handleChanges so background FSEvents
+        // from folder setup or orphaned companions cannot race with the simulation loop.
+        model.stopWatcher()
+        await Task.yield()
 
         var expectedNewFiles = Set<String>()
         var nextNewID = 100
