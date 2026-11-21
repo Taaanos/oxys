@@ -603,3 +603,142 @@ private final class GatedLoader: Sendable {
         cache.waitForTrim()
     }
 }
+
+// MARK: - Suite 6: Continuation-Gated RawFrameCache + Shared MemoryBudget Simulation
+
+@Suite struct RawFrameCacheSimulationTests {
+    @Test(arguments: [UInt64(0x7301), 0x7302, 0x7303, 0x7304, 0x7305, 0x7306])
+    func gatedRawCacheRespectsLimitsCancellationAndSharedBudget(seed: UInt64) async {
+        var rng = SeededRNG(seed: seed)
+        let gate = GatedLoader()
+        let budget = MemoryBudget(total: 500)
+        let cache = RawFrameCache<Int>(maxCount: 3, maxBytes: 300, budget: budget, transientFactor: 0.5)
+
+        var requests: [(target: Int, task: Task<Result<Int?, any Error>, Never>)] = []
+        let photoCount = 15
+
+        for step in 0..<100 {
+            switch rng.int(in: 0...10) {
+            case 0...3:
+                // Request a RAW develop (sometimes repeating an in-flight or cached key, sometimes superseding).
+                let target = rng.int(in: 0...(photoCount - 1))
+                let key = frameKey(target)
+                let wasCached = cache.contains(key)
+                let prevStarted = gate.startedCount
+                let task = Task<Result<Int?, any Error>, Never> {
+                    do {
+                        return .success(try await cache.develop(key) { k in
+                            try await gate.load(k, isQuick: false)
+                        })
+                    } catch { return .failure(error) }
+                }
+                requests.append((target, task))
+                if !wasCached {
+                    for _ in 0..<40 where gate.startedCount == prevStarted {
+                        try? await Task.sleep(for: .microseconds(200))
+                    }
+                }
+
+            case 4...6:
+                // Release a suspended RAW load in seeded order (succeed or fail).
+                let pending = gate.pending()
+                if !pending.isEmpty {
+                    let chosen = rng.pick(pending)
+                    let idNum = frameID(chosen.key)
+                    if rng.bool(probability: 1, outOf: 5) {
+                        gate.release(id: chosen.id, with: .fail(SimulatedLoadError(keyID: idNum)))
+                    } else {
+                        let cost = rng.int(in: 40...180)
+                        gate.release(id: chosen.id, with: .succeed(LoadedFrame(frame: idNum, cost: cost)))
+                    }
+                }
+
+            case 7:
+                // Cancel in-flight develop.
+                cache.cancelInflight()
+                #expect(!cache.isDeveloping, "seed=\(hex(seed)) step=\(step): still developing after cancelInflight")
+
+            case 8:
+                // Dynamically tighten or loosen count/byte limits and shared budget pressure.
+                let newCount = rng.int(in: 1...5)
+                let newBytes = rng.int(in: 100...450)
+                cache.setLimits(maxCount: newCount, maxBytes: newBytes)
+                budget.setUsed(.frames, rng.int(in: 0...400))
+                budget.setUsed(.overlays, rng.int(in: 0...100))
+
+            case 9:
+                // Memory pressure trim keeping a single key (or nil).
+                let keep: FrameKey? = rng.bool() ? frameKey(rng.int(in: 0...(photoCount - 1))) : nil
+                cache.trim(keeping: keep)
+                #expect(cache.count <= 1, "seed=\(hex(seed)) step=\(step): trim(keeping:) left > 1 entry")
+                if let keep {
+                    #expect(cache.count == 0 || cache.contains(keep),
+                            "seed=\(hex(seed)) step=\(step): trim(keeping:) kept wrong entry")
+                } else {
+                    #expect(cache.count == 0, "seed=\(hex(seed)) step=\(step): trim(keeping: nil) left entries")
+                }
+
+            default:
+                cache.removeAll()
+                #expect(cache.count == 0 && !cache.isDeveloping,
+                        "seed=\(hex(seed)) step=\(step): removeAll left state behind")
+            }
+
+            // Continuous limit invariants (newest entry always stays even if oversized, so byte cap applies when count > 1).
+            #expect(cache.count <= cache.maxCount,
+                    "seed=\(hex(seed)) step=\(step): count=\(cache.count) > maxCount=\(cache.maxCount)")
+            if cache.count > 1 {
+                #expect(cache.totalCost <= cache.maxBytes,
+                        "seed=\(hex(seed)) step=\(step): totalCost=\(cache.totalCost) > maxBytes=\(cache.maxBytes)")
+            }
+        }
+
+        // Drain all remaining loads and verify every request returned nil, its exact frame, or its own error.
+        for _ in 0..<200 {
+            gate.releaseAll(defaultCost: 80)
+            if !cache.isDeveloping && gate.totalPending == 0 { break }
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+
+        for (target, task) in requests {
+            switch await task.value {
+            case .success(let frame):
+                if let frame {
+                    #expect(frame == target, "seed=\(hex(seed)): develop(\(target)) returned wrong frame \(frame)!")
+                }
+            case .failure(let error):
+                #expect(error as? SimulatedLoadError == SimulatedLoadError(keyID: target),
+                        "seed=\(hex(seed)): unexpected error \(error) for develop(\(target))")
+            }
+        }
+
+        #expect(!cache.isDeveloping, "seed=\(hex(seed)): cache still developing after drain")
+        #expect(gate.totalPending == 0, "seed=\(hex(seed)): leaked pending continuations in RawFrameCache")
+        #expect(gate.startedCount > 0, "seed=\(hex(seed)): RawFrameCache simulation exercised no loads")
+    }
+
+    /// Regression test for a bug discovered by `RawFrameCacheSimulationTests` (seed=0x7306 step=71):
+    /// Under memory pressure, `LoupeController.memoryPressure` calls `rawCache.trim(keeping: shown)`.
+    /// `RawFrameCache.trim(keeping:)` must cancel an in-flight develop for a different key so a background
+    /// neighbor RAW develop cannot finish right after the pressure trim and insert itself back into the cache.
+    @Test func trimUnderMemoryPressureCancelsUnrelatedInflight() async {
+        let gate = GatedLoader()
+        let cache = RawFrameCache<Int>(maxCount: 3, maxBytes: 500)
+        let neighbor = frameKey(2)
+        let shown = frameKey(1)
+
+        let task = Task<Int?, Never> {
+            try? await cache.develop(neighbor) { k in try await gate.load(k, isQuick: false) }
+        }
+        for _ in 0..<50 where gate.pending().isEmpty {
+            try? await Task.sleep(for: .microseconds(200))
+        }
+        // Memory pressure arrives while neighbor is developing; only `shown` may stay.
+        cache.trim(keeping: shown)
+        gate.releaseAll(defaultCost: 100)
+        let result = await task.value
+
+        #expect(result == nil)
+        #expect(!cache.contains(neighbor))
+    }
+}

@@ -753,3 +753,116 @@ private struct FolderModelOracle {
         }
     }
 }
+
+// MARK: - Suite 5: GridGeometry & FilmStripGeometry Differential Oracles
+
+@Suite struct GridAndFilmStripGeometryTests {
+    @Test(arguments: [UInt64(0x6101), 0x6102, 0x6103, 0x6104, 0x6105, 0x6106])
+    func gridGeometryMatchesBruteForceCellOverlapOracle(seed: UInt64) {
+        var rng = SeededRNG(seed: seed)
+
+        for step in 0..<200 {
+            let itemSize = rng.pick(GridGeometry.itemSizes)
+            let width = CGFloat(rng.int(in: 120...3200))
+            let grid = GridGeometry.grid(itemSize: itemSize, width: width)
+            let count = rng.int(in: 0...120)
+
+            #expect(grid.columns >= 1)
+            if grid.columns > 1 {
+                #expect(grid.columnGap >= grid.spacing - 1e-6,
+                        "seed=\(hex(seed)) step=\(step): columnGap \(grid.columnGap) < spacing \(grid.spacing)")
+            }
+
+            // Visible range must contain every cell whose vertical frame strictly intersects offset..<(offset + height).
+            let maxH = max(grid.contentHeight(count: count), 400)
+            let offset = CGFloat(rng.int(in: -50...Int(maxH + 100)))
+            let viewH = CGFloat(rng.int(in: 0...1200))
+            let visible = grid.visibleRange(offset: offset, height: viewH, count: count)
+
+            #expect(visible.lowerBound >= 0 && visible.upperBound <= count,
+                    "seed=\(hex(seed)) step=\(step): visibleRange \(visible) out of 0..<\(count)")
+
+            if viewH > 0 {
+                for i in 0..<count {
+                    let f = grid.frame(of: i)
+                    let intersects = f.maxY > offset && f.minY < offset + viewH
+                    if intersects {
+                        #expect(visible.contains(i),
+                                "seed=\(hex(seed)) step=\(step): visible cell \(i) (y=\(f.minY)..<\(f.maxY)) missing from visibleRange \(visible) for span \(offset)..<\(offset + viewH)")
+                    }
+                }
+            }
+
+            // Arrow moves stay strictly in bounds and move in the expected direction.
+            if count > 0 {
+                let idx = rng.int(in: 0...(count - 1))
+                for move in [GridGeometry.Move.left, .right, .up, .down] {
+                    let next = grid.moved(from: idx, move, count: count)
+                    #expect((0..<count).contains(next),
+                            "seed=\(hex(seed)) step=\(step): moved(\(idx), \(move)) -> \(next) out of 0..<\(count)")
+                    switch move {
+                    case .left: #expect(next <= idx)
+                    case .right: #expect(next >= idx)
+                    case .up: #expect(next <= idx)
+                    case .down: #expect(next >= idx)
+                    }
+                }
+            }
+
+            // GridPrefetch.order: no duplicates, starts with visible, all in 0..<count.
+            let dir: GridPrefetch.Direction = rng.bool() ? .down : .up
+            let order = GridPrefetch.order(visible: visible, count: count, columns: grid.columns, direction: dir)
+            #expect(Set(order).count == order.count, "seed=\(hex(seed)) step=\(step): duplicate indices in GridPrefetch")
+            #expect(order.allSatisfy { (0..<count).contains($0) })
+            #expect(Array(order.prefix(visible.count)) == Array(visible),
+                    "seed=\(hex(seed)) step=\(step): GridPrefetch did not prioritize visible cells first")
+        }
+    }
+
+    @Test(arguments: [UInt64(0x6201), 0x6202, 0x6203, 0x6204, 0x6205, 0x6206])
+    func filmStripGeometryMatchesBruteForceOracleAndCentersTarget(seed: UInt64) {
+        var rng = SeededRNG(seed: seed)
+
+        for step in 0..<200 {
+            let width = CGFloat(rng.int(in: 100...3200))
+            let strip = FilmStripGeometry(width: width)
+            let count = rng.int(in: 0...150)
+
+            let docW = strip.documentWidth(count: count)
+            #expect(docW >= width - 1e-6, "seed=\(hex(seed)) step=\(step): documentWidth < strip width")
+
+            if count > 0 {
+                let target = rng.int(in: 0...(count - 1))
+                let centeredOffset = strip.offset(centering: target, count: count)
+                #expect(centeredOffset >= 0 && centeredOffset <= max(docW - width, 0) + 1e-6,
+                        "seed=\(hex(seed)) step=\(step): centered offset out of clamped bounds")
+
+                let vis = strip.visibleRange(offset: centeredOffset, count: count)
+                #expect(vis.contains(target),
+                        "seed=\(hex(seed)) step=\(step): centered target \(target) not in visibleRange \(vis)")
+
+                // Brute-force cell overlap oracle: every cell intersecting centeredOffset..<(centeredOffset + width) must be in vis.
+                for i in 0..<count {
+                    let x0 = strip.origin(of: i, count: count)
+                    let x1 = x0 + strip.cellSize
+                    if x1 > centeredOffset && x0 < centeredOffset + width {
+                        #expect(vis.contains(i),
+                                "seed=\(hex(seed)) step=\(step): intersecting strip cell \(i) missing from \(vis)")
+                    }
+                }
+
+                // Fetch order: unique, strictly in bounds, sorted by non-decreasing distance from target.
+                let order = strip.order(visible: vis, count: count, center: target)
+                #expect(Set(order).count == order.count)
+                #expect(order.allSatisfy { (0..<count).contains($0) })
+                for pair in zip(order, order.dropFirst()) {
+                    #expect(abs(pair.0 - target) <= abs(pair.1 - target),
+                            "seed=\(hex(seed)) step=\(step): filmstrip fetch order not sorted by distance from center")
+                }
+            } else {
+                #expect(strip.visibleRange(offset: 0, count: 0) == 0..<0)
+                #expect(strip.offset(centering: 0, count: 0) == 0)
+            }
+        }
+    }
+}

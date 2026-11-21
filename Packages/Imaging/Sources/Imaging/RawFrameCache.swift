@@ -139,6 +139,10 @@ public final class RawFrameCache<Frame: Sendable>: Sendable {
     /// Memory pressure (P-04): only the entry for `key` stays, if there is one.
     public func trim(keeping key: FrameKey?) {
         locked { s in
+            if let inflight = s.inflight, inflight.key != key {
+                inflight.task.cancel()
+                s.inflight = nil
+            }
             s.entries = s.entries.filter { $0.key == key }
         }
     }

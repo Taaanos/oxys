@@ -1,4 +1,5 @@
 import CoreGraphics
+import ImageIO
 import Testing
 @testable import Canvas
 
@@ -176,6 +177,108 @@ private func hex(_ seed: UInt64) -> String { "0x" + String(seed, radix: 16, uppe
 
             // Fit always maps follower to Fit
             #expect(link.follower(of: ViewState(level: .fit)).level == .fit)
+        }
+    }
+}
+
+// MARK: - Suite 2: SwipeTracker, PinchNavigationTracker & OrientationMap Properties
+
+@Suite struct CanvasGestureAndOrientationTests {
+    @Test(arguments: [UInt64(0xE301), 0xE302, 0xE303, 0xE304, 0xE305, 0xE306])
+    func swipeAndPinchTrackersFireAtMostOncePerGestureAndIgnoreMomentum(seed: UInt64) {
+        var rng = SeededRNG(seed: seed)
+        let threshold: CGFloat = 40
+        var swipe = SwipeTracker(threshold: threshold)
+        var pinch = PinchNavigationTracker(threshold: 0.22)
+
+        for gesture in 0..<100 {
+            // 1. Swipe gesture: began -> N changed/momentum events -> ended/cancelled
+            var swipeFires = 0
+            let initDx = rng.cgFloat(in: -15...15)
+            let initDy = rng.cgFloat(in: -15...15)
+            #expect(swipe.update(phase: .began, dx: initDx, dy: initDy, isMomentum: false) == nil)
+
+            var sumX = initDx
+            var sumAbsY = abs(initDy)
+            var expectedFired = false
+            let samples = Int(rng.next() % 18) + 2
+            for s in 0..<samples {
+                let isMomentum = (rng.next() % 4) == 0
+                let dx = rng.cgFloat(in: -35...35)
+                let dy = rng.cgFloat(in: -35...35)
+                let out = swipe.update(phase: .changed, dx: dx, dy: dy, isMomentum: isMomentum)
+                if isMomentum {
+                    #expect(out == nil, "seed=\(hex(seed)) gesture=\(gesture) sample=\(s): momentum event triggered swipe")
+                    continue
+                }
+                if !expectedFired {
+                    sumX += dx
+                    sumAbsY += abs(dy)
+                    if abs(sumX) >= threshold && abs(sumX) > sumAbsY * 1.2 {
+                        expectedFired = true
+                        let expectedDir = sumX < 0 ? 1 : -1
+                        #expect(out == expectedDir,
+                                "seed=\(hex(seed)) gesture=\(gesture) sample=\(s): wrong swipe direction \(String(describing: out)) != \(expectedDir)")
+                        swipeFires += 1
+                    } else {
+                        #expect(out == nil, "seed=\(hex(seed)) gesture=\(gesture) sample=\(s): premature swipe trigger")
+                    }
+                } else {
+                    #expect(out == nil, "seed=\(hex(seed)) gesture=\(gesture) sample=\(s): swipe fired twice in one gesture")
+                }
+            }
+            #expect(swipeFires <= 1)
+            let endPhase: SwipeTracker.Phase = (rng.next() % 2) == 0 ? .ended : .cancelled
+            #expect(swipe.update(phase: endPhase, dx: 0, dy: 0, isMomentum: false) == nil)
+
+            // 2. Pinch gesture: began -> N changed events -> ended/cancelled
+            var pinchFires = 0
+            let pInit = rng.cgFloat(in: -0.08...0.08)
+            #expect(pinch.update(phase: .began, magnification: pInit) == nil)
+            for _ in 0..<samples {
+                let mag = rng.cgFloat(in: -0.2...0.2)
+                if let dir = pinch.update(phase: .changed, magnification: mag) {
+                    #expect(dir == -1 || dir == 1)
+                    pinchFires += 1
+                }
+            }
+            #expect(pinchFires <= 1, "seed=\(hex(seed)) gesture=\(gesture): pinch fired \(pinchFires) times in one gesture")
+            #expect(pinch.update(phase: endPhase, magnification: 0) == nil)
+        }
+    }
+
+    @Test(arguments: [UInt64(0xE401), 0xE402, 0xE403, 0xE404])
+    func orientationMapBijectsUnitSquareAndPreservesCenter(seed: UInt64) {
+        var rng = SeededRNG(seed: seed)
+        let orientations: [CGImagePropertyOrientation] = [
+            .up, .upMirrored, .down, .downMirrored, .leftMirrored, .right, .rightMirrored, .left,
+        ]
+        let unitCorners: Set<String> = ["0,0", "1,0", "0,1", "1,1"]
+        let eps: CGFloat = 1e-12
+
+        for o in orientations {
+            let map = OrientationMap(o)
+            // Center (0.5, 0.5) is always fixed
+            let mid = map.sourcePoint(displayX: 0.5, displayY: 0.5)
+            #expect(abs(mid.x - 0.5) < eps && abs(mid.y - 0.5) < eps, "orientation \(o): center moved to \(mid)")
+
+            // Corners are a bijection of the 4 unit-square corners
+            let mappedCorners = Set([map.topLeft, map.topRight, map.bottomLeft, map.bottomRight].map { "\(Int($0.x)),\(Int($0.y))" })
+            #expect(mappedCorners == unitCorners, "orientation \(o): corners not a bijection (\(mappedCorners))")
+
+            // Random interior points map strictly into [0, 1]^2 and are distance-preserving (isometry!)
+            for step in 0..<50 {
+                let a = CGPoint(x: rng.cgFloat(in: 0...1), y: rng.cgFloat(in: 0...1))
+                let b = CGPoint(x: rng.cgFloat(in: 0...1), y: rng.cgFloat(in: 0...1))
+                let sa = map.sourcePoint(displayX: a.x, displayY: a.y)
+                let sb = map.sourcePoint(displayX: b.x, displayY: b.y)
+                #expect((-eps...(1 + eps)).contains(sa.x) && (-eps...(1 + eps)).contains(sa.y),
+                        "seed=\(hex(seed)) orient=\(o) step=\(step): sourcePoint escaped [0,1]^2")
+                let dDisplay = hypot(a.x - b.x, a.y - b.y)
+                let dSource = hypot(sa.x - sb.x, sa.y - sb.y)
+                #expect(abs(dDisplay - dSource) < 1e-9,
+                        "seed=\(hex(seed)) orient=\(o) step=\(step): OrientationMap is not an isometry!")
+            }
         }
     }
 }
