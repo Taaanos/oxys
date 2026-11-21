@@ -1,3 +1,7 @@
+<p align="left">
+  <img src="docs/design/icon/app-icon.png" width="80" alt="Oxys app icon">
+</p>
+
 # Oxys
 
 A keyboard-first RAW culler for macOS. Instant embedded previews, full keyboard culling, and ratings and labels saved in XMP sidecars that Lightroom Classic, RawTherapee and ART can read.
